@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <!-- Font preconnect for speed -->
+    <link rel="preconnect" href="https://api.fontshare.com" crossorigin>
+    <link rel="dns-prefetch" href="https://api.fontshare.com">
+
+    <!-- Clash Display - headings, titles, brand name -->
+    <link
+      rel="preload"
+      as="style"
+      href="https://api.fontshare.com/v2/css?f[]=clash-display@500,600,700,800,900&display=swap"
+      onload="this.onload=null;this.rel='stylesheet'"
+    />
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://api.fontshare.com/v2/css?f[]=clash-display@500,600,700,800,900&display=swap"
+      />
+    </noscript>
+
+    <!-- Cabinet Grotesk - body text, paragraphs, inputs -->
+    <link
+      rel="preload"
+      as="style"
+      href="https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@400,500,600,700&display=swap"
+      onload="this.onload=null;this.rel='stylesheet'"
+    />
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@400,500,600,700&display=swap"
+      />
+    </noscript>
+
+    <!-- Preconnect to backend API -->
+    <link rel="preconnect" href="http://localhost:8000">
+    <link rel="dns-prefetch" href="http://localhost:8000">
+
+    <!-- Preconnect to Supabase -->
+    <link rel="preconnect" href="https://gtnhdawkskyghoohezlk.supabase.co" crossorigin>
+    <link rel="dns-prefetch" href="https://gtnhdawkskyghoohezlk.supabase.co">
+
+    <!-- Preconnect to Simple Icons CDN (used for company logos) -->
+    <link rel="preconnect" href="https://cdn.simpleicons.org" crossorigin>
+
+    <!-- App metadata -->
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="CareerLens - AI-powered resume analyzer and career guidance platform"
+    />
+    <meta name="theme-color" content="#e11d48">
+    <meta name="application-name" content="CareerLens">
+    <title>CareerLens - AI Career Platform</title>
+
+    <style>
+      /* System font fallback while Fontshare loads */
+      :root {
+        --font-display: 'Clash Display', 'SF Pro Display',
+                        -apple-system, 'Segoe UI', sans-serif;
+        --font-body:    'Cabinet Grotesk', 'SF Pro Text',
+                        -apple-system, 'Segoe UI', sans-serif;
+      }
+    </style>
+
+    <style>
+      /* Shown while app loads */
+      #root:empty::before {
+        content: '';
+        display: block;
+        position: fixed;
+        inset: 0;
+        background: #0a0a0f;
+        z-index: 9999;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
