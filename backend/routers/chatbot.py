@@ -39,6 +39,9 @@ class MessageRequest(BaseModel):
 @router.post("/message")
 async def send_message(body: MessageRequest, profile=Depends(get_user_profile)):
     """Send a message to the Honest Career Coach and get a response."""
+    if len(body.content) > 4000:
+        raise HTTPException(status_code=400, detail="Message content must be 4000 characters or fewer.")
+
     user_id = profile["user_id"]
 
     # Freemium message limit

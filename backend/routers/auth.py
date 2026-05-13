@@ -3,10 +3,11 @@
 # File: backend/routers/auth.py
 # ============================================================
 
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, Request, Response, status
 from pydantic import BaseModel, EmailStr
 from database import supabase
 from middleware.auth import get_authenticated_user, get_user_profile
+from rate_limit import limiter
 import logging
 from urllib.parse import urlparse
 
@@ -67,7 +68,8 @@ def github_url_from_username(username: str | None) -> str | None:
 # ---- Routes ----
 
 @router.post("/signup", status_code=status.HTTP_201_CREATED)
-async def signup(body: SignUpRequest):
+@limiter.limit("3/minute")
+async def signup(request: Request, response: Response, body: SignUpRequest):
     """Register a new user via Supabase Auth."""
     try:
         res = supabase.auth.sign_up({
@@ -86,7 +88,8 @@ async def signup(body: SignUpRequest):
 
 
 @router.post("/login")
-async def login(body: LoginRequest):
+@limiter.limit("5/minute")
+async def login(request: Request, response: Response, body: LoginRequest):
     """Authenticate user and return Supabase session tokens."""
     try:
         res = supabase.auth.sign_in_with_password({"email": body.email, "password": body.password})
@@ -105,7 +108,8 @@ async def login(body: LoginRequest):
 
 
 @router.post("/forgot-password")
-async def forgot_password(body: ForgotPasswordRequest):
+@limiter.limit("2/minute")
+async def forgot_password(request: Request, response: Response, body: ForgotPasswordRequest):
     """Send password reset email via Supabase."""
     try:
         supabase.auth.reset_password_email(body.email)

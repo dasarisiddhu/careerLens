@@ -4,12 +4,13 @@
 # Placeholder integration for Stripe / Razorpay
 # ============================================================
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel
 from middleware.auth import get_authenticated_user
 from database import supabase
 from config import settings
 import logging, uuid
+import stripe
 
 logger = logging.getLogger("careerlens.premium")
 router = APIRouter()
@@ -42,22 +43,38 @@ async def initiate_payment(body: InitiatePaymentRequest, user=Depends(get_authen
         "success": True,
         "payment_id": payment_id,
         "message": "Payment initiation placeholder. Integrate Stripe/Razorpay SDK here.",
-        "stripe_key": settings.STRIPE_SECRET_KEY[:8] + "..." if settings.STRIPE_SECRET_KEY else "not configured",
     }
 
 
 @router.post("/webhook")
-async def payment_webhook(payload: dict):
+async def payment_webhook(request: Request):
     """
-    Placeholder: Handle payment provider webhook.
-    Verify signature, update payment record, upgrade user plan.
+    Handle Stripe payment webhooks.
+    Verify signature before updating payment records or upgrading plans.
     """
-    # TODO: Verify webhook signature (Stripe: stripe.Webhook.construct_event)
-    event_type = payload.get("type", "")
+    body = await request.body()
+    signature = request.headers.get("stripe-signature")
+
+    if not signature:
+        raise HTTPException(status_code=400, detail="Missing Stripe-Signature header")
+
+    try:
+        event = stripe.Webhook.construct_event(
+            body,
+            signature,
+            settings.STRIPE_WEBHOOK_SECRET,
+        )
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid webhook payload")
+    except stripe.error.SignatureVerificationError:
+        raise HTTPException(status_code=400, detail="Invalid webhook signature")
+
+    event_type = event.get("type", "")
     logger.info(f"Received webhook event: {event_type}")
 
     if event_type == "payment_intent.succeeded":
-        user_id = payload.get("metadata", {}).get("user_id")
+        payment_intent = event.get("data", {}).get("object", {})
+        user_id = payment_intent.get("metadata", {}).get("user_id")
         if user_id:
             supabase.rpc("upgrade_user_to_premium", {"p_user_id": user_id}).execute()
 

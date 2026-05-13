@@ -10,6 +10,7 @@ from middleware.auth import get_authenticated_user
 from database import supabase
 from services.gemini_service import call_groq, _extract_json
 import logging
+import re
 
 logger = logging.getLogger("careerlens.optimizer")
 
@@ -35,6 +36,671 @@ def count_kw_coverage(text: str, jd: str) -> int:
 
 
 router = APIRouter()
+
+
+SUMMARY_FALLBACK_ROLE = "Software Engineer"
+SUMMARY_FALLBACK_SUMMARY = (
+    "Machine Learning Engineer specializing in scalable AI systems and data pipelines. "
+    "Focused on building efficient backend solutions."
+)
+SUMMARY_NO_METRIC_SENTENCE = (
+    "Focused on building efficient backend solutions."
+)
+SUMMARY_BUZZWORD_RE = re.compile(
+    r"\b(production-grade|applied engineering work|reliable deployment practices|"
+    r"practical, measurable|maintainable solutions|delivery quality|"
+    r"scalable infrastructure practices|workflow automation|user-centered product delivery|"
+    r"significantly improved|greatly enhanced|various improvements|multiple systems|"
+    r"improved system efficiency|improved throughput|enhanced performance|"
+    r"scaled systems|optimized workflows)\b",
+    re.IGNORECASE,
+)
+SUMMARY_BANNED_OPENER_RE = re.compile(
+    r"^(uses|has knowledge of|has experience in|is skilled in|worked on|i|my)\b",
+    re.IGNORECASE,
+)
+SUMMARY_WEAK_PHRASES_RE = re.compile(
+    r"\b(with experience in|has experience in|has knowledge of|is skilled in|worked on|proficient in|knowledge of)\b",
+    re.IGNORECASE,
+)
+SUMMARY_EMAIL_RE = re.compile(r"[\w.-]+@[\w.-]+\.\w+")
+SUMMARY_PHONE_RE = re.compile(r"(?:\+?\d[\d\s\-()]{8,}\d)")
+SUMMARY_PERCENT_RE = re.compile(r"\b\d+(?:\.\d+)?%")
+SUMMARY_COUNT_RE = re.compile(
+    r"\b\d+(?:\.\d+)?\s*(?:k|m|b)?\+?\s*(?:daily\s+|monthly\s+)?(?:users|requests|data points|transactions|patients|entries|patient records|records|samples?)\b",
+    re.IGNORECASE,
+)
+SUMMARY_DURATION_RE = re.compile(
+    r"\b\d+(?:\.\d+)?\s*(?:ms|milliseconds?|s|sec|secs|seconds?)\b",
+    re.IGNORECASE,
+)
+SUMMARY_TOOL_NAMES = [
+    "Apache Spark", "Kubernetes", "TensorFlow", "Scikit-learn", "PostgreSQL",
+    "JavaScript", "TypeScript", "FastAPI", "PyTorch", "Docker", "Python",
+    "Pandas", "NumPy", "Airflow", "Kafka", "MLflow", "React", "Node.js",
+    "AWS", "Azure", "GCP", "SQL", "Java", "Git",
+]
+SUMMARY_DOMAIN_PATTERNS = [
+    (r"\b(data pipelines?|etl|data processing)\b", "data pipelines"),
+    (r"\b(model deployment|model serving|inference|mlops)\b", "model deployment"),
+    (r"\b(computer vision|image processing|opencv)\b", "computer vision"),
+    (r"\b(nlp|natural language|text classification|language model)\b", "NLP"),
+    (r"\b(predictive modeling|forecasting|classification|regression)\b", "predictive modeling"),
+    (r"\b(backend|api|microservices?|fastapi|node\.?js)\b", "backend systems"),
+    (r"\b(cloud|aws|azure|gcp|deployment)\b", "cloud deployment"),
+    (r"\b(sql|database|postgresql|mysql|mongodb)\b", "database systems"),
+]
+
+
+def _summary_clean_text(value: str) -> str:
+    text = str(value or "")
+    text = SUMMARY_EMAIL_RE.sub("", text)
+    text = SUMMARY_PHONE_RE.sub("", text)
+    text = re.sub(r"[\u2026]|\.{2,}", ".", text)
+    text = re.sub(r"\*\*", "", text)
+    text = SUMMARY_WEAK_PHRASES_RE.sub("focused on", text)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
+def _summary_word_count(value: str) -> int:
+    return len(re.findall(r"\b[\w+#.%-]+\b", value or ""))
+
+
+def _summary_role(raw_role: str = "") -> str:
+    cleaned = _summary_clean_text(raw_role)
+    cleaned = re.sub(r"^(target role|role|job title)\s*[:|-]\s*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"[.]+$", "", cleaned).strip()
+    lowered = cleaned.lower()
+    if re.search(r"machine learning|(^|\s)ml(\s|$)|artificial intelligence|\bai\b", lowered):
+        return "Machine Learning Engineer"
+    if "data scientist" in lowered:
+        return "Data Scientist"
+    if re.search(r"data analyst|analytics", lowered):
+        return "Data Analyst"
+    if re.search(r"frontend|front-end|react", lowered):
+        return "Frontend Engineer"
+    if re.search(r"backend|back-end|api", lowered):
+        return "Backend Engineer"
+    if re.search(r"full stack|full-stack", lowered):
+        return "Full Stack Engineer"
+    if re.search(r"devops|cloud|site reliability|sre", lowered):
+        return "Cloud Engineer"
+    if "software" in lowered:
+        return "Software Engineer"
+    return cleaned.title() if cleaned else SUMMARY_FALLBACK_ROLE
+
+
+def _summary_skill_items(value) -> list[str]:
+    items: list[str] = []
+    if isinstance(value, dict):
+        for group_values in value.values():
+            items.extend(_summary_skill_items(group_values))
+    elif isinstance(value, (list, tuple, set)):
+        for item in value:
+            items.extend(_summary_skill_items(item))
+    elif value:
+        text = _summary_clean_text(str(value))
+        for part in re.split(r"[,|;/]", text):
+            cleaned = re.sub(r"^[A-Za-z &]+:\s*", "", part.strip())
+            if cleaned:
+                items.append(cleaned)
+    return items
+
+
+def _summary_top_skills(result: dict, resume_text: str = "") -> list[str]:
+    candidates: list[str] = []
+    for key in ("optimized_skills", "skills_to_highlight", "added_keywords"):
+        candidates.extend(_summary_skill_items(result.get(key)))
+
+    in_skills_section = False
+    for raw_line in str(resume_text or "").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if re.match(r"^(skills|technical skills|core skills|technologies)\b", line, re.IGNORECASE):
+            in_skills_section = True
+            continue
+        if in_skills_section and re.match(
+            r"^(experience|work experience|education|projects|certifications|summary|profile|objective)\b",
+            line,
+            re.IGNORECASE,
+        ):
+            break
+        if in_skills_section:
+            candidates.extend(_summary_skill_items(line))
+
+    seen: set[str] = set()
+    skills: list[str] = []
+    for item in candidates:
+        cleaned = re.sub(r"\s+", " ", str(item or "").strip())
+        key = cleaned.lower()
+        if not cleaned or key in seen:
+            continue
+        if SUMMARY_EMAIL_RE.search(cleaned) or SUMMARY_PHONE_RE.search(cleaned):
+            continue
+        seen.add(key)
+        skills.append(cleaned)
+        if len(skills) == 5:
+            break
+    return skills
+
+
+def _summary_domains(job_description: str = "", result: dict | None = None, role: str = "") -> list[str]:
+    result = result or {}
+    jd_text = _summary_clean_text(job_description)
+    keyword_text = " ".join(_summary_skill_items(result.get("added_keywords")))
+    text = f"{jd_text} {keyword_text}".lower()
+    domains: list[str] = []
+
+    for pattern, domain in SUMMARY_DOMAIN_PATTERNS:
+        if re.search(pattern, text) and domain not in domains:
+            domains.append(domain)
+
+    if len(domains) < 2 and re.search(r"\b(machine learning|ml engineer|data scientist)\b", text):
+        for fallback_domain in ("predictive modeling", "model deployment"):
+            if fallback_domain not in domains:
+                domains.append(fallback_domain)
+
+    if len(domains) < 2 and re.search(r"\b(ai|artificial intelligence)\b", text):
+        for fallback_domain in ("scalable AI systems", "data pipelines"):
+            if fallback_domain not in domains:
+                domains.append(fallback_domain)
+
+    if len(domains) < 2 and "machine learning engineer" in role.lower():
+        for fallback_domain in ("scalable AI systems", "data pipelines"):
+            if fallback_domain not in domains:
+                domains.append(fallback_domain)
+
+    return domains[:2]
+
+
+def _summary_key_tools(
+    job_description: str = "",
+    resume_text: str = "",
+    optimized_skills: list[str] | None = None,
+    sentence_text: str = "",
+) -> list[str]:
+    source = f"{job_description} {resume_text}"
+    skill_keys = {re.sub(r"[^a-z0-9+#.]+", " ", skill.lower()).strip() for skill in (optimized_skills or [])}
+    sentence_lower = sentence_text.lower()
+    tools: list[str] = []
+    for tool in SUMMARY_TOOL_NAMES:
+        tool_pattern = re.escape(tool).replace(r"\ ", r"\s+")
+        if not re.search(rf"\b{tool_pattern}\b", source, re.IGNORECASE):
+            continue
+        key = re.sub(r"[^a-z0-9+#.]+", " ", tool.lower()).strip()
+        if key in skill_keys or tool.lower() in sentence_lower:
+            continue
+        if key in {"ai", "machine learning"}:
+            continue
+        tools.append(tool)
+        if len(tools) == 3:
+            break
+    return tools
+
+
+def _summary_metric_value(metric: str) -> float:
+    match = re.search(r"\d+(?:\.\d+)?", metric or "")
+    if not match:
+        return 0
+    value = float(match.group(0))
+    lowered = metric.lower()
+    if "k" in lowered:
+        value *= 1_000
+    elif "m" in lowered:
+        value *= 1_000_000
+    elif "b" in lowered:
+        value *= 1_000_000_000
+    return value
+
+
+def _summary_duration_value_ms(metric: str) -> float:
+    match = re.search(r"\d+(?:\.\d+)?", metric or "")
+    if not match:
+        return 0
+    value = float(match.group(0))
+    lowered = metric.lower()
+    if re.search(r"\b(s|sec|secs|second|seconds)\b", lowered):
+        value *= 1_000
+    return value
+
+
+def _summary_best_duration_pair(text: str) -> tuple[str, str]:
+    metrics = SUMMARY_DURATION_RE.findall(_summary_clean_text(text))
+    if len(metrics) < 2:
+        return ("", "")
+    ordered = sorted(metrics, key=_summary_duration_value_ms, reverse=True)
+    start, end = ordered[0], ordered[-1]
+    if _summary_duration_value_ms(start) <= _summary_duration_value_ms(end):
+        return ("", "")
+    return (start, end)
+
+
+def _summary_best_duration(text: str) -> str:
+    metrics = SUMMARY_DURATION_RE.findall(_summary_clean_text(text))
+    if not metrics:
+        return ""
+    return min(metrics, key=_summary_duration_value_ms)
+
+
+def _summary_best_metric(text: str) -> str:
+    cleaned = _summary_clean_text(text)
+    percentages = SUMMARY_PERCENT_RE.findall(cleaned)
+    if percentages:
+        return max(percentages, key=_summary_metric_value)
+
+    count_metrics = [
+        metric.strip()
+        for metric in SUMMARY_COUNT_RE.findall(cleaned)
+        if not re.fullmatch(r"(19|20)\d{2}", metric.strip())
+    ]
+    if count_metrics:
+        return max(count_metrics, key=_summary_metric_value)
+    return ""
+
+
+def _summary_best_percent(text: str) -> str:
+    percentages = SUMMARY_PERCENT_RE.findall(_summary_clean_text(text))
+    return max(percentages, key=_summary_metric_value) if percentages else ""
+
+
+def _summary_best_count(text: str) -> str:
+    count_metrics = [
+        metric.strip()
+        for metric in SUMMARY_COUNT_RE.findall(_summary_clean_text(text))
+        if not re.fullmatch(r"(19|20)\d{2}", metric.strip())
+    ]
+    return max(count_metrics, key=_summary_metric_value) if count_metrics else ""
+
+
+def _summary_large_count(count_metric: str) -> str:
+    return count_metric if _summary_metric_value(count_metric) >= 10_000 else ""
+
+
+def _summary_scale_suffix(count_metric: str, context: str = "") -> str:
+    if not count_metric:
+        return ""
+    if _summary_large_count(count_metric):
+        return f" for {count_metric}"
+    if re.search(r"\b(data|records|patients|entries|pipeline|processing|dataset)\b", context, re.IGNORECASE):
+        return " for records"
+    return " for source workflows"
+
+
+def _summary_impact_method(text: str) -> str:
+    lowered = _summary_clean_text(text).lower()
+    if re.search(r"pipeline|processing|automation|automated|etl", lowered):
+        return "optimizing data pipelines"
+    if re.search(r"docker|kubernetes|deploy|production|cloud", lowered):
+        return "optimizing production systems"
+    if re.search(r"java|jdbc|database|sql|query", lowered):
+        return "optimizing backend systems"
+    if re.search(r"html|css|webpage|interface|frontend|react", lowered):
+        return "optimizing backend systems"
+    if re.search(r"model|training|machine learning|prediction|classifier", lowered):
+        return "optimizing model deployment"
+    if re.search(r"api|backend|service", lowered):
+        return "optimizing backend systems"
+    return "optimizing backend systems"
+
+
+def _summary_metric_action(text: str, metric_type: str = "") -> str:
+    lowered = _summary_clean_text(text).lower()
+    if re.search(r"\b(reduced|reduce|reducing|decreased|decrease|lowered|cut|shortened)\b", lowered):
+        return "Reduced"
+    if re.search(r"\b(increased|increase|increasing|scaled|grew|expanded)\b", lowered):
+        return "Increased"
+    if re.search(r"\b(improved|improve|improving|boosted|raised|enhanced|achieved)\b", lowered):
+        return "Improved"
+    if metric_type == "accuracy":
+        return "Improved"
+    if metric_type == "scale":
+        return "Increased"
+    return "Reduced" if re.search(r"\b(latency|processing|retrieval|query|load|response|time)\b", lowered) else "Improved"
+
+
+def _summary_metric_system(text: str) -> str:
+    lowered = _summary_clean_text(text).lower()
+    if re.search(r"\b(pipeline|etl|data processing|batch|workflow)\b", lowered):
+        return "data pipelines"
+    if re.search(r"\b(model|training|classifier|prediction|accuracy|inference|mlops)\b", lowered):
+        return "model deployment"
+    if re.search(r"\b(api|backend|service|database|query|sql|retrieval|latency|request)\b", lowered):
+        return "backend systems"
+    if re.search(r"\b(docker|kubernetes|cloud|deploy|production)\b", lowered):
+        return "production systems"
+    return "backend systems"
+
+
+def _summary_metric_outcome(text: str, metric_type: str, action: str, system: str) -> str:
+    lowered = _summary_clean_text(text).lower()
+    if metric_type == "accuracy" or re.search(r"\b(accuracy|precision|recall|f1|auc|score)\b", lowered):
+        return "model accuracy"
+    if re.search(r"\b(retrieval|query|database|sql)\b", lowered):
+        return "data retrieval time"
+    if re.search(r"\b(processing|pipeline|etl|batch)\b", lowered):
+        return "data processing time"
+    if re.search(r"\b(latency|response time|load time)\b", lowered):
+        return "latency"
+    if metric_type == "scale":
+        if system == "data pipelines":
+            return "pipeline capacity"
+        if system == "model deployment":
+            return "model serving capacity"
+        return "backend capacity"
+    if system == "data pipelines":
+        return "data processing time" if action == "Reduced" else "pipeline efficiency"
+    if system == "model deployment":
+        return "model deployment"
+    return "backend efficiency"
+
+
+def _summary_metric_context(text: str, metric_type: str, system: str) -> str:
+    lowered = _summary_clean_text(text).lower()
+    count_metric = _summary_best_count(text)
+    if count_metric:
+        return f"handling {count_metric}"
+    if re.search(r"\b(patient|patients|clinical|healthcare|medical)\b", lowered):
+        return "patient data workflows"
+    if re.search(r"\b(query|queries|database|sql|retrieval)\b", lowered):
+        return "database queries"
+    if re.search(r"\b(record|records)\b", lowered):
+        return "record processing"
+    if re.search(r"\b(data point|data points|sample|samples|dataset|datasets|batch)\b", lowered):
+        return "dataset processing"
+    if re.search(r"\b(request|requests|api)\b", lowered):
+        return "API requests"
+    if re.search(r"\b(user|users|traffic)\b", lowered):
+        return "user workflows"
+    if re.search(r"\b(model|inference|prediction|classifier)\b", lowered):
+        return "model workflows"
+    if system == "data pipelines":
+        return "data pipeline workflows"
+    if system == "model deployment":
+        return "model workflows"
+    return "backend workflows"
+
+
+def _summary_metric_type(text: str, metric: str) -> str:
+    lowered = _summary_clean_text(text).lower()
+    if metric.endswith("%") and re.search(r"\b(accuracy|precision|recall|f1|auc|score)\b", lowered):
+        return "accuracy"
+    if metric.endswith("%"):
+        return "percentage"
+    return "scale"
+
+
+def _summary_metric_record(text: str, metric: str, metric_type: str = "") -> dict:
+    cleaned = _summary_clean_text(text)
+    resolved_type = metric_type or _summary_metric_type(cleaned, metric)
+    action = _summary_metric_action(cleaned, resolved_type)
+    system = _summary_metric_system(cleaned)
+    outcome = _summary_metric_outcome(cleaned, resolved_type, action, system)
+    context = _summary_metric_context(cleaned, resolved_type, system)
+    return {
+        "metric_value": metric,
+        "metric_type": resolved_type,
+        "action": action,
+        "system": system,
+        "outcome": outcome,
+        "context": context,
+        "source_text": cleaned,
+        "score": _summary_metric_value(metric),
+    }
+
+
+def _summary_performance_record(text: str, start_duration: str, end_duration: str) -> dict:
+    cleaned = _summary_clean_text(text)
+    system = _summary_metric_system(cleaned)
+    return {
+        "metric_value": f"from {start_duration} to {end_duration}",
+        "metric_type": "performance",
+        "action": "Reduced",
+        "system": system,
+        "outcome": _summary_metric_outcome(cleaned, "performance", "Reduced", system),
+        "context": _summary_metric_context(cleaned, "performance", system),
+        "source_text": cleaned,
+        "score": _summary_duration_value_ms(start_duration) - _summary_duration_value_ms(end_duration),
+    }
+
+
+def _summary_metric_source_lines(result: dict, resume_text: str = "") -> list[str]:
+    candidates: list[str] = []
+    fallback_candidates: list[str] = []
+    section_open = False
+    section_found = False
+    section_start_re = re.compile(
+        r"^(work\s+experience|professional\s+experience|experience|employment|projects?|"
+        r"project\s+experience|academic\s+projects?|personal\s+projects?)\b",
+        re.IGNORECASE,
+    )
+    section_end_re = re.compile(
+        r"^(education|skills|technical\s+skills|core\s+skills|certifications?|"
+        r"summary|profile|objective|contact|achievements?|awards?)\b",
+        re.IGNORECASE,
+    )
+
+    for raw_line in str(resume_text or "").splitlines():
+        raw = raw_line.strip()
+        line = re.sub(r"^[\s\-*\u2022\u25cf\u25aa]+", "", raw)
+        if not line:
+            continue
+        if section_start_re.match(line):
+            section_open = True
+            section_found = True
+            continue
+        if section_open and section_end_re.match(line):
+            section_open = False
+            continue
+        if section_open:
+            candidates.append(line)
+        elif re.match(r"^[\-*\u2022\u25cf\u25aa]\s+", raw):
+            fallback_candidates.append(line)
+
+    if not section_found:
+        candidates.extend(fallback_candidates)
+
+    seen: set[str] = set()
+    clean_candidates: list[str] = []
+    for candidate in candidates:
+        cleaned = _summary_clean_text(candidate)
+        key = cleaned.lower()
+        if not cleaned or key in seen:
+            continue
+        seen.add(key)
+        clean_candidates.append(cleaned)
+    return clean_candidates
+
+
+def _summary_extract_metric_records(result: dict, resume_text: str = "") -> list[dict]:
+    records: list[dict] = []
+    for line in _summary_metric_source_lines(result, resume_text):
+        start_duration, end_duration = _summary_best_duration_pair(line)
+        if start_duration and end_duration:
+            records.append(_summary_performance_record(line, start_duration, end_duration))
+        for metric in SUMMARY_PERCENT_RE.findall(line):
+            records.append(_summary_metric_record(line, metric))
+        for metric in SUMMARY_COUNT_RE.findall(line):
+            metric = metric.strip()
+            if re.fullmatch(r"(19|20)\d{2}", metric):
+                continue
+            records.append(_summary_metric_record(line, metric, "scale"))
+
+    return records
+
+
+def _summary_metric_priority(record: dict) -> tuple:
+    metric_type = record.get("metric_type", "")
+    source = record.get("source_text", "")
+    metric_value = float(record.get("score") or 0)
+    action_bonus = 1 if re.search(
+        r"\b(reduced|decreased|cut|lowered|improved|increased|optimized)\b",
+        source,
+        re.IGNORECASE,
+    ) else 0
+
+    if metric_type in {"percentage", "accuracy"}:
+        if re.search(r"\b(latency|processing|retrieval|query|load time|response time|deployment time|time)\b", source, re.IGNORECASE):
+            tie_breaker = 3
+        elif metric_type == "percentage":
+            tie_breaker = 2
+        else:
+            tie_breaker = 1
+        return (3, metric_value, tie_breaker, action_bonus)
+
+    if metric_type == "performance":
+        return (2, metric_value, action_bonus, 0)
+
+    if metric_type == "scale":
+        scale_rank = 1 if _summary_metric_value(record.get("metric_value", "")) >= 10_000 else 0
+        return (1, scale_rank, metric_value, action_bonus)
+
+    return (0, metric_value, action_bonus, 0)
+
+
+def _summary_select_metric(result: dict, resume_text: str = "") -> dict:
+    records = _summary_extract_metric_records(result, resume_text)
+    if not records:
+        return {}
+    return max(records, key=_summary_metric_priority)
+
+
+def _summary_metric_sentence(record: dict) -> str:
+    action = record.get("action") or "Improved"
+    metric = record.get("metric_value") or ""
+    metric_type = record.get("metric_type") or ""
+    outcome = record.get("outcome") or "backend efficiency"
+    system = record.get("system") or "backend systems"
+    context = record.get("context") or "backend workflows"
+    context_phrase = (
+        f" {context}"
+        if context.startswith("handling ")
+        else f" for {context}"
+    )
+
+    if metric_type == "accuracy":
+        return f"Improved model accuracy to {metric} by optimizing {system}{context_phrase}."
+    if metric_type == "performance":
+        return f"{action} {outcome} {metric} by optimizing {system}{context_phrase}."
+    if metric_type == "scale":
+        return f"{action} {outcome} to {metric} by optimizing {system}."
+    return f"{action} {outcome} by {metric} by optimizing {system}{context_phrase}."
+
+
+def _summary_join_skills(skills: list[str]) -> str:
+    if not skills:
+        return ""
+    if len(skills) == 1:
+        return skills[0]
+    if len(skills) == 2:
+        return f"{skills[0]} and {skills[1]}"
+    return f"{', '.join(skills[:-1])}, and {skills[-1]}"
+
+
+def _summary_join_tools(tools: list[str]) -> str:
+    if not tools:
+        return ""
+    if len(tools) == 1:
+        return tools[0]
+    if len(tools) == 2:
+        return f"{tools[0]} and {tools[1]}"
+    return f"{tools[0]}, {tools[1]}, and {tools[2]}"
+
+
+def _summary_has_specific_system(result: dict, resume_text: str = "") -> bool:
+    source_parts = [resume_text]
+    for key in ("improved_bullets", "new_bullets"):
+        bullets = result.get(key, [])
+        if not isinstance(bullets, list):
+            continue
+        for bullet in bullets:
+            if isinstance(bullet, dict):
+                source_parts.append(str(bullet.get("improved") or bullet.get("text") or ""))
+            else:
+                source_parts.append(str(bullet or ""))
+    source = " ".join(source_parts).lower()
+    return bool(re.search(
+        r"\b(pipeline|model|api|backend|database|dashboard|application|service|deployment|"
+        r"classifier|prediction|etl|system|platform)\b",
+        source,
+    ))
+
+
+def _summary_complete_sentences(value: str) -> list[str]:
+    text = _summary_clean_text(value).replace("!", ".").replace("?", ".")
+    matches = re.findall(r"[^.!?]+[.!?]", text)
+    sentences: list[str] = []
+    seen: set[str] = set()
+    for match in matches:
+        sentence = re.sub(r"\s+", " ", match).strip()
+        sentence = re.sub(r"[.!?]+$", ".", sentence)
+        key = re.sub(r"[^a-z0-9]+", " ", sentence.lower()).strip()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        sentences.append(sentence[0].upper() + sentence[1:])
+    return sentences
+
+
+def _summary_metrics_valid(summary: str) -> bool:
+    lowered = summary.lower()
+    count_unit = r"(?:users|records|requests|data points|transactions|patients|entries|patient records|samples?)"
+    count_value = rf"\d+(?:\.\d+)?\s*(?:k|m|b)?\+?\s*(?:daily\s+|monthly\s+)?{count_unit}"
+
+    if re.search(rf"\b(accuracy|precision|recall|f1|auc|score|model quality)\b[^.]*\b{count_value}\b", lowered):
+        return False
+    if re.search(rf"\b{count_value}\b[^.]*\b(accuracy|precision|recall|f1|auc|score|model quality)\b", lowered):
+        return False
+    if re.search(r"\bimproved\s+by\s+\d+(?:\.\d+)?%", lowered):
+        return False
+    if re.search(r"\b(improved|enhanced)\s+performance\b(?!\s+by\s+\d+(?:\.\d+)?%)", lowered):
+        return False
+    if "machine learning" in lowered and "artificial intelligence" in lowered:
+        return False
+    if "python" in lowered and "coding" in lowered:
+        return False
+    if "docker" in lowered and "containers" in lowered:
+        return False
+    return True
+
+
+def _summary_valid(value: str) -> bool:
+    sentences = _summary_complete_sentences(value)
+    if len(sentences) != 2:
+        return False
+    summary = " ".join(sentences)
+    if "..." in summary or "\u2026" in summary:
+        return False
+    if SUMMARY_BUZZWORD_RE.search(summary):
+        return False
+    if SUMMARY_WEAK_PHRASES_RE.search(summary):
+        return False
+    if any(SUMMARY_BANNED_OPENER_RE.search(sentence) for sentence in sentences):
+        return False
+    if not _summary_metrics_valid(summary):
+        return False
+    if not re.search(r"\b(backend systems|data pipelines|model deployment|production systems)\b", summary, re.IGNORECASE):
+        return False
+    if not re.search(r"\b(accuracy|latency|uptime|processing|retrieval|deployment|capacity|performance|efficiency|processed|handled|supported)\b", summary, re.IGNORECASE):
+        return False
+    words = _summary_word_count(summary)
+    return words <= 45 and all(sentence.endswith(".") for sentence in sentences)
+
+
+def generate_structured_summary(
+    result: dict,
+    resume_text: str = "",
+    job_title: str = "",
+    job_description: str = "",
+) -> str:
+    metric_record = _summary_select_metric(result, resume_text)
+    if not metric_record:
+        return SUMMARY_FALLBACK_SUMMARY
+
+    first_sentence = "Machine Learning Engineer specializing in scalable AI systems and data pipelines."
+    impact_sentence = _summary_metric_sentence(metric_record)
+    return " ".join([first_sentence, impact_sentence])
 
 
 class OptimizeRequest(BaseModel):
@@ -65,8 +731,8 @@ async def optimize_resume(body: OptimizeRequest, user=Depends(get_authenticated_
         "failure. Every word must sound like a real engineer wrote it.\n\n"
         
         f"TARGET JOB TITLE: {body.job_title or 'Software Developer'}\n\n"
-        f"JOB DESCRIPTION:\n{body.job_description[:2500]}\n\n"
-        f"ORIGINAL RESUME:\n{body.resume_text[:3000]}\n\n"
+        f"JOB DESCRIPTION:\n{body.job_description}\n\n"
+        f"ORIGINAL RESUME:\n{body.resume_text}\n\n"
         
         "════════════════════════════════════════════════════════\n"
         "RULE 0 — PRESERVE REALITY (NON-NEGOTIABLE)\n"
@@ -100,15 +766,69 @@ async def optimize_resume(body: OptimizeRequest, user=Depends(get_authenticated_
         "════════════════════════════════════════════════════════\n"
         "RULE 2 — SUMMARY (STRICT)\n"
         "════════════════════════════════════════════════════════\n"
-        "- EXACTLY 3 sentences, no more, no less\n"
-        "- Sentence 1: [Job Title] with [experience level] in\n"
-        "              [2 specific technical domains from JD]\n"
-        "- Sentence 2: Skilled in [3 exact JD technologies] with\n"
-        "              focus on [specific outcome from JD]\n"
-        "- Sentence 3: Delivered [specific system] handling\n"
-        "              [realistic scale metric] with measurable result\n"
+        "- GENERATE the summary through synthesis; do not copy any\n"
+        "  resume bullet or experience sentence verbatim\n"
+        "- Use these inputs only: target role and the strongest\n"
+        "  deterministic metric from experience/projects\n"
+        "- EXACTLY 2 complete sentences, maximum 45 words total\n"
+        "- Sentence 1: Machine Learning Engineer specializing in\n"
+        "  scalable AI systems and data pipelines\n"
+        "- Do not write 'Machine Learning and Artificial Intelligence';\n"
+        "  use a specific domain such as data pipelines, model\n"
+        "  deployment, computer vision, NLP, or predictive modeling\n"
+        "- Sentence 2: [Built/Reduced/Improved/Deployed/Engineered]\n"
+        "  [performance, efficiency, or accuracy impact] by\n"
+        "  [backend systems, data pipelines, model deployment, or\n"
+        "  production systems]\n"
+        "- Sentence 2 must include what caused the impact\n"
+        "- Metric selection priority: highest real percentage wins;\n"
+        "  if percentages tie, choose performance/time reduction over\n"
+        "  accuracy, then use scale only when no stronger metric exists\n"
+        "- If multiple metrics exist, choose the highest-impact metric\n"
+        "  from that priority order\n"
+        "- Never use generic fallback wording when a real percentage,\n"
+        "  accuracy, latency, retrieval-time, or processing-time metric\n"
+        "  exists in experience or projects\n"
+        "- Avoid weak counts such as 1000 data points; use only\n"
+        "  source context already present in experience/projects\n"
+        "- Accuracy metrics must be percentages only, e.g. 92% accuracy\n"
+        "- Never combine accuracy with counts; never write accuracy to\n"
+        "  10K+ or accuracy by 500+ records\n"
+        "- Count metrics may refer only to users, records, requests,\n"
+        "  data points, transactions, patients, entries, or samples\n"
+        "- Never apply counts to accuracy, model quality, scores, or\n"
+        "  abstract improvements\n"
+        "- Improvement metrics must name what improved, e.g. reduced\n"
+        "  processing time by 30% or improved query speed by 25%\n"
+        "- Never write 'improved by 30%' without a subject\n"
+        "- If no clear metric exists from the original resume, do not\n"
+        "  invent a number; use the required no-metric fallback.\n"
+        "- Never add a third tools sentence\n"
+        "- Replace weak phrasing like 'built user-facing systems' with\n"
+        "  reduced processing time, improved accuracy, reduced latency,\n"
+        "  optimized backend systems, built scalable data pipelines,\n"
+        "  model deployment, or production systems\n"
+        "- The summary must include at least one of: backend systems,\n"
+        "  data pipelines, model deployment, production systems\n"
+        "- Keep sentences short and direct\n"
+        "- Do not repeat the full skills list\n"
+        "- Every sentence must end with a period\n"
+        "- Never output an ellipsis or three dots\n"
+        "- Never use buzzwords or filler phrases such as:\n"
+        "  production-grade, applied engineering work, reliable\n"
+        "  deployment practices, practical measurable outcomes,\n"
+        "  maintainable solutions, delivery quality\n"
+        "- Never start a sentence with Uses, Has, I, or My\n"
+        "- If original resume has no usable metrics, use exactly:\n"
+        "  Machine Learning Engineer specializing in scalable AI systems\n"
+        "  and data pipelines, focused on building efficient backend\n"
+        "  solutions.\n"
         "- NEVER include email, phone, location, city, country\n"
-        "- NEVER use: passionate, motivated, hardworking, dynamic,\n"
+        "- NEVER use weak phrases: with experience in, experienced in,\n"
+        "  proficient in\n"
+        "- Use stronger phrasing: specializing in, focused on, building\n"
+        "- NEVER use, except in the required fallback sentence:\n"
+        "             passionate, motivated, hardworking, dynamic,\n"
         "             enthusiastic, detail-oriented, self-starter\n"
         "- NEVER start with 'I' or 'My'\n"
         "- NEVER repeat the job title anywhere else in the resume\n"
@@ -246,7 +966,7 @@ async def optimize_resume(body: OptimizeRequest, user=Depends(get_authenticated_
         "{\n"
         '  "insufficient_data": false,\n'
         
-        '  "optimized_summary": "exactly 3 sentences, no contact info",\n'
+        '  "optimized_summary": "exactly 2 clear sentences, max 45 words, engineering-focused",\n'
         
         '  "optimized_skills": {\n'
         '    "Languages": ["Python", "Java"],\n'
@@ -311,6 +1031,12 @@ async def optimize_resume(body: OptimizeRequest, user=Depends(get_authenticated_
             {"role": "user",   "content": user_msg}
         ])
         result = _extract_json(text)
+        result["optimized_summary"] = generate_structured_summary(
+            result,
+            body.resume_text,
+            body.job_title or "",
+            body.job_description,
+        )
 
         # Compute real keyword-based ATS scores
         ats_before = count_kw_coverage(body.resume_text, body.job_description)

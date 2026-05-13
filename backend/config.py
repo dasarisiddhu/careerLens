@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     # App
     # ----------------------------------------------------------
     ENVIRONMENT: str = "development"           # development | production
-    SECRET_KEY: str = "change-me-in-production"
+    SECRET_KEY: str
     TRUSTED_HOSTS: List[str] = ["localhost", "127.0.0.1"]
 
     # ----------------------------------------------------------
@@ -71,7 +71,7 @@ class Settings(BaseSettings):
     # Payment (Stripe / Razorpay – placeholder)
     # ----------------------------------------------------------
     STRIPE_SECRET_KEY: str = ""
-    STRIPE_WEBHOOK_SECRET: str = ""
+    STRIPE_WEBHOOK_SECRET: str
     RAZORPAY_KEY_ID: str = ""
     RAZORPAY_KEY_SECRET: str = ""
 

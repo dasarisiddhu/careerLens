@@ -292,13 +292,12 @@ async function resolveGithubUsername(authUser) {
   }
 }
 
-function truncateAtWord(value = '', maxChars = 320) {
-  const text = String(value || '').trim().replace(/\s+/g, ' ')
-  if (text.length <= maxChars) return text
-  const clipped = text.slice(0, maxChars + 1)
-  const boundary = Math.max(clipped.lastIndexOf(' '), clipped.lastIndexOf(','), clipped.lastIndexOf('.'))
-  const safe = boundary > maxChars * 0.6 ? clipped.slice(0, boundary) : clipped.slice(0, maxChars)
-  return `${safe.trim()}...`
+function countWords(value = '') {
+  return String(value || '').trim().split(/\s+/).filter(Boolean).length
+}
+
+function takeWords(value = '', maxWords = 6) {
+  return String(value || '').trim().split(/\s+/).filter(Boolean).slice(0, maxWords).join(' ')
 }
 
 function extractResumeHighlights(text = '', maxItems = 6) {
@@ -344,6 +343,541 @@ function formatEducationLine(value = '') {
     .join(' | ')
 }
 
+const EMAIL_PATTERN = /[\w.-]+@[\w.-]+\.\w+/
+const PHONE_PATTERN = /(?:\+?\d[\d\s\-()]{8,}\d)/
+const LOCATION_PATTERN = /\b[A-Za-z]+(?:\s+[A-Za-z]+)?,\s*(?:India|IN)\b/
+function formatList(items = [], fallback = '') {
+  const clean = items.map((item) => String(item || '').trim()).filter(Boolean)
+  if (!clean.length) return fallback
+  if (clean.length === 1) return clean[0]
+  if (clean.length === 2) return `${clean[0]} and ${clean[1]}`
+  return `${clean.slice(0, -1).join(', ')}, and ${clean[clean.length - 1]}`
+}
+
+function keywordKey(value = '') {
+  const key = String(value || '').toLowerCase().replace(/[^a-z0-9+#.]+/g, ' ').trim()
+  if (['ai', 'artificial intelligence'].includes(key)) return 'ai'
+  if (['ml', 'machine learning'].includes(key)) return 'machine learning'
+  if (['nodejs', 'node js', 'node.js'].includes(key)) return 'node.js'
+  return key
+}
+
+function dedupeKeywords(items = []) {
+  const seen = new Set()
+  return items
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)
+    .filter((item) => {
+      const key = keywordKey(item)
+      if (!key || seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+}
+
+function removeSummaryEllipses(value = '') {
+  return String(value || '').replace(/\u2026/g, '.').replace(/\.{2,}/g, '.')
+}
+
+function cleanSummarySentence(value = '') {
+  let text = removeSummaryEllipses(sanitizeProfessionalSummary(value))
+    .replace(/\bwith experience in\b/gi, 'specializing in')
+    .replace(/\b(has experience in|has knowledge of|is skilled in|worked on|proficient in|knowledge of)\b/gi, 'focused on')
+    .replace(/[!?]+$/g, '.')
+    .replace(/\s+/g, ' ')
+    .replace(/\s+([,.])/g, '$1')
+    .replace(/,\s*\./g, '.')
+    .replace(/\s+-\s*$/g, '')
+    .trim()
+
+  if (!text) return ''
+  text = text.charAt(0).toUpperCase() + text.slice(1)
+  if (!text.endsWith('.')) text += '.'
+  return text
+}
+
+function splitCompleteSummarySentences(value = '') {
+  const text = removeSummaryEllipses(sanitizeProfessionalSummary(value))
+    .replace(/[!?]/g, '.')
+    .replace(/\s+/g, ' ')
+    .trim()
+  const matches = text.match(/[^.!?]+[.!?]/g) || []
+  const sentences = []
+  const seen = new Set()
+
+  for (const match of matches) {
+    const sentence = cleanSummarySentence(match)
+    const key = sentence.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    sentences.push(sentence)
+  }
+
+  return sentences
+}
+
+function isValidGeneratedSummary(value = '') {
+  const sentences = splitCompleteSummarySentences(value)
+  if (sentences.length !== 2) return false
+  const summary = sentences.join(' ')
+  if (/\.{2,}|\u2026/.test(summary)) return false
+  if (/\b(with experience in|has experience in|has knowledge of|is skilled in|worked on|proficient in)\b/i.test(summary)) return false
+  if (/\b(production-grade|applied engineering work|reliable deployment practices|practical, measurable|maintainable solutions|delivery quality|scalable infrastructure practices|workflow automation|user-centered product delivery|significantly improved|greatly enhanced|various improvements|multiple systems|improved system efficiency|improved throughput|enhanced performance|scaled systems|optimized workflows)\b/i.test(summary)) return false
+  if (sentences.some((sentence) => /^(uses|has|i|my)\b/i.test(sentence))) return false
+  if (!summaryMetricsValid(summary)) return false
+  if (!/\b(backend systems|data pipelines|model deployment|production systems)\b/i.test(summary)) return false
+  if (!/\b(accuracy|latency|uptime|processing|retrieval|deployment|processed|handled|supported)\b/i.test(summary)) return false
+  const words = countWords(summary)
+  return words <= 45 && sentences.every((sentence) => sentence.endsWith('.'))
+}
+
+function summaryMetricsValid(summary = '') {
+  const lowered = String(summary || '').toLowerCase()
+  const countUnit = '(?:users|records|requests|data points|transactions|patients|entries|patient records)'
+  const countValue = `\\d+(?:\\.\\d+)?\\s*(?:k|m|b)?\\+?\\s*(?:daily\\s+|monthly\\s+)?${countUnit}`
+  if (new RegExp(`\\b(accuracy|precision|recall|f1|auc|score|model quality)\\b[^.]*\\b${countValue}\\b`, 'i').test(lowered)) return false
+  if (new RegExp(`\\b${countValue}\\b[^.]*\\b(accuracy|precision|recall|f1|auc|score|model quality)\\b`, 'i').test(lowered)) return false
+  if (/\bimproved\s+by\s+\d+(?:\.\d+)?%/i.test(lowered)) return false
+  if (/\b(improved|enhanced)\s+performance\b(?!\s+by\s+\d+(?:\.\d+)?%)/i.test(lowered)) return false
+  if (lowered.includes('machine learning') && lowered.includes('artificial intelligence')) return false
+  if (lowered.includes('python') && lowered.includes('coding')) return false
+  if (lowered.includes('docker') && lowered.includes('containers')) return false
+  return true
+}
+
+function composeSummary(sentences = []) {
+  const clean = []
+  const seen = new Set()
+
+  for (const sentence of sentences.map(cleanSummarySentence).filter(Boolean)) {
+    const key = sentence.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+    if (!key || seen.has(key)) continue
+    clean.push(sentence)
+    seen.add(key)
+  }
+
+  const summary = clean.join(' ')
+  return isValidGeneratedSummary(summary) ? splitCompleteSummarySentences(summary).join(' ') : ''
+}
+
+function normalizeGeneratedSummary(value = '') {
+  const sentences = splitCompleteSummarySentences(value)
+  if (sentences.length < 2 || sentences.length > 3) return ''
+  const summary = sentences.join(' ')
+  return isValidGeneratedSummary(summary) ? summary : ''
+}
+
+function sanitizeProfessionalSummary(value = '') {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+
+  const withoutContactFragments = removeSummaryEllipses(raw)
+    .replace(new RegExp(EMAIL_PATTERN.source, 'g'), '')
+    .replace(new RegExp(PHONE_PATTERN.source, 'g'), '')
+    .replace(new RegExp(LOCATION_PATTERN.source, 'g'), '')
+    .replace(/\b(?:email|phone|mobile|location|address)\s*[:|-]\s*/gi, '')
+
+  const cleanedLines = withoutContactFragments
+    .split(/\n+/)
+    .map((line) => line.trim().replace(/^[-*\u2022]\s+/, ''))
+    .filter(Boolean)
+    .filter((line) => !EMAIL_PATTERN.test(line))
+    .filter((line) => !PHONE_PATTERN.test(line))
+    .filter((line) => !/^[|+\-\s\d().]+$/.test(line))
+    .filter((line) => !/^(summary|professional summary|contact|details)\s*:?$/i.test(line))
+
+  const sentences = cleanedLines
+    .join(' ')
+    .replace(/\s*([|•])\s*/g, ' ')
+    .replace(/\s+/g, ' ')
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean)
+
+  const unique = []
+  const seen = new Set()
+  for (const sentence of sentences.length ? sentences : [cleanedLines.join(' ')]) {
+    const key = sentence.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    unique.push(sentence)
+  }
+
+  return unique.join(' ').trim()
+}
+
+function extractSkillsFromSource(sourceText = '') {
+  return extractSectionLines(
+    sourceText,
+    [/^skills\b/i, /^technical skills\b/i, /^core skills\b/i, /^technologies\b/i],
+    6,
+  )
+    .flatMap((line) => line.split(/[,|;]+/))
+    .map((skill) => skill.trim())
+    .filter(Boolean)
+}
+
+function flattenSkillItems(value) {
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => flattenSkillItems(item))
+  }
+  if (value && typeof value === 'object') {
+    return Object.values(value).flatMap((item) => flattenSkillItems(item))
+  }
+  return String(value || '')
+    .split(/[,|;/]+/)
+    .map((skill) => skill.trim().replace(/^[A-Za-z &]+:\s*/, ''))
+    .filter(Boolean)
+}
+
+function getTopSkills(result = {}, sourceText = '') {
+  const candidates = [
+    ...flattenSkillItems(result?.optimized_skills),
+    ...flattenSkillItems(result?.skills_to_highlight),
+    ...flattenSkillItems(result?.added_keywords),
+    ...extractSkillsFromSource(sourceText),
+  ]
+
+  return dedupeKeywords(candidates)
+    .map((skill) => String(skill || '').trim())
+    .filter(Boolean)
+    .filter((skill) => !EMAIL_PATTERN.test(skill) && !PHONE_PATTERN.test(skill) && !LOCATION_PATTERN.test(skill))
+    .slice(0, 5)
+}
+
+function resolveTargetRole(result = {}, currentJobTitle = '') {
+  const raw = String(
+    currentJobTitle
+    || result?.job_title
+    || result?.target_role
+    || result?.role
+    || result?.role_description
+    || 'Software Engineer',
+  ).trim()
+
+  const cleaned = (raw.split(/\n+/).find(Boolean) || raw)
+    .replace(/^(target role|role|job title)\s*[:|-]\s*/i, '')
+    .replace(EMAIL_PATTERN, '')
+    .replace(PHONE_PATTERN, '')
+    .replace(LOCATION_PATTERN, '')
+    .replace(/[.]+$/, '')
+    .trim()
+
+  const lowered = cleaned.toLowerCase()
+  if (/machine learning|(^|\s)ml(\s|$)|artificial intelligence|\bai\b/.test(lowered)) return 'Machine Learning Engineer'
+  if (/data scientist/.test(lowered)) return 'Data Scientist'
+  if (/data analyst|analytics/.test(lowered)) return 'Data Analyst'
+  if (/frontend|front-end|react/.test(lowered)) return 'Frontend Engineer'
+  if (/backend|back-end|api/.test(lowered)) return 'Backend Engineer'
+  if (/full stack|full-stack/.test(lowered)) return 'Full Stack Engineer'
+  if (/devops|cloud|site reliability|sre/.test(lowered)) return 'Cloud Engineer'
+  if (/software/.test(lowered)) return 'Software Engineer'
+  return takeWords(cleaned, 5) || 'Software Engineer'
+}
+
+function inferSpecialization(role = '', skills = []) {
+  const text = `${role} ${skills.join(' ')}`.toLowerCase()
+  if (/(machine learning|ml|ai|data science|model|pytorch|tensorflow|mlops)/.test(text)) return 'scalable AI systems'
+  if (/(data|analytics|pipeline|sql|pandas|etl)/.test(text)) return 'data pipelines'
+  if (/(frontend|react|ui|javascript|typescript)/.test(text)) return 'web applications'
+  if (/(backend|api|fastapi|node|django|flask|database)/.test(text)) return 'backend APIs'
+  if (/(cloud|devops|docker|kubernetes|aws|azure|gcp)/.test(text)) return 'cloud deployment'
+  return 'software systems'
+}
+
+function buildFallbackSummary(role = '') {
+  return 'Machine Learning Engineer specializing in scalable AI systems and data pipelines. Built scalable backend systems for high-volume workloads.'
+}
+
+function metricValue(metric = '') {
+  const number = String(metric || '').match(/\d+(?:\.\d+)?/)
+  if (!number) return 0
+  const base = Number(number[0]) || 0
+  const lowered = String(metric || '').toLowerCase()
+  if (/\d+(?:\.\d+)?\s*b/.test(lowered)) return base * 1000000000
+  if (/\d+(?:\.\d+)?\s*m/.test(lowered)) return base * 1000000
+  if (/\d+(?:\.\d+)?\s*k/.test(lowered)) return base * 1000
+  return base
+}
+
+function durationValueMs(metric = '') {
+  const number = String(metric || '').match(/\d+(?:\.\d+)?/)
+  if (!number) return 0
+  const value = Number(number[0]) || 0
+  return /\b(s|sec|secs|second|seconds)\b/i.test(metric) ? value * 1000 : value
+}
+
+function extractBestDurationPair(value = '') {
+  const durations = String(value || '').replace(/\*\*/g, '').match(/\b\d+(?:\.\d+)?\s*(?:ms|milliseconds?|s|sec|secs|seconds?)\b/gi) || []
+  if (durations.length < 2) return ['', '']
+  const ordered = durations.sort((a, b) => durationValueMs(b) - durationValueMs(a))
+  const start = ordered[0]
+  const end = ordered[ordered.length - 1]
+  return durationValueMs(start) > durationValueMs(end) ? [start, end] : ['', '']
+}
+
+function extractBestDuration(value = '') {
+  const durations = String(value || '').replace(/\*\*/g, '').match(/\b\d+(?:\.\d+)?\s*(?:ms|milliseconds?|s|sec|secs|seconds?)\b/gi) || []
+  return durations.sort((a, b) => durationValueMs(a) - durationValueMs(b))[0] || ''
+}
+
+function extractBestMetric(value = '') {
+  const text = String(value || '').replace(/\*\*/g, '')
+  const percentages = text.match(/\b\d+(?:\.\d+)?%\b/g) || []
+  if (percentages.length) {
+    return percentages.sort((a, b) => metricValue(b) - metricValue(a))[0]
+  }
+
+  const countMetrics = text.match(/\b\d+(?:\.\d+)?\s*(?:K|M|B)?\+?\s*(?:daily\s+|monthly\s+)?(?:users|requests|data points|transactions|patients|entries|patient records|records)\b/gi) || []
+  return countMetrics
+    .map((metric) => metric.trim())
+    .filter((metric) => !/^(19|20)\d{2}$/.test(metric))
+    .filter((metric) => metricValue(metric) >= 10000)
+    .sort((a, b) => metricValue(b) - metricValue(a))[0] || ''
+}
+
+function extractBestPercent(value = '') {
+  const percentages = String(value || '').replace(/\*\*/g, '').match(/\b\d+(?:\.\d+)?%\b/g) || []
+  return percentages.sort((a, b) => metricValue(b) - metricValue(a))[0] || ''
+}
+
+function extractBestCount(value = '') {
+  const counts = String(value || '').replace(/\*\*/g, '').match(/\b\d+(?:\.\d+)?\s*(?:K|M|B)?\+?\s*(?:daily\s+|monthly\s+)?(?:users|requests|data points|transactions|patients|entries|patient records|records)\b/gi) || []
+  return counts
+    .map((metric) => metric.trim())
+    .filter((metric) => !/^(19|20)\d{2}$/.test(metric))
+    .sort((a, b) => metricValue(b) - metricValue(a))[0] || ''
+}
+
+function largeCountMetric(metric = '') {
+  return metricValue(metric) >= 10000 ? metric : ''
+}
+
+function summaryScaleSuffix(countMetric = '', context = '') {
+  if (!countMetric) return ''
+  if (largeCountMetric(countMetric)) return ` for ${countMetric}`
+  if (/\b(data|records|patients|entries|pipeline|processing|dataset)\b/i.test(context)) {
+    return ' for large-scale datasets'
+  }
+  return ' for high-volume workloads'
+}
+
+function buildAchievementDetails(value = '') {
+  const text = sanitizeProfessionalSummary(value)
+    .replace(/\*\*/g, '')
+    .replace(/[.]+$/, '')
+    .replace(/\b(I|we)\s+/gi, '')
+    .trim()
+
+  if (!text) return null
+  const percent = extractBestPercent(text)
+  const countMetric = extractBestCount(text)
+  const [startDuration, endDuration] = extractBestDurationPair(text)
+  const bestDuration = extractBestDuration(text)
+
+  const lowered = text.toLowerCase()
+  let method = 'optimizing backend systems'
+  if (/pipeline|processing|automation|automated|etl/.test(lowered)) method = 'building scalable data pipelines'
+  else if (/docker|kubernetes|deploy|production|cloud/.test(lowered)) method = 'deploying production systems'
+  else if (/java|jdbc|database|sql|query/.test(lowered)) method = 'optimizing backend systems'
+  else if (/html|css|webpage|interface|frontend|react/.test(lowered)) method = 'optimizing backend systems'
+  else if (/model|training|machine learning|prediction|classifier/.test(lowered)) method = 'optimizing model deployment'
+  else if (/api|backend|service/.test(lowered)) method = 'optimizing backend systems'
+
+  const scale = summaryScaleSuffix(countMetric, text)
+  if (/\b(accuracy|precision|recall|f1|auc|score)\b/.test(lowered)) {
+    return percent ? {
+      sentence: `Improved model accuracy to ${percent} by ${method}.`,
+      metricPriority: 2,
+      metricScore: metricValue(percent),
+    } : null
+  }
+  if (/\b(uptime|availability)\b/.test(lowered) && percent) {
+    return {
+      sentence: countMetric
+        ? `Improved uptime to ${percent} by optimizing backend systems${scale}.`
+        : `Improved uptime to ${percent} by deploying production systems.`,
+      metricPriority: 1.5,
+      metricScore: metricValue(percent),
+    }
+  }
+  if (percent && /\b(reduc|latency|processing time|query speed|load time|response time|speed|efficien|throughput)\b/.test(lowered)) {
+    if (/\b(query|database|sql)\b/.test(lowered)) {
+      return {
+        sentence: `Reduced data retrieval time by ${percent}${scale} by optimizing backend systems.`,
+        metricPriority: 3,
+        metricScore: metricValue(percent),
+      }
+    }
+    if (/\b(processing|pipeline|etl)\b/.test(lowered)) {
+      return {
+        sentence: `Reduced data processing time by ${percent}${scale} by building scalable data pipelines.`,
+        metricPriority: 3,
+        metricScore: metricValue(percent),
+      }
+    }
+    if (/\b(load time|response time|latency)\b/.test(lowered)) {
+      return {
+        sentence: `Reduced latency by ${percent}${scale} by optimizing backend systems.`,
+        metricPriority: 3,
+        metricScore: metricValue(percent),
+      }
+    }
+    return {
+      sentence: `Reduced processing time by ${percent}${scale} by optimizing backend systems.`,
+      metricPriority: 3,
+      metricScore: metricValue(percent),
+    }
+  }
+  if (percent) {
+    if (/\b(query|database|sql|retrieval)\b/.test(lowered)) {
+      return {
+        sentence: `Reduced data retrieval time by ${percent}${scale} by optimizing backend systems.`,
+        metricPriority: 3,
+        metricScore: metricValue(percent),
+      }
+    }
+    if (/\b(processing|pipeline|etl|data|records|dataset)\b/.test(lowered)) {
+      return {
+        sentence: `Reduced data processing time by ${percent}${scale} by building scalable data pipelines.`,
+        metricPriority: 3,
+        metricScore: metricValue(percent),
+      }
+    }
+    if (/\b(model|deploy|prediction|classifier)\b/.test(lowered)) {
+      return {
+        sentence: `Reduced model deployment time by ${percent}${scale} by optimizing model deployment.`,
+        metricPriority: 3,
+        metricScore: metricValue(percent),
+      }
+    }
+    return {
+      sentence: `Reduced processing time by ${percent}${scale} by ${method}.`,
+      metricPriority: 3,
+      metricScore: metricValue(percent),
+    }
+  }
+  if (startDuration && endDuration && /\b(latency|processing|query|retrieval|load time|response time|speed)\b/.test(lowered)) {
+    if (/\b(query|database|sql|retrieval)\b/.test(lowered)) {
+      return {
+        sentence: `Reduced data retrieval time from ${startDuration} to ${endDuration} by optimizing backend systems.`,
+        metricPriority: 2.5,
+        metricScore: durationValueMs(startDuration) - durationValueMs(endDuration),
+      }
+    }
+    if (/\b(processing|pipeline|etl)\b/.test(lowered)) {
+      return {
+        sentence: `Reduced data processing time from ${startDuration} to ${endDuration} by building scalable data pipelines.`,
+        metricPriority: 2.5,
+        metricScore: durationValueMs(startDuration) - durationValueMs(endDuration),
+      }
+    }
+    return {
+      sentence: `Reduced latency from ${startDuration} to ${endDuration} by optimizing backend systems.`,
+      metricPriority: 2.5,
+      metricScore: durationValueMs(startDuration) - durationValueMs(endDuration),
+    }
+  }
+  if (bestDuration && /\b(latency|processing|query|retrieval|load time|response time|speed)\b/.test(lowered)) {
+    if (/\b(query|database|sql|retrieval)\b/.test(lowered)) {
+      return {
+        sentence: `Reduced data retrieval time to ${bestDuration} by optimizing backend systems.`,
+        metricPriority: 2.5,
+        metricScore: durationValueMs(bestDuration),
+      }
+    }
+    if (/\b(processing|pipeline|etl)\b/.test(lowered)) {
+      return {
+        sentence: `Reduced data processing time to ${bestDuration} by building scalable data pipelines.`,
+        metricPriority: 2.5,
+        metricScore: durationValueMs(bestDuration),
+      }
+    }
+    return {
+      sentence: `Reduced latency to ${bestDuration} by optimizing backend systems.`,
+      metricPriority: 2.5,
+      metricScore: durationValueMs(bestDuration),
+    }
+  }
+  const strongCountMetric = largeCountMetric(countMetric)
+  if (strongCountMetric) {
+    if (/\b(records|data points|patients|entries|patient records|transactions)\b/i.test(strongCountMetric)) {
+      return {
+        sentence: `Processed ${strongCountMetric} by building scalable data pipelines for large-scale datasets.`,
+        metricPriority: 1,
+        metricScore: Math.min(metricValue(strongCountMetric), 1000000),
+      }
+    }
+    if (/\brequests\b/i.test(strongCountMetric)) {
+      return {
+        sentence: `Handled ${strongCountMetric} by optimizing backend systems for high-volume workloads.`,
+        metricPriority: 1,
+        metricScore: Math.min(metricValue(strongCountMetric), 1000000),
+      }
+    }
+    if (/\busers\b/i.test(strongCountMetric)) {
+      return {
+        sentence: `Supported ${strongCountMetric} by deploying production systems for high-volume workloads.`,
+        metricPriority: 1,
+        metricScore: Math.min(metricValue(strongCountMetric), 1000000),
+      }
+    }
+  }
+  return null
+}
+
+function scoreImpactCandidate(value = '') {
+  const text = String(value || '').toLowerCase()
+  const impact = buildAchievementDetails(text)
+  if (!impact) return 0
+  const metric = extractBestPercent(text) || extractBestCount(text)
+  let score = ((impact.metricPriority || 0) * 1000000) + (impact.metricScore || metricValue(metric))
+  if (/\b(improv|reduc|increas|optimiz|efficien|accuracy|performance|deploy|automated)\b/.test(text)) score += 4
+  if (/\b(data|pipeline|model|training|processing|business|user|engagement|latency|query)\b/.test(text)) score += 2
+  return score
+}
+
+function extractAchievementDetails(result = {}, sourceText = '') {
+  const improved = Array.isArray(result?.improved_bullets)
+    ? result.improved_bullets.map((bullet) => bullet?.improved || bullet?.text || bullet)
+    : []
+  const added = Array.isArray(result?.new_bullets)
+    ? result.new_bullets.map((bullet) => bullet?.text || bullet)
+    : []
+  const highlights = extractResumeHighlights(sourceText, 12)
+  const candidates = [...improved, ...added, ...highlights]
+    .map((item) => String(item || '').trim())
+    .map((item) => sanitizeProfessionalSummary(item))
+    .filter(Boolean)
+
+  const impactCandidate = candidates
+    .filter((item) => buildAchievementDetails(item))
+    .sort((a, b) => scoreImpactCandidate(b) - scoreImpactCandidate(a))[0]
+
+  return impactCandidate ? buildAchievementDetails(impactCandidate) : null
+}
+
+function buildProfessionalSummary(result = {}, sourceText = '', currentJobTitle = '') {
+  const role = resolveTargetRole(result, currentJobTitle)
+  const skills = getTopSkills(result, sourceText)
+  const specialization = inferSpecialization(role, skills)
+  const achievement = extractAchievementDetails(result, sourceText)
+
+  if (!achievement) {
+    return buildFallbackSummary(role)
+  }
+
+  const secondaryDomain = specialization === 'data pipelines' ? 'model deployment' : 'data pipelines'
+  const sentences = [
+    `${role} specializing in ${specialization} and ${secondaryDomain}.`,
+    achievement.sentence,
+  ]
+  const summary = composeSummary(sentences)
+  if (summary) return summary
+
+  return sentences.map(cleanSummarySentence).filter(Boolean).join(' ')
+}
+
 function buildOnePageResumeContent(result = {}, sourceText = '', currentJobTitle = '') {
   const summarySource = [
     result?.optimized_summary,
@@ -385,7 +919,8 @@ function buildOnePageResumeContent(result = {}, sourceText = '', currentJobTitle
 
   return {
     headline: String(currentJobTitle || result?.job_title || result?.role_description || '').trim(),
-    summary: truncateAtWord(summarySource || '', 320),
+    summary: normalizeGeneratedSummary(summarySource)
+      || buildProfessionalSummary({ ...result, optimized_summary: summarySource }, sourceText, currentJobTitle),
     skills,
     educationLines,
     improvedBullets,
@@ -911,9 +1446,10 @@ function buildProfessionalResumePrintHtml({ name, email, phone, content }) {
 </html>`
 }
 
-function buildMergedOptimizedResume(originalResumeText = '', result = {}) {
+function buildMergedOptimizedResume(originalResumeText = '', result = {}, currentJobTitle = '') {
   const original = String(originalResumeText || '').trim()
-  const summary = String(result?.optimized_summary || result?.summary || '').trim()
+  const generatedSummary = buildProfessionalSummary(result, originalResumeText, currentJobTitle)
+  const summary = normalizeGeneratedSummary(result?.optimized_summary || result?.summary || '') || generatedSummary
   const skills = Array.isArray(result?.optimized_skills) ? result.optimized_skills : []
   const improvedBullets = Array.isArray(result?.improved_bullets) ? result.improved_bullets : []
   const newBullets = Array.isArray(result?.new_bullets) ? result.new_bullets : []
@@ -933,12 +1469,14 @@ function buildMergedOptimizedResume(originalResumeText = '', result = {}) {
   return sections.filter(Boolean).join('\n\n').trim()
 }
 
-function buildOptimizerToolText(result, summaryOverride = '') {
-  const summary = summaryOverride || result?.optimized_summary || result?.summary || ''
+function buildOptimizerToolText(result, summaryOverride = '', currentJobTitle = '') {
+  const sourceText = result?.source_resume_text || ''
+  const generatedSummary = buildProfessionalSummary(result, sourceText, currentJobTitle)
+  const summary = normalizeGeneratedSummary(summaryOverride) || generatedSummary
   const merged = buildMergedOptimizedResume(result?.source_resume_text || '', {
     ...result,
     optimized_summary: summary,
-  })
+  }, currentJobTitle)
   if (merged) return merged
 
   return [
@@ -1204,7 +1742,7 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
 
   // ── Send optimized text to Job Match or ATS Checker ──────
   const sendToTool = (path) => {
-    const text = buildOptimizerToolText(result)
+    const text = buildOptimizerToolText(result, editedSummary, jobTitle)
     localStorage.setItem('careerlens_resume_text', text)
     window.location.href = path
   }
@@ -1224,7 +1762,7 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
       }
       if (typeof saved?.comparisonView === 'string') setComparisonView(saved.comparisonView)
       if (typeof saved?.editedSummary === 'string') {
-        setEditedSummary(saved.editedSummary)
+        setEditedSummary(normalizeGeneratedSummary(saved.editedSummary))
         restoredSummaryRef.current = true
       }
       if (saved?.checkedTips && typeof saved.checkedTips === 'object') {
@@ -1242,15 +1780,18 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
   }, [prefillResume, prefillJD, prefillJobTitle])
 
   useEffect(() => {
+    if (!result) return
+    const sourceText = resumeText || prefillResume || result?.source_resume_text || result?.optimized_resume || ''
+    const generatedSummary = normalizeGeneratedSummary(result?.optimized_summary || result?.summary || '')
+      || buildProfessionalSummary(result, sourceText, jobTitle)
     if (result && restoredSummaryRef.current) {
       restoredSummaryRef.current = false
+      setEditedSummary((current) => normalizeGeneratedSummary(current) || generatedSummary)
       return
     }
-    if (result) {
-      setEditedSummary(result?.optimized_summary || result?.summary || '')
-      setCheckedTips({})
-    }
-  }, [result])
+    setEditedSummary(generatedSummary)
+    setCheckedTips({})
+  }, [result, resumeText, prefillResume, jobTitle])
 
   useEffect(() => {
     const payload = {
@@ -1286,10 +1827,12 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
     const name  = meta.name  || fallbackContact.name || stored.name || 'Your Name'
     const email = meta.email || fallbackContact.email || stored.email || ''
     const phone = meta.phone || fallbackContact.phone || stored.phone || ''
+    const summary = normalizeGeneratedSummary(meta.summary || editedSummary)
+      || buildProfessionalSummary(resultData, fallbackSourceText, jobTitle)
     const onePageContent = buildOnePageResumeContent(
       {
         ...resultData,
-        optimized_summary: meta.summary || editedSummary || resultData.optimized_summary,
+        optimized_summary: summary,
         githubProjects: includeGitHubProjects ? githubProjects : [],
       },
       fallbackSourceText,
@@ -1434,8 +1977,10 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
       const normalized = normalizeOptimizationResult(res.optimization)
       if (normalized) {
         normalized.source_resume_text = resumeText
+        normalized.optimized_summary = normalizeGeneratedSummary(normalized.optimized_summary)
+          || buildProfessionalSummary(normalized, resumeText, jobTitle)
       }
-      const optimizedText = buildMergedOptimizedResume(resumeText, normalized)
+      const optimizedText = buildMergedOptimizedResume(resumeText, normalized, jobTitle)
 
       if (normalized && optimizedText) {
         normalized.optimized_resume = optimizedText
@@ -1523,9 +2068,11 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
     const atsAfter  = typeof result?.ats_after  === 'number' ? result.ats_after  : atsBefore
     const atsGain   = atsAfter - atsBefore
     const gainPrefix = atsGain > 0 ? '+' : ''
+    const displaySummary = normalizeGeneratedSummary(editedSummary)
+      || buildProfessionalSummary(result, resumeText || result?.source_resume_text || '', jobTitle)
 
     const handleStyledDownload = () => {
-      generateStyledPDF({ ...result, optimized_summary: editedSummary }, pdfMeta)
+      generateStyledPDF({ ...result, optimized_summary: displaySummary }, pdfMeta)
       toast.success('Professional resume preview opened.')
     }
     const toggleTip = (idx) => setCheckedTips((prev) => ({ ...prev, [idx]: !prev[idx] }))
@@ -1808,9 +2355,9 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
         <div className="relative rounded-2xl border border-white/10 border-l-4 border-[#FF3B3B] bg-red-500/5 p-5">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-[#FF7070] uppercase tracking-wide">Rewritten Professional Summary</h3>
-            <CopyBtn text={editedSummary} />
+            <CopyBtn text={displaySummary} />
           </div>
-          <textarea value={editedSummary} onChange={(e) => setEditedSummary(e.target.value)} rows={4}
+          <textarea value={displaySummary} onChange={(e) => setEditedSummary(sanitizeProfessionalSummary(e.target.value))} rows={4}
             className="input-field resize-none" />
         </div>
 

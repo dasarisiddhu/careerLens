@@ -8,10 +8,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 import logging
 import time
 
 from config import settings
+from rate_limit import limiter
 from routers import auth, resume, interview, chatbot, news, github, premium, beginner, portfolio
 
 # ============================================================
@@ -24,6 +28,18 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger("careerlens")
+
+is_dev = settings.ENVIRONMENT != "production"
+SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+}
+
+
+def add_security_headers(response):
+    for header, value in SECURITY_HEADERS.items():
+        response.headers.setdefault(header, value)
+    return response
 
 
 # ============================================================
@@ -51,11 +67,14 @@ app = FastAPI(
         "Analyze resumes, run mock interviews, get AI career coaching."
     ),
     version="1.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc",
-    openapi_url="/openapi.json",
+    docs_url="/docs" if is_dev else None,
+    redoc_url="/redoc" if is_dev else None,
+    openapi_url="/openapi.json" if is_dev else None,
     lifespan=lifespan,
 )
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
 # ============================================================
@@ -77,6 +96,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.add_middleware(SlowAPIMiddleware)
+
 # Trusted host protection (disable in dev if needed)
 if settings.ENVIRONMENT == "production":
     app.add_middleware(
@@ -94,6 +115,7 @@ if settings.ENVIRONMENT == "production":
 async def log_requests(request: Request, call_next):
     start = time.time()
     response = await call_next(request)
+    add_security_headers(response)
     duration = round((time.time() - start) * 1000, 2)
     logger.info(
         f"{request.method} {request.url.path} "
@@ -109,13 +131,13 @@ async def log_requests(request: Request, call_next):
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"Unhandled error on {request.url.path}: {exc}", exc_info=True)
-    return JSONResponse(
+    return add_security_headers(JSONResponse(
         status_code=500,
         content={
             "success": False,
             "error": "Internal server error. Please try again later.",
         },
-    )
+    ))
 
 
 # ============================================================
