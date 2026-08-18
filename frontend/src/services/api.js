@@ -104,6 +104,7 @@ export const api = {
 
   // Optimizer
   optimizeResume: (body) => request('POST', '/api/optimizer/', body),
+  generateProfessionalResumePdf: (body) => request('POST', '/api/optimizer/professional-resume-pdf', body, true),
 
   // Job Match
   matchJobs: (body) => request('POST', '/api/job-match/', body),

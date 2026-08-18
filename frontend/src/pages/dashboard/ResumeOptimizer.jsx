@@ -1820,7 +1820,8 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
     }
   }, [resumeText])
 
-  const generateStyledPDF = (resultData, meta = {}) => {
+  const generateStyledPDF = async (resultData, meta = {}) => {
+    if (pdfLoading) return
     const stored = readStoredContact()
     const fallbackSourceText = resumeText || prefillResume || resultData?.source_resume_text || resultData?.optimized_resume || ''
     const fallbackContact = extractContactInfo(resumeText || prefillResume || fallbackSourceText)
@@ -1838,22 +1839,44 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
       fallbackSourceText,
       jobTitle,
     )
-    if (onePageContent) {
-      const html = buildProfessionalResumePrintHtml({
-        name,
-        email,
-        phone,
-        content: onePageContent,
-      })
-      const win = window.open('', '_blank')
-      if (win) {
-        win.document.write(html)
-        win.document.close()
-        win.focus()
-      }
+    if (!onePageContent) {
+      const message = 'Could not prepare resume content for PDF generation.'
+      setPdfError(message)
+      toast.error(message)
       return
     }
 
+    setPdfLoading(true)
+    setPdfError('')
+    setPdfNotice('')
+    try {
+      const blob = await api.generateProfessionalResumePdf({
+        name,
+        email,
+        phone,
+        job_title: jobTitle,
+        source_resume_text: fallbackSourceText,
+        content: onePageContent,
+      })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      const safeTitle = (name || jobTitle || 'professional-resume')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '') || 'professional-resume'
+      link.href = url
+      link.download = `${safeTitle}.pdf`
+      link.click()
+      setTimeout(() => URL.revokeObjectURL(url), 0)
+      setPdfNotice('Downloaded a text-readable PDF verified by backend extraction.')
+      toast.success('Professional resume PDF downloaded.')
+    } catch (err) {
+      const message = err?.message || 'PDF generation failed. Please try again.'
+      setPdfError(message)
+      toast.error(message)
+    } finally {
+      setPdfLoading(false)
+    }
   }
 
   const handleFile = async (file) => {
@@ -2071,9 +2094,8 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
     const displaySummary = normalizeGeneratedSummary(editedSummary)
       || buildProfessionalSummary(result, resumeText || result?.source_resume_text || '', jobTitle)
 
-    const handleStyledDownload = () => {
-      generateStyledPDF({ ...result, optimized_summary: displaySummary }, pdfMeta)
-      toast.success('Professional resume preview opened.')
+    const handleStyledDownload = async () => {
+      await generateStyledPDF({ ...result, optimized_summary: displaySummary }, pdfMeta)
     }
     const toggleTip = (idx) => setCheckedTips((prev) => ({ ...prev, [idx]: !prev[idx] }))
 

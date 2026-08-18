@@ -4,11 +4,13 @@
 # ============================================================
 
 from fastapi import APIRouter, HTTPException, Depends
+from fastapi.responses import Response
 from pydantic import BaseModel
-from typing import Optional
+from typing import Any, Optional
 from middleware.auth import get_authenticated_user
 from database import supabase
 from services.gemini_service import call_groq, _extract_json
+from services.professional_resume_pdf import build_professional_resume_pdf
 import logging
 import re
 
@@ -707,6 +709,52 @@ class OptimizeRequest(BaseModel):
     resume_text: str
     job_description: str
     job_title: Optional[str] = ""
+
+
+class ProfessionalResumePdfRequest(BaseModel):
+    name: Optional[str] = ""
+    email: Optional[str] = ""
+    phone: Optional[str] = ""
+    job_title: Optional[str] = ""
+    source_resume_text: Optional[str] = ""
+    content: dict[str, Any]
+
+
+def _safe_pdf_filename(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", str(value or "").lower()).strip("-")
+    return f"{slug or 'professional-resume'}.pdf"
+
+
+@router.post("/professional-resume-pdf")
+async def generate_professional_resume_pdf(
+    body: ProfessionalResumePdfRequest,
+    user=Depends(get_authenticated_user),
+):
+    try:
+        generated = build_professional_resume_pdf(
+            name=body.name or "Your Name",
+            email=body.email or "",
+            phone=body.phone or "",
+            content=body.content,
+            source_resume_text=body.source_resume_text or "",
+        )
+    except ValueError as e:
+        logger.error(f"Professional PDF text regression failed for user {user['user_id']}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        logger.error(f"Professional PDF generation failed for user {user['user_id']}: {e}")
+        raise HTTPException(status_code=500, detail="Could not generate a readable resume PDF.")
+
+    filename = _safe_pdf_filename(body.name or body.job_title or "professional-resume")
+    return Response(
+        content=generated.pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "X-Extracted-Text-Chars": str(len(generated.extracted_text)),
+            "X-Extraction-Ratio": f"{generated.extraction_ratio:.3f}",
+        },
+    )
 
 
 @router.post("/")
