@@ -1725,6 +1725,7 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
   const [pdfError, setPdfError] = useState('')
   const [pdfNotice, setPdfNotice] = useState('')
   const [loading, setLoading] = useState(false)
+  const [extracting, setExtracting] = useState(false)
   const [error, setError] = useState('')
   const [dragging, setDragging] = useState(false)
   const fileRef = useRef(null)
@@ -1820,8 +1821,7 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
     }
   }, [resumeText])
 
-  const generateStyledPDF = async (resultData, meta = {}) => {
-    if (pdfLoading) return
+  const generateStyledPDF = (resultData, meta = {}) => {
     const stored = readStoredContact()
     const fallbackSourceText = resumeText || prefillResume || resultData?.source_resume_text || resultData?.optimized_resume || ''
     const fallbackContact = extractContactInfo(resumeText || prefillResume || fallbackSourceText)
@@ -1839,44 +1839,22 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
       fallbackSourceText,
       jobTitle,
     )
-    if (!onePageContent) {
-      const message = 'Could not prepare resume content for PDF generation.'
-      setPdfError(message)
-      toast.error(message)
-      return
-    }
-
-    setPdfLoading(true)
-    setPdfError('')
-    setPdfNotice('')
-    try {
-      const blob = await api.generateProfessionalResumePdf({
+    if (onePageContent) {
+      const html = buildProfessionalResumePrintHtml({
         name,
         email,
         phone,
-        job_title: jobTitle,
-        source_resume_text: fallbackSourceText,
         content: onePageContent,
       })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      const safeTitle = (name || jobTitle || 'professional-resume')
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-|-$/g, '') || 'professional-resume'
-      link.href = url
-      link.download = `${safeTitle}.pdf`
-      link.click()
-      setTimeout(() => URL.revokeObjectURL(url), 0)
-      setPdfNotice('Downloaded a text-readable PDF verified by backend extraction.')
-      toast.success('Professional resume PDF downloaded.')
-    } catch (err) {
-      const message = err?.message || 'PDF generation failed. Please try again.'
-      setPdfError(message)
-      toast.error(message)
-    } finally {
-      setPdfLoading(false)
+      const win = window.open('', '_blank')
+      if (win) {
+        win.document.write(html)
+        win.document.close()
+        win.focus()
+      }
+      return
     }
+
   }
 
   const handleFile = async (file) => {
@@ -1886,6 +1864,7 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
     }
     setResumeFile(file)
     setError('')
+    setExtracting(true)
     try {
       const arrayBuffer = await file.arrayBuffer()
       const uint8Array = new Uint8Array(arrayBuffer)
@@ -1908,6 +1887,8 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
       const message = err?.message || 'Could not extract text from this PDF.'
       setResumeText('')
       setError(`${message} Please paste your resume text manually.`)
+    } finally {
+      setExtracting(false)
     }
   }
 
@@ -1968,9 +1949,20 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
   }
 
   const handleOptimize = async () => {
+    if (extracting) {
+      // Belt-and-suspenders: the button is disabled while extracting, but
+      // guard here too in case this ever gets called programmatically.
+      return
+    }
     if (!resumeText.trim()) {
       if (resumeFile) {
-        setError('Could not extract text. Please paste your resume text manually.')
+        // handleFile already sets a specific error message when extraction
+        // fails (e.g. the real reason: an auth failure, a malformed PDF,
+        // a network error). Only fall back to this generic message if no
+        // more specific error is already showing — don't overwrite it.
+        if (!error) {
+          setError('Could not extract text. Please paste your resume text manually.')
+        }
       } else {
         setError('Please upload or paste your resume.')
       }
@@ -2094,8 +2086,9 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
     const displaySummary = normalizeGeneratedSummary(editedSummary)
       || buildProfessionalSummary(result, resumeText || result?.source_resume_text || '', jobTitle)
 
-    const handleStyledDownload = async () => {
-      await generateStyledPDF({ ...result, optimized_summary: displaySummary }, pdfMeta)
+    const handleStyledDownload = () => {
+      generateStyledPDF({ ...result, optimized_summary: displaySummary }, pdfMeta)
+      toast.success('Professional resume preview opened.')
     }
     const toggleTip = (idx) => setCheckedTips((prev) => ({ ...prev, [idx]: !prev[idx] }))
 
@@ -2466,9 +2459,14 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
             </div>
           ) : (
             <div className="flex items-center gap-3 p-3 rounded-xl bg-green-500/10 border border-green-500/20 mb-2">
-              <CheckCircle size={16} className="text-green-400" />
-              <span className="text-sm text-white flex-1">{resumeFile.name}</span>
-              <motion.button {...buttonMotion} onClick={() => { setResumeFile(null); setResumeText(''); setError('') }}
+              {extracting
+                ? <Loader2 size={16} className="text-green-400 animate-spin" />
+                : <CheckCircle size={16} className="text-green-400" />}
+              <span className="text-sm text-white flex-1">
+                {resumeFile.name}
+                {extracting && <span className="text-[#78716c] ml-2">Reading your resume...</span>}
+              </span>
+              <motion.button {...buttonMotion} onClick={() => { setResumeFile(null); setResumeText(''); setError(''); setExtracting(false) }}
                 className="text-[#78716c] hover:text-white text-xs">Remove</motion.button>
             </div>
           )}
@@ -2490,20 +2488,16 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
             className="input-field resize-none w-full" />
         </div>
 
-        <motion.button {...buttonMotion} onClick={handleOptimize} disabled={loading || !jobDesc.trim()}
+        <motion.button {...buttonMotion} onClick={handleOptimize} disabled={loading || extracting || !jobDesc.trim()}
           className="btn-primary w-full flex items-center justify-center gap-3 py-4 font-bold disabled:opacity-50">
           {loading
             ? <><Loader2 size={17} className="animate-spin" /> Optimizing...</>
-            : <><Zap size={17} /> Optimize My Resume</>}
+            : extracting
+              ? <><Loader2 size={17} className="animate-spin" /> Reading resume...</>
+              : <><Zap size={17} /> Optimize My Resume</>}
         </motion.button>
       </div>
     </div>
     </motion.div>
   )
 }
-
-
-
-
-
-

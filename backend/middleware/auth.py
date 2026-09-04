@@ -32,12 +32,24 @@ async def get_authenticated_user(
     try:
         # Centralized token validation (also attaches JWT for anon-key fallback mode).
         return await get_current_user(token)
-    except Exception as e:
-        logger.warning(f"Auth token validation failed: {e}")
+    except ValueError as e:
+        # get_current_user raises ValueError specifically for a bad/expired
+        # token — this is a genuine 401, the user's session really is invalid.
+        logger.info(f"Auth token rejected: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired authentication token.",
             headers={"WWW-Authenticate": "Bearer"},
+        )
+    except Exception as e:
+        # Anything else (e.g. missing SUPABASE_JWT_SECRET, an unexpected
+        # decode error) is OUR problem, not evidence the user's session is
+        # bad. Telling them "invalid token" here is actively misleading and
+        # sends them to re-login for something a re-login won't fix.
+        logger.error(f"Auth verification failed unexpectedly: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Authentication service is temporarily unavailable. Please try again shortly.",
         )
 
 # ============================================================

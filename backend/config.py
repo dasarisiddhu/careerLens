@@ -47,6 +47,8 @@ class Settings(BaseSettings):
     SUPABASE_URL: str = ""
     SUPABASE_KEY: str = ""                     # Service role key (backend only)
     SUPABASE_ANON_KEY: str = ""                # Anon key (if needed)
+    SUPABASE_JWT_SECRET: str = ""              # Project Settings -> API -> JWT Keys -> Legacy JWT Secret. Used for local token verification (no network call per request).
+    SUPABASE_JWT_SECRET: str = ""              # Project Settings -> API -> JWT Secret. Used for local token verification (no network call per request).
 
     # ----------------------------------------------------------
     # AI Providers

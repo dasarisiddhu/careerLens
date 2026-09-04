@@ -11,10 +11,185 @@ from middleware.auth import get_authenticated_user
 from database import supabase
 from services.gemini_service import call_groq, _extract_json
 from services.professional_resume_pdf import build_professional_resume_pdf
+import json
 import logging
 import re
 
 logger = logging.getLogger("careerlens.optimizer")
+
+
+def _flatten_skills(skills) -> list[str]:
+    if isinstance(skills, dict):
+        flattened: list[str] = []
+        for group in skills.values():
+            flattened.extend(_flatten_skills(group))
+        return flattened
+    if isinstance(skills, (list, tuple, set)):
+        return [str(skill) for skill in skills if skill]
+    if isinstance(skills, str) and skills.strip():
+        return [skills.strip()]
+    return []
+
+# ─────────────────────────────────────────────────────────────────
+# SKILL.MD — Senior Talent Intelligence Specialist system prompt
+# Source: RESUME_ANALYSER_SKILL.md
+# Used by: POST /api/optimizer/analyse
+# ─────────────────────────────────────────────────────────────────
+ANALYST_SYSTEM_PROMPT = """
+You are a Senior Talent Intelligence Specialist with a dual career:
+- 8 years in-house recruitment at FAANG-tier, Big 4, and Series B-D startups.
+  Screened 40,000+ resumes. Hired 1,200+ candidates across engineering,
+  product, data, and design.
+- 6 years building AI-powered recruitment tooling including ATS integrations,
+  resume parsing pipelines, and LLM-based screening systems.
+
+You know exactly why candidates get rejected in the first 7 seconds.
+You apply recruiter logic without mercy. You never fabricate numbers.
+You never validate a weak resume if it scores below 70.
+
+HOW HIRING ACTUALLY WORKS — burn this into every analysis:
+
+STAGE 1 — ATS FILTER (0-30 seconds)
+- Systems: Workday, Greenhouse, Lever, iCIMS, Taleo, Ashby, Rippling
+- Checks: keyword density vs JD, section headers, date formats, layout
+- Failure modes: wrong section names, missing keywords, multi-column layouts,
+  tables (almost always fatal), image-based PDFs
+- Pass rate: ~75% of applicants fail before a human ever sees them
+
+STAGE 2 — RECRUITER SCREEN (6-10 seconds)
+- Recruiter scans: title → company → tenure → education → skills
+- NOT reading bullets — pattern matching only
+- Fatal signals: no quantification, generic objectives, skills dump of buzzwords
+- Pass rate: ~15-20% of ATS survivors
+
+STAGE 3 — HIRING MANAGER REVIEW (2-5 minutes)
+- Now bullets get read. Specificity matters.
+- Wants: scope (team, scale), ownership (led vs contributed), measurable outcomes
+- Red flags: vague ownership, copying JD verbatim (screams fabrication)
+- Pass rate: ~30-50% of recruiter-screened candidates
+
+STAGE 4 — INTERVIEW (panel)
+- Resume is now a reference document. Every claim gets probed.
+- Inconsistency between resume and verbal answers = instant disqualification.
+- Therefore: NEVER fabricate. Elevate and clarify what actually exists.
+
+HARD RULES (absolute — never violate):
+1. Never fabricate a number. Use "~", "up to", or range language if unavailable.
+2. Never validate a weak resume. Score < 70 = say so directly.
+3. Every weak bullet gets a rewrite. No exceptions.
+4. Mirror JD language precisely — ATS does not do synonym matching.
+   "Machine Learning" ≠ "ML" in Workday.
+5. Never say "Great resume!" or "This is a solid start."
+6. Elevating a real achievement is ethical. Inventing metrics is fraud —
+   the candidate will be caught in interviews.
+7. Recruiter logic beats design logic. A beautiful PDF that fails ATS is
+   worse than a plain-text resume that passes.
+
+DOMAIN RULES — ML / AI Roles:
+- Must have: model types used, dataset scale, business outcome of model
+- ATS killers: missing framework names (PyTorch vs TensorFlow matters),
+  no mention of deployment
+- Hiring manager red flags: "improved accuracy" without baseline
+
+DOMAIN RULES — Software Engineering:
+- Must have: GitHub link, tech stack in context, system scale signals
+- ATS killers: missing languages from JD
+
+You respond ONLY in valid JSON. No markdown. No code fences. No text outside JSON.
+"""
+
+
+ANALYST_OUTPUT_SCHEMA = """
+Analyse the resume against the job description using all 5 modules below.
+Return ONLY this exact JSON structure. No extra fields. No markdown.
+
+{
+  "module1_ats": {
+    "checks": [
+      {
+        "item": "check name",
+        "status": "PASS | FAIL | WARN",
+        "reason": "one line explanation"
+      }
+    ],
+    "keyword_coverage": {
+      "jd_keywords_checked": 15,
+      "found": 0,
+      "missing": ["keyword1", "keyword2"],
+      "buried": ["keyword present but not prominent"]
+    },
+    "ats_score": 0
+  },
+
+  "module2_recruiter_lens": {
+    "total": 0,
+    "dimensions": {
+      "title_clarity":       {"score": 0, "max": 10, "reason": ""},
+      "company_signal":      {"score": 0, "max": 10, "reason": ""},
+      "tenure_stability":    {"score": 0, "max": 10, "reason": ""},
+      "scannability":        {"score": 0, "max": 15, "reason": ""},
+      "skills_quality":      {"score": 0, "max": 15, "reason": ""},
+      "quantification_rate": {"score": 0, "max": 20, "reason": ""},
+      "red_flag_penalty":    {"score": 0, "max": 20, "reason": ""}
+    },
+    "interpretation": "Strong | Good | Average | Weak | Critical"
+  },
+
+  "module3_bullet_audit": [
+    {
+      "original": "exact bullet text from resume",
+      "grade": "WEAK | AVERAGE | STRONG",
+      "grade_reason": "one line why",
+      "rewrite": "rewritten bullet — Action + Context + Scope + Outcome. NEVER invent metrics. Use ~ or range language if no data."
+    }
+  ],
+
+  "module4_skill_gap": {
+    "critical": [
+      {"skill": "", "reason": "JD requires, resume has zero signal"}
+    ],
+    "partial": [
+      {"skill": "", "reason": "present but not prominent enough"}
+    ],
+    "strengths": [
+      {"skill": "", "reason": "resume strong, JD requires — lead with this"}
+    ],
+    "irrelevant": [
+      {"skill": "", "reason": "resume strong, JD does not need — deprioritise"}
+    ]
+  },
+
+  "module5_rejection_diagnosis": [
+    {
+      "rank": 1,
+      "summary": "one-line reason",
+      "evidence": "exact quote or observation from resume",
+      "recruiter_thought": "what runs through recruiter's head",
+      "fix": "precise actionable change"
+    },
+    {
+      "rank": 2,
+      "summary": "",
+      "evidence": "",
+      "recruiter_thought": "",
+      "fix": ""
+    },
+    {
+      "rank": 3,
+      "summary": "",
+      "evidence": "",
+      "recruiter_thought": "",
+      "fix": ""
+    }
+  ],
+
+  "domain_mismatch": false,
+  "domain_mismatch_reason": "",
+  "optimizable": true,
+  "optimizable_reason": "",
+  "next_action": "The single most important thing to fix in the next 30 minutes."
+}
+"""
 
 
 def count_kw_coverage(text: str, jd: str) -> int:
@@ -92,6 +267,556 @@ SUMMARY_DOMAIN_PATTERNS = [
     (r"\b(cloud|aws|azure|gcp|deployment)\b", "cloud deployment"),
     (r"\b(sql|database|postgresql|mysql|mongodb)\b", "database systems"),
 ]
+
+GROUNDING_TECH_TERMS = tuple(sorted(set(SUMMARY_TOOL_NAMES + [
+    "Angular", "Vue", "Vue.js", "MySQL", "MongoDB", "SQLite", "Django",
+    "Flask", "Express", "Next.js", "Spring Boot", "Tailwind", "HTML",
+    "CSS", "Redis", "GraphQL", "REST", "JDBC", "OpenCV", "NLTK",
+    "spaCy", "Hugging Face", "LangChain", "LlamaIndex", "OpenAI",
+]), key=len, reverse=True))
+GROUNDING_METRIC_RE = re.compile(
+    r"\b\d[\d,]*(?:\.\d+)?\s*(?:(?:\+|%|k|m|b)\s*)?"
+    r"(?:emails?\s*/\s*day|daily\s+emails?|daily\s+users?|monthly\s+users?|"
+    r"concurrent\s+users?|parking\s+slots?|vehicle\s+records?|patient\s+records?|"
+    r"data\s+points?|users?|requests?|records?|transactions?|patients?|entries|"
+    r"samples?|rows?|queries?|tickets?|accuracy|uptime|latency|ms|milliseconds?|"
+    r"seconds?|minutes?|hours?)\b"
+    r"|\b\d[\d,]*(?:\.\d+)?\s*(?:%|\+|k|m|b)\b",
+    re.IGNORECASE,
+)
+GROUNDING_ESTIMATE_PREFIX_RE = re.compile(
+    r"(~|about|around|approx\.?|approximately|estimated|up to|as many as|range of)\s*$",
+    re.IGNORECASE,
+)
+NUMBER_TOKEN_RE = re.compile(
+    r"(?<![A-Za-z0-9])(?:[~<>]=?\s*)?"
+    r"\d[\d,]*(?:\.\d+)?\s*(?:[KkMmBb])?\+?%?"
+    r"(?:\s*(?:ms|milliseconds?|s|sec|secs|seconds?))?"
+    r"(?![A-Za-z0-9])"
+)
+NUMBER_WORD_RE = re.compile(r"[A-Za-z][A-Za-z+#./-]*")
+NUMBER_CONTEXT_STOPWORDS = {
+    "a", "an", "and", "as", "at", "by", "for", "from", "in", "into",
+    "of", "on", "or", "the", "through", "to", "using", "via", "with",
+}
+
+
+def _normalize_grounding_text(value: str) -> str:
+    return re.sub(r"\s+", " ", str(value or "").lower()).strip()
+
+
+def _contains_grounded_term(haystack: str, term: str) -> bool:
+    cleaned = _normalize_grounding_text(term)
+    if not cleaned:
+        return False
+    pattern = re.escape(cleaned).replace(r"\ ", r"\s+")
+    return bool(re.search(rf"(?<![a-z0-9]){pattern}(?![a-z0-9])", haystack))
+
+
+def _is_grounded_phrase(value: str, source_lower: str, jd_lower: str) -> bool:
+    cleaned = _normalize_grounding_text(value)
+    return bool(
+        cleaned
+        and (
+            _contains_grounded_term(source_lower, cleaned)
+            or _contains_grounded_term(jd_lower, cleaned)
+        )
+    )
+
+
+def _split_skill_items(value) -> list[str]:
+    if isinstance(value, dict):
+        items: list[str] = []
+        for nested in value.values():
+            items.extend(_split_skill_items(nested))
+        return items
+    if isinstance(value, (list, tuple, set)):
+        items: list[str] = []
+        for nested in value:
+            items.extend(_split_skill_items(nested))
+        return items
+    if isinstance(value, str):
+        return [item.strip() for item in re.split(r"[,|;/]", value) if item.strip()]
+    return []
+
+
+def _append_grounding_warning(result: dict, kind: str, message: str, values: list[str]):
+    if not values:
+        return
+    warnings = result.setdefault("grounding_warnings", [])
+    if isinstance(warnings, list):
+        warnings.append({
+            "kind": kind,
+            "message": message,
+            "values": values,
+        })
+    result["is_suspicious"] = True
+
+
+def _find_ungrounded_tech_terms(text: str, source_lower: str, jd_lower: str) -> list[str]:
+    normalized_text = _normalize_grounding_text(text)
+    ungrounded: list[str] = []
+    for term in GROUNDING_TECH_TERMS:
+        if not _contains_grounded_term(normalized_text, term):
+            continue
+        if _is_grounded_phrase(term, source_lower, jd_lower):
+            continue
+        ungrounded.append(term)
+    return list(dict.fromkeys(ungrounded))
+
+
+def _metric_is_estimated(text: str, start: int) -> bool:
+    prefix = text[max(0, start - 24):start].lower()
+    return bool(GROUNDING_ESTIMATE_PREFIX_RE.search(prefix))
+
+
+def _metric_is_grounded(metric: str, source_lower: str, jd_lower: str) -> bool:
+    cleaned = _normalize_grounding_text(metric)
+    compact = re.sub(r"\s+", "", cleaned)
+    return (
+        cleaned in source_lower
+        or cleaned in jd_lower
+        or compact in re.sub(r"\s+", "", source_lower)
+        or compact in re.sub(r"\s+", "", jd_lower)
+    )
+
+
+def _mark_ungrounded_metrics(text: str, source_lower: str, jd_lower: str) -> tuple[str, list[str]]:
+    flagged: list[str] = []
+
+    def replace_metric(match: re.Match) -> str:
+        metric = match.group(0)
+        following = text[match.end():match.end() + 12]
+        if re.match(r"\s*years?\b", following, flags=re.IGNORECASE):
+            return metric
+        if re.fullmatch(r"(?:19|20)\d{2}", metric.strip()):
+            return metric
+        if _metric_is_estimated(text, match.start()):
+            return metric
+        if _metric_is_grounded(metric, source_lower, jd_lower):
+            return metric
+        flagged.append(metric.strip())
+        softened = re.sub(r"\s*\+\s*", " ", metric).strip()
+        softened = re.sub(r"\s+", " ", softened)
+        return f"~{softened}"
+
+    return GROUNDING_METRIC_RE.sub(replace_metric, text), list(dict.fromkeys(flagged))
+
+
+def _number_token_variants(value: str) -> set[str]:
+    cleaned = re.sub(r"\*", "", str(value or "")).strip().lower()
+    cleaned = re.sub(r"^(?:~|<|>|<=|>=|about|around|approx\.?|approximately)\s*", "", cleaned)
+    cleaned = cleaned.replace(",", "")
+    cleaned = re.sub(r"\s+", "", cleaned)
+    cleaned = re.sub(r"(milliseconds?|secs?|seconds?|ms|s)$", "", cleaned)
+    cleaned = cleaned.rstrip("%").rstrip("+")
+    match = re.fullmatch(r"(\d+(?:\.\d+)?)([kmb])?", cleaned)
+    if not match:
+        return set()
+
+    number, suffix = match.groups()
+    variants = {number}
+    if "." in number:
+        variants.add(number.rstrip("0").rstrip("."))
+    if suffix:
+        multiplier = {"k": 1_000, "m": 1_000_000, "b": 1_000_000_000}[suffix]
+        expanded = float(number) * multiplier
+        variants.add(str(int(expanded)) if expanded.is_integer() else str(expanded))
+    return {variant for variant in variants if variant}
+
+
+def _source_number_variants(source_text: str) -> set[str]:
+    variants: set[str] = set()
+    for match in NUMBER_TOKEN_RE.finditer(str(source_text or "")):
+        variants.update(_number_token_variants(match.group(0)))
+    return variants
+
+
+def _number_after_context_words(text: str, end: int) -> list[str]:
+    after_segment = str(text or "")[end:end + 64]
+    next_number = NUMBER_TOKEN_RE.search(after_segment)
+    if next_number:
+        after_segment = after_segment[:next_number.start()]
+    after = re.split(r"[.;:\n\r]", after_segment, maxsplit=1)[0]
+    return [
+        word.lower().strip(".")
+        for word in NUMBER_WORD_RE.findall(after)
+        if word.lower().strip(".") not in NUMBER_CONTEXT_STOPWORDS
+    ][:3]
+
+
+def _number_before_context_words(text: str, start: int) -> list[str]:
+    before = re.split(r"[.;:\n\r]", str(text or "")[max(0, start - 48):start])[-1]
+    return [
+        word.lower().strip(".")
+        for word in NUMBER_WORD_RE.findall(before)
+        if word.lower().strip(".") not in NUMBER_CONTEXT_STOPWORDS
+    ][-2:]
+
+
+def _number_context_words(text: str, start: int, end: int) -> list[str]:
+    return _number_after_context_words(text, end) or _number_before_context_words(text, start)
+
+
+def _number_word_keys(words: list[str]) -> set[str]:
+    keys: set[str] = set()
+    for word in words:
+        cleaned = re.sub(r"[^a-z0-9+#.]+", "", word.lower())
+        if not cleaned:
+            continue
+        keys.add(cleaned)
+        if cleaned.endswith("ies") and len(cleaned) > 3:
+            keys.add(f"{cleaned[:-3]}y")
+        elif cleaned.endswith("s") and len(cleaned) > 3:
+            keys.add(cleaned[:-1])
+    return keys
+
+
+def _source_contexts_for_number(
+    source_text: str,
+    variants: set[str],
+    include_before: bool = False,
+) -> list[set[str]]:
+    contexts: list[set[str]] = []
+    source = str(source_text or "")
+    for match in NUMBER_TOKEN_RE.finditer(source):
+        if not (_number_token_variants(match.group(0)) & variants):
+            continue
+        after_keys = _number_word_keys(_number_after_context_words(source, match.end()))
+        if after_keys:
+            contexts.append(after_keys)
+        if include_before or not after_keys:
+            contexts.append(_number_word_keys(_number_before_context_words(source, match.start())))
+    return contexts
+
+
+def _number_context_is_grounded(
+    text: str,
+    start: int,
+    end: int,
+    source_text: str,
+    variants: set[str],
+) -> bool:
+    after_words = _number_after_context_words(text, end)
+    context_keys = _number_word_keys(after_words or _number_before_context_words(text, start))
+    if not context_keys:
+        return True
+
+    for source_keys in _source_contexts_for_number(source_text, variants, include_before=not after_words):
+        if source_keys and all(key in source_keys for key in context_keys):
+            return True
+    return False
+
+
+def _find_ungrounded_numbers(text: str, source_text: str) -> list[dict[str, str]]:
+    source_variants = _source_number_variants(source_text)
+    ungrounded: list[dict[str, str]] = []
+    for match in NUMBER_TOKEN_RE.finditer(str(text or "")):
+        raw = re.sub(r"\s+", " ", match.group(0)).strip()
+        variants = _number_token_variants(raw)
+        if not variants:
+            continue
+        if variants.isdisjoint(source_variants):
+            ungrounded.append({"number": raw, "reason": "absent_from_source"})
+            continue
+        if not _number_context_is_grounded(text, match.start(), match.end(), source_text, variants):
+            ungrounded.append({"number": raw, "reason": "source_context_mismatch"})
+    return ungrounded
+
+
+def _append_number_grounding_warning(result: dict):
+    warnings = result.setdefault("grounding_warnings", [])
+    if isinstance(warnings, list):
+        warnings.append({
+            "kind": "numbers",
+            "message": (
+                "Generated numeric claims absent from the source resume were "
+                "reverted or removed before returning."
+            ),
+            "values": ["source-only numeric guard applied"],
+        })
+    result["is_suspicious"] = True
+    result["number_grounding_applied"] = True
+
+
+def _sanitize_numbered_generated_value(value, source_text: str, path: str, user_id: str):
+    if isinstance(value, str):
+        ungrounded = _find_ungrounded_numbers(value, source_text)
+        if ungrounded:
+            logger.warning(
+                "Optimizer number guard removed generated value at %s for user %s: %s",
+                path,
+                user_id,
+                ungrounded,
+            )
+            return ""
+        return value
+    if isinstance(value, list):
+        sanitized = []
+        for index, item in enumerate(value):
+            clean_item = _sanitize_numbered_generated_value(
+                item,
+                source_text,
+                f"{path}[{index}]",
+                user_id,
+            )
+            if clean_item not in ("", [], {}):
+                sanitized.append(clean_item)
+        return sanitized
+    if isinstance(value, dict):
+        sanitized = {}
+        for key, item in value.items():
+            clean_item = _sanitize_numbered_generated_value(
+                item,
+                source_text,
+                f"{path}.{key}",
+                user_id,
+            )
+            if clean_item not in ("", [], {}):
+                sanitized[key] = clean_item
+        return sanitized
+    return value
+
+
+def _enforce_source_number_grounding(result: dict, resume_text: str, user_id: str = "") -> dict:
+    if not isinstance(result, dict):
+        return result
+
+    source_text = str(resume_text or "")
+    guard_applied = False
+
+    for index, bullet_obj in enumerate(result.get("improved_bullets") or []):
+        if not isinstance(bullet_obj, dict):
+            continue
+        improved = str(bullet_obj.get("improved", "") or "")
+        ungrounded = _find_ungrounded_numbers(improved, source_text)
+        if not ungrounded:
+            continue
+        logger.warning(
+            "Optimizer number guard reverted improved_bullets[%s] for user %s: %s",
+            index,
+            user_id,
+            ungrounded,
+        )
+        bullet_obj["improved"] = str(bullet_obj.get("original") or "")
+        bullet_obj["keywords_added"] = []
+        bullet_obj["metric_added"] = ""
+        bullet_obj["improvement_reason"] = (
+            "Kept original bullet because the generated rewrite introduced numeric claims absent from the source resume."
+        )
+        guard_applied = True
+
+    for index, bullet_obj in enumerate(result.get("improved_bullets") or []):
+        if not isinstance(bullet_obj, dict):
+            continue
+        for key, value in list(bullet_obj.items()):
+            if key in {"original", "improved"}:
+                continue
+            sanitized = _sanitize_numbered_generated_value(
+                value,
+                source_text,
+                f"improved_bullets[{index}].{key}",
+                user_id,
+            )
+            if sanitized != value:
+                bullet_obj[key] = sanitized
+                guard_applied = True
+
+    safe_new_bullets = []
+    for index, bullet_obj in enumerate(result.get("new_bullets") or []):
+        if not isinstance(bullet_obj, dict):
+            continue
+        text = str(bullet_obj.get("text", "") or "")
+        ungrounded = _find_ungrounded_numbers(text, source_text)
+        if ungrounded:
+            logger.warning(
+                "Optimizer number guard removed new_bullets[%s] for user %s: %s",
+                index,
+                user_id,
+                ungrounded,
+            )
+            guard_applied = True
+            continue
+        sanitized_bullet = _sanitize_numbered_generated_value(
+            bullet_obj,
+            source_text,
+            f"new_bullets[{index}]",
+            user_id,
+        )
+        if sanitized_bullet != bullet_obj:
+            guard_applied = True
+        safe_new_bullets.append(sanitized_bullet)
+    result["new_bullets"] = safe_new_bullets
+
+    summary = str(result.get("optimized_summary", "") or "")
+    if _find_ungrounded_numbers(summary, source_text):
+        logger.warning(
+            "Optimizer number guard replaced optimized_summary for user %s: %s",
+            user_id,
+            _find_ungrounded_numbers(summary, source_text),
+        )
+        result["optimized_summary"] = SUMMARY_FALLBACK_SUMMARY
+        guard_applied = True
+
+    for key in (
+        "optimized_skills",
+        "skills_to_highlight",
+        "added_keywords",
+        "missing_keywords",
+        "improvement_explanation",
+        "ats_tips",
+        "overall_improvement",
+    ):
+        if key in result:
+            sanitized = _sanitize_numbered_generated_value(result[key], source_text, key, user_id)
+            if sanitized != result[key]:
+                result[key] = sanitized
+                guard_applied = True
+
+    # The UI already has a deterministic keyword-coverage fallback for this
+    # display value. Do not return an LLM-invented score as candidate data.
+    for key in ("match_score_estimate", "confidence_level"):
+        if key in result:
+            logger.warning(
+                "Optimizer number guard removed model-controlled %s for user %s",
+                key,
+                user_id,
+            )
+            result.pop(key, None)
+            guard_applied = True
+
+    if guard_applied:
+        _append_number_grounding_warning(result)
+    return result
+
+
+def _audit_resume_numbers_against_source(result: dict, source_text: str) -> list[dict[str, str]]:
+    rows_by_number: dict[str, dict[str, str]] = {}
+    source_variants = _source_number_variants(source_text)
+    for piece in _resume_number_audit_pieces(result):
+        for match in NUMBER_TOKEN_RE.finditer(piece):
+            number = re.sub(r"\s+", " ", match.group(0)).strip()
+            key = number.lower()
+            variants = _number_token_variants(number)
+            appears = bool(variants and not variants.isdisjoint(source_variants))
+            grounded = appears and _number_context_is_grounded(
+                piece,
+                match.start(),
+                match.end(),
+                source_text,
+                variants,
+            )
+            status = "yes" if appears and grounded else "no"
+            existing = rows_by_number.get(key)
+            if existing is None or status == "no":
+                rows_by_number[key] = {
+                    "number": number,
+                    "appears_in_source": status,
+                }
+    return list(rows_by_number.values())
+
+
+def _validate_against_source(result: dict, resume_text: str, jd: str) -> dict:
+    if not isinstance(result, dict):
+        return result
+
+    source_lower = _normalize_grounding_text(resume_text)
+    jd_lower = _normalize_grounding_text(jd or "")
+    dropped_skills: list[str] = []
+    jd_gap_fill_skills: list[str] = []
+
+    def filter_skill_list(items) -> list[str]:
+        kept: list[str] = []
+        for skill in _split_skill_items(items):
+            if _contains_grounded_term(source_lower, skill):
+                kept.append(skill)
+            elif _contains_grounded_term(jd_lower, skill):
+                kept.append(skill)
+                jd_gap_fill_skills.append(skill)
+            else:
+                dropped_skills.append(skill)
+        return list(dict.fromkeys(kept))
+
+    skills = result.get("optimized_skills")
+    if isinstance(skills, dict):
+        for category, items in list(skills.items()):
+            kept = filter_skill_list(items)
+            dropped = [
+                skill for skill in _split_skill_items(items)
+                if skill not in kept and not _is_grounded_phrase(skill, source_lower, jd_lower)
+            ]
+            skills[category] = kept
+            if dropped:
+                logger.warning(f"Dropped ungrounded skills in {category}: {dropped}")
+    elif isinstance(skills, list):
+        result["optimized_skills"] = filter_skill_list(skills)
+
+    for key in ("skills_to_highlight", "added_keywords"):
+        if isinstance(result.get(key), list):
+            result[key] = filter_skill_list(result.get(key))
+
+    dropped_unique = list(dict.fromkeys(dropped_skills))
+    if dropped_unique:
+        result["dropped_ungrounded_skills"] = dropped_unique
+        _append_grounding_warning(
+            result,
+            "skills",
+            "Dropped skills that were absent from both the source resume and job description.",
+            dropped_unique,
+        )
+
+    gap_fill_unique = list(dict.fromkeys(jd_gap_fill_skills))
+    if gap_fill_unique:
+        result["jd_gap_fill_skills"] = gap_fill_unique
+
+    for collection_key, text_key in (("improved_bullets", "improved"), ("new_bullets", "text")):
+        for bullet_obj in result.get(collection_key) or []:
+            if not isinstance(bullet_obj, dict):
+                continue
+            bullet_text = str(bullet_obj.get(text_key, "") or "")
+            if not bullet_text:
+                continue
+
+            ungrounded_terms = _find_ungrounded_tech_terms(bullet_text, source_lower, jd_lower)
+            if ungrounded_terms:
+                _append_grounding_warning(
+                    result,
+                    "bullet_technology",
+                    f"Flagged {collection_key} item containing ungrounded technology terms.",
+                    ungrounded_terms,
+                )
+                logger.warning(
+                    f"Flagged ungrounded technologies in {collection_key}: {ungrounded_terms}"
+                )
+
+            softened_text, flagged_metrics = _mark_ungrounded_metrics(
+                bullet_text,
+                source_lower,
+                jd_lower,
+            )
+            if flagged_metrics:
+                bullet_obj[text_key] = softened_text
+                if text_key == "improved":
+                    existing_reason = str(bullet_obj.get("improvement_reason") or "").strip()
+                    metric_reason = (
+                        "Ungrounded metrics were marked as estimates because they were absent "
+                        "from the source resume and JD."
+                    )
+                    bullet_obj["improvement_reason"] = (
+                        f"{existing_reason} {metric_reason}".strip()
+                        if existing_reason else metric_reason
+                    )
+                _append_grounding_warning(
+                    result,
+                    "metrics",
+                    f"Marked ungrounded metrics in {collection_key} as estimates.",
+                    ["ungrounded metric claim"],
+                )
+                logger.warning(
+                    f"Marked ungrounded metrics in {collection_key}: {flagged_metrics}"
+                )
+
+    return result
 
 
 def _summary_clean_text(value: str) -> str:
@@ -711,6 +1436,12 @@ class OptimizeRequest(BaseModel):
     job_title: Optional[str] = ""
 
 
+class AnalyseRequest(BaseModel):
+    resume_text: str
+    job_description: Optional[str] = ""
+    job_title: Optional[str] = ""
+
+
 class ProfessionalResumePdfRequest(BaseModel):
     name: Optional[str] = ""
     email: Optional[str] = ""
@@ -757,6 +1488,320 @@ async def generate_professional_resume_pdf(
     )
 
 
+OPTIMIZER_ML_MARKERS = [
+    "tensorflow", "pytorch", "scikit", "sklearn", "keras",
+    "machine learning", "neural network", "deep learning",
+    "model training", "model deployment", "feature engineering",
+    "data pipeline", "mlops", "xgboost", "lightgbm",
+    "natural language processing", "computer vision",
+    "transformers", "bert", "llm", "reinforcement learning",
+]
+
+OPTIMIZER_IGNORED_TECH_TERMS = {
+    "accelerated", "achieved", "architected", "automated", "built",
+    "configured", "constructed", "delivered", "deployed", "designed",
+    "developed", "engineered", "established", "evaluated",
+    "implemented", "integrated", "launched", "managed", "migrated",
+    "optimized", "orchestrated", "reconstructed", "reduced",
+    "spearheaded", "streamlined", "trained", "using", "with",
+    "machine", "learning", "model", "deployment", "feature",
+    "engineering", "data", "pipeline", "natural", "language",
+    "processing", "computer", "vision", "neural", "network",
+    "deep", "reinforcement",
+}
+
+OPTIMIZER_UNSAFE_SCALE_PATTERNS = [
+    r"100,000\+",
+    r"1,000\+\s+daily\s+users",
+    r"99\.9%\s+uptime",
+    r"10,000\+\s+concurrent\s+users",
+]
+
+
+def _optimized_text_for_ats(result: dict) -> str:
+    if not isinstance(result, dict):
+        return ""
+
+    pieces: list[str] = [str(result.get("optimized_summary", "") or "")]
+
+    for collection_key, text_key in (("improved_bullets", "improved"), ("new_bullets", "text")):
+        for bullet_obj in result.get(collection_key) or []:
+            if isinstance(bullet_obj, dict):
+                pieces.append(str(bullet_obj.get(text_key, "") or ""))
+            elif bullet_obj:
+                pieces.append(str(bullet_obj))
+
+    pieces.extend(_flatten_skills(result.get("optimized_skills")))
+    pieces.extend(_flatten_skills(result.get("added_keywords")))
+    return " ".join(piece for piece in pieces if piece)
+
+
+def _resume_number_audit_pieces(result: dict) -> list[str]:
+    if not isinstance(result, dict):
+        return []
+
+    pieces: list[str] = [str(result.get("optimized_summary", "") or "")]
+    for collection_key in ("improved_bullets", "new_bullets"):
+        for bullet_obj in result.get(collection_key) or []:
+            if isinstance(bullet_obj, dict):
+                for key, value in bullet_obj.items():
+                    if collection_key == "improved_bullets" and key == "original":
+                        continue
+                    pieces.extend(_flatten_skills(value))
+            elif bullet_obj:
+                pieces.append(str(bullet_obj))
+    for key in (
+        "optimized_skills",
+        "skills_to_highlight",
+        "added_keywords",
+        "missing_keywords",
+        "improvement_explanation",
+        "ats_tips",
+        "overall_improvement",
+    ):
+        pieces.extend(_flatten_skills(result.get(key)))
+    return [piece for piece in pieces if piece]
+
+
+def _stamp_ats_scores(result: dict, resume_text: str, job_description: str) -> tuple[int, int]:
+    ats_before = count_kw_coverage(resume_text, job_description)
+    ats_after = count_kw_coverage(_optimized_text_for_ats(result), job_description)
+    result["ats_before"] = ats_before
+    result["ats_after"] = ats_after
+    result["ats_regressed"] = ats_after < ats_before
+    return ats_before, ats_after
+
+
+def _apply_optimizer_safety_filters(
+    result: dict,
+    resume_text: str,
+    job_description: str,
+    job_title: str = "",
+    user_id: str = "",
+) -> dict:
+    result = _validate_against_source(result, resume_text, job_description)
+
+    # If the JD requires >= 3 ML skills and the original resume has 0,
+    # we cannot optimize without fabrication. Block and flag.
+    jd_lower = job_description.lower()
+    original_lower = resume_text.lower()
+    jd_ml_hits = sum(1 for kw in OPTIMIZER_ML_MARKERS if kw in jd_lower)
+    resume_ml_hits = sum(1 for kw in OPTIMIZER_ML_MARKERS if kw in original_lower)
+
+    if jd_ml_hits >= 3 and resume_ml_hits == 0:
+        result["insufficient_data"] = True
+        result["domain_mismatch"] = True
+        result["flag_reason"] = (
+            f"Domain mismatch: JD requires {jd_ml_hits} ML skills, "
+            f"original resume has 0. Output will contain fabricated ML "
+            f"credentials that cannot be defended in interviews."
+        )
+        logger.warning(
+            f"Domain mismatch for user {user_id}: "
+            f"jd_ml_hits={jd_ml_hits}, resume_ml_hits={resume_ml_hits}"
+        )
+
+    result.setdefault("insufficient_data", False)
+    result.setdefault("domain_mismatch", False)
+    result.setdefault("is_suspicious", False)
+
+    # Log for debugging - KEEP THIS LINE permanently
+    logger.info(
+        f"Optimizer flags for user {user_id}: "
+        f"insufficient_data={result.get('insufficient_data')}, "
+        f"domain_mismatch={result.get('domain_mismatch')}, "
+        f"flag_reason={result.get('flag_reason', '')[:120]}"
+    )
+
+    # Skills absent from the source but present in the JD can stay only as
+    # defensible gap-fill. Skills absent from both are treated as fabricated.
+    fabricated_skills = []
+
+    for bullet_obj in result.get("improved_bullets") or []:
+        if not isinstance(bullet_obj, dict):
+            continue
+        bullet_text = str(bullet_obj.get("improved", "") or "")
+        tech_terms = re.findall(r'\b[A-Z][a-zA-Z0-9+#.]{2,}\b', bullet_text)
+        for term in tech_terms:
+            t = term.lower().strip("*")
+            if len(t) < 3 or t in OPTIMIZER_IGNORED_TECH_TERMS:
+                continue
+            if t not in original_lower and t not in jd_lower:
+                fabricated_skills.append(term)
+
+    for bullet_obj in result.get("new_bullets") or []:
+        if not isinstance(bullet_obj, dict):
+            continue
+        bullet_text = str(bullet_obj.get("text", "") or "")
+        tech_terms = re.findall(r'\b[A-Z][a-zA-Z0-9+#.]{2,}\b', bullet_text)
+        for term in tech_terms:
+            t = term.lower().strip("*")
+            if len(t) < 3 or t in OPTIMIZER_IGNORED_TECH_TERMS:
+                continue
+            if t not in original_lower and t not in jd_lower:
+                fabricated_skills.append(term)
+
+    if result.get("domain_mismatch"):
+        ml_display_names = {
+            "tensorflow": "TensorFlow",
+            "pytorch": "PyTorch",
+            "scikit": "Scikit-learn",
+            "sklearn": "Scikit-learn",
+            "keras": "Keras",
+            "machine learning": "Machine Learning",
+            "neural network": "Neural Network",
+            "deep learning": "Deep Learning",
+            "model training": "Model Training",
+            "model deployment": "Model Deployment",
+            "feature engineering": "Feature Engineering",
+            "data pipeline": "Data Pipeline",
+            "mlops": "MLOps",
+            "xgboost": "XGBoost",
+            "lightgbm": "LightGBM",
+            "natural language processing": "Natural Language Processing",
+            "computer vision": "Computer Vision",
+            "transformers": "Transformers",
+            "bert": "BERT",
+            "llm": "LLM",
+            "reinforcement learning": "Reinforcement Learning",
+        }
+        fabricated_skills.extend([
+            ml_display_names.get(kw, kw)
+            for kw in OPTIMIZER_ML_MARKERS
+            if kw in jd_lower and kw not in original_lower
+        ])
+
+    fabricated_unique = list(dict.fromkeys(fabricated_skills))[:8]
+
+    if fabricated_unique:
+        result["is_suspicious"] = True
+        result["fabricated_skills"] = fabricated_unique
+        existing_reason = result.get("flag_reason") or ""
+        result["flag_reason"] = (
+            f"Fabricated skills not in original resume: "
+            f"{', '.join(fabricated_unique)}. "
+            + existing_reason
+        ).strip()
+        logger.info(
+            f"Hallucination guard fired for user {user_id}: "
+            f"{fabricated_unique}"
+        )
+
+        fabricated_lower = [term.lower() for term in fabricated_unique]
+        for bullet_obj in result.get("improved_bullets") or []:
+            if not isinstance(bullet_obj, dict):
+                continue
+            bullet_text = str(bullet_obj.get("improved", ""))
+            if any(term in bullet_text.lower() for term in fabricated_lower):
+                bullet_obj["improved"] = str(bullet_obj.get("original") or "")
+                bullet_obj["keywords_added"] = []
+                bullet_obj["improvement_reason"] = (
+                    "Kept original bullet because the generated rewrite introduced skills absent from the original resume."
+                )
+
+        result["new_bullets"] = [
+            bullet_obj for bullet_obj in result.get("new_bullets") or []
+            if isinstance(bullet_obj, dict)
+            and not any(term in str(bullet_obj.get("text", "")).lower() for term in fabricated_lower)
+        ]
+
+    no_employment_history = not re.search(
+        r"\b(intern|internship|employment|work experience|professional experience|"
+        r"software engineer|developer|engineer at|developer at|analyst|consultant|freelance|"
+        r"\d+\+?\s+years?\s+(?:of\s+)?experience)\b",
+        original_lower,
+    )
+    if no_employment_history:
+        unsafe_scale_hits = []
+        for bullet_obj in result.get("improved_bullets") or []:
+            if not isinstance(bullet_obj, dict):
+                continue
+            bullet_text = str(bullet_obj.get("improved", ""))
+            if any(re.search(pattern, bullet_text, re.IGNORECASE) for pattern in OPTIMIZER_UNSAFE_SCALE_PATTERNS):
+                unsafe_scale_hits.append(bullet_text)
+                bullet_obj["improved"] = str(bullet_obj.get("original") or "")
+                bullet_obj["keywords_added"] = []
+                bullet_obj["improvement_reason"] = (
+                    "Kept original bullet because the generated rewrite used impossible scale for a student/no-employment profile."
+                )
+
+        safe_new_bullets = []
+        for bullet_obj in result.get("new_bullets") or []:
+            if not isinstance(bullet_obj, dict):
+                continue
+            bullet_text = str(bullet_obj.get("text", ""))
+            if any(re.search(pattern, bullet_text, re.IGNORECASE) for pattern in OPTIMIZER_UNSAFE_SCALE_PATTERNS):
+                unsafe_scale_hits.append(bullet_text)
+                continue
+            safe_new_bullets.append(bullet_obj)
+        result["new_bullets"] = safe_new_bullets
+
+        if unsafe_scale_hits:
+            result["is_suspicious"] = True
+            existing_reason = result.get("flag_reason") or ""
+            result["flag_reason"] = (
+                "Removed impossible scale claims for a student/no-employment profile. "
+                + existing_reason
+            ).strip()
+
+    result["optimized_summary"] = generate_structured_summary(
+        result,
+        resume_text,
+        job_title or "",
+        job_description,
+    )
+    result = _enforce_source_number_grounding(result, resume_text, user_id)
+    return result
+
+
+def _ats_regression_retry_addendum(ats_before: int, ats_after: int) -> str:
+    gap = max(0, ats_before - ats_after)
+    return (
+        "\n\nATS REGRESSION RETRY:\n"
+        f"The prior attempt under-covered JD keywords and scored {ats_after}, "
+        f"while the original resume scored {ats_before}. Close the {gap}-point gap.\n"
+        "- Regenerate the same JSON structure.\n"
+        "- Use RULE 7 to add genuine, defensible JD gap-fill bullets and skills.\n"
+        "- Copy missing JD technical phrases verbatim when they are defensible.\n"
+        "- Do not reintroduce anything ungrounded or fabricated.\n"
+        "- The revised ats keyword coverage must be at least the original resume.\n"
+    )
+
+
+async def _generate_optimizer_attempt(
+    system: str,
+    user_msg: str,
+    resume_text: str,
+    job_description: str,
+    job_title: str,
+    user_id: str,
+    retry_addendum: str = "",
+) -> tuple[dict, int, int]:
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": f"{user_msg}{retry_addendum}"},
+    ]
+    logger.info(
+        "Optimizer model payload for user %s:\n%s",
+        user_id,
+        json.dumps(messages, ensure_ascii=False, indent=2),
+    )
+    text = await call_groq(messages)
+    result = _extract_json(text)
+    if not isinstance(result, dict):
+        raise ValueError("Optimizer response was not a JSON object.")
+
+    result = _apply_optimizer_safety_filters(
+        result,
+        resume_text,
+        job_description,
+        job_title,
+        user_id,
+    )
+    ats_before, ats_after = _stamp_ats_scores(result, resume_text, job_description)
+    return result, ats_before, ats_after
+
+
 @router.post("/")
 async def optimize_resume(body: OptimizeRequest, user=Depends(get_authenticated_user)):
     if not body.resume_text.strip() or not body.job_description.strip():
@@ -767,8 +1812,26 @@ async def optimize_resume(body: OptimizeRequest, user=Depends(get_authenticated_
         "Your ONLY job is to maximize keyword density and ATS score. "
         "You inject EVERY technical keyword from the job description "
         "into the resume. You rewrite EVERY bullet point to include "
-        "job keywords plus quantified metrics. You respond ONLY in "
-        "valid JSON with no markdown, no code fences, no extra text."
+        "job keywords plus source-grounded metrics only. You respond ONLY in "
+        "valid JSON with no markdown, no code fences, no extra text.\n\n"
+        "NUMBER GROUNDING - NON-NEGOTIABLE:\n"
+        "Never introduce a number, percentage, count, scale, duration, or "
+        "quantitative claim unless the same figure appears in the ORIGINAL "
+        "RESUME verbatim or as a direct paraphrase of that exact figure. "
+        "If a source bullet has no metric, improve clarity and impact without "
+        "adding a number to fill the gap.\n\n"
+        "REALITY AND SCALE - NON-NEGOTIABLE:\n"
+        "Treat every quantitative statement as source evidence, never as "
+        "a target to invent. Do not use any sample value, scale limit, or "
+        "job-description number as a resume claim. Preserve a source metric "
+        "only with its original unit and meaning.\n"
+        "For student and project-only profiles, prefer precise technical "
+        "wording over unsupported claims of business impact or scale.\n"
+        "If the resume has no ML experience and JD requires ML:\n"
+        "  Set insufficient_data: true immediately.\n"
+        "  Do NOT generate TensorFlow/PyTorch bullets.\n"
+        "  Do NOT generate model training accuracy claims.\n"
+        "  Return flag_reason: 'domain_mismatch: no ML in original resume'\n"
     )
 
     user_msg = (
@@ -788,6 +1851,12 @@ async def optimize_resume(body: OptimizeRequest, user=Depends(get_authenticated_
         "- Never invent job titles, companies, or degrees not in original\n"
         "- Never add experience at companies not mentioned\n"
         "- Only enhance what exists — never fabricate what doesn't\n"
+        "- Never introduce a number, percentage, count, scale, duration,\n"
+        "  or quantitative claim unless the same figure appears in the\n"
+        "  ORIGINAL RESUME verbatim or as a direct paraphrase of that\n"
+        "  exact source figure\n"
+        "- If a bullet has no source metric, improve wording without\n"
+        "  inventing a number to fill the gap\n"
         "- If original has 2 experience entries → output has exactly 2\n"
         "- If original has 3 project entries → output has exactly 3\n"
         "- Do NOT merge, split, or reorder existing entries\n\n"
@@ -798,15 +1867,12 @@ async def optimize_resume(body: OptimizeRequest, user=Depends(get_authenticated_
         "- Never fabricate unrealistic achievements\n"
         "- Never claim revenue or business impact unless explicitly\n"
         "  stated in the original resume\n"
-        "- Never exceed realistic scale for experience level:\n"
-        "    Fresher/student : 100 – 5K users max\n"
-        "    1–2 years exp   : 1K – 50K users max\n"
-        "    3+ years exp    : larger numbers acceptable\n"
-        "- Never claim >60% improvement metrics for freshers\n"
-        "- If no metric exists → use system/output metrics:\n"
-        "    'processing 10K records per batch'\n"
-        "    'reducing query time from 800ms to 200ms'\n"
-        "    'achieving 89% accuracy on validation set'\n"
+        "- Do not generate numerical scale limits, quotas, or improvement\n"
+        "  percentages for any experience level\n"
+        "- If no metric exists in the source bullet, do NOT add any\n"
+        "  number, percentage, count, duration, or scale claim\n"
+        "- Never borrow numeric examples from this prompt or from the JD;\n"
+        "  numeric claims must come from the ORIGINAL RESUME only\n"
         "- Conservative + specific > impressive + vague\n"
         "- If resume lacks sufficient data to produce quality output:\n"
         "  set insufficient_data: true and return minimal safe output\n\n"
@@ -837,18 +1903,18 @@ async def optimize_resume(body: OptimizeRequest, user=Depends(get_authenticated_
         "- Never use generic fallback wording when a real percentage,\n"
         "  accuracy, latency, retrieval-time, or processing-time metric\n"
         "  exists in experience or projects\n"
-        "- Avoid weak counts such as 1000 data points; use only\n"
+        "- Avoid weak count claims; use only\n"
         "  source context already present in experience/projects\n"
-        "- Accuracy metrics must be percentages only, e.g. 92% accuracy\n"
-        "- Never combine accuracy with counts; never write accuracy to\n"
-        "  10K+ or accuracy by 500+ records\n"
+        "- Accuracy metrics must be source-stated percentages only\n"
+        "- Never combine accuracy with counts; never attach a count to\n"
+        "  an accuracy claim unless that exact relationship is in source\n"
         "- Count metrics may refer only to users, records, requests,\n"
         "  data points, transactions, patients, entries, or samples\n"
         "- Never apply counts to accuracy, model quality, scores, or\n"
         "  abstract improvements\n"
         "- Improvement metrics must name what improved, e.g. reduced\n"
-        "  processing time by 30% or improved query speed by 25%\n"
-        "- Never write 'improved by 30%' without a subject\n"
+        "  processing time by the source-stated percentage\n"
+        "- Never write 'improved by [number]%' without a subject\n"
         "- If no clear metric exists from the original resume, do not\n"
         "  invent a number; use the required no-metric fallback.\n"
         "- Never add a third tools sentence\n"
@@ -908,27 +1974,26 @@ async def optimize_resume(body: OptimizeRequest, user=Depends(get_authenticated_
         "════════════════════════════════════════════════════════\n"
         "Each bullet MUST follow this exact formula:\n"
         "[Power Verb] + [Specific Technology] + "
-        "[System Behavior] + [**Metric**]\n\n"
+        "[System Behavior] + [optional **source metric**]\n\n"
         "Hard constraints:\n"
         "- Maximum 25 words per bullet\n"
         "- All bullets in past tense\n"
+        "- Metrics are optional and allowed only when the same figure\n"
+        "  exists in the original source bullet or elsewhere in the\n"
+        "  original resume text\n"
+        "- If the source bullet has no metric, end with the system\n"
+        "  behavior or impact wording without any number\n"
         "- No vague phrases: 'scalable', 'robust', 'efficient',\n"
         "  'various', 'multiple', 'several', 'significant'\n"
         "- No filler words\n"
         "- No same keyword repeated more than twice across\n"
         "  the entire resume\n\n"
-        "GOOD examples:\n"
-        "'Engineered Java-based Hospital Management System using\n"
-        " JDBC and MySQL, reducing query latency by **30%** for\n"
-        " **500+ daily users**'\n"
-        "'Built React dashboard with JWT authentication, serving\n"
-        " **1K+ monthly users** with **<2s** average load time'\n"
-        "'Trained XGBoost classifier on **50K samples**, improving\n"
-        " accuracy from **71%** to **89%** on validation set'\n\n"
+        "When the source already contains a metric, preserve the exact\n"
+        "source figure and its unit; otherwise, omit the metric entirely.\n\n"
         "BAD examples — NEVER generate these:\n"
         "'Engineered a scalable system' ← vague, no specifics\n"
-        "'Achieved 95% accuracy' ← no context, sounds fabricated\n"
-        "'Increased business revenue by 20%' ← unverifiable,\n"
+        "'Achieved an unsupported accuracy claim' ← no context, sounds fabricated\n"
+        "'Increased business revenue by an unsupported percentage' ← unverifiable,\n"
         " destroys recruiter trust instantly\n"
         "'Worked on backend development' ← banned verb, no detail\n\n"
         
@@ -974,37 +2039,27 @@ async def optimize_resume(body: OptimizeRequest, user=Depends(get_authenticated_
         "════════════════════════════════════════════════════════\n"
         "RULE 8 — METRIC FORMATTING\n"
         "════════════════════════════════════════════════════════\n"
-        "Wrap ALL numbers and metrics in **double asterisks**:\n"
-        "  'reducing latency by **30%** for **500+ users**'\n"
-        "  'processing **10K+ records** per batch'\n"
-        "  'achieving **89%** accuracy on **50K** test samples'\n"
+        "Wrap ALL source-grounded numbers and metrics in **double asterisks**:\n"
+        "  Preserve **[exact source figure]** with its source unit and meaning\n"
+        "  If the source has no number, do not add one\n"
         "Apply to: improved_bullets, new_bullets, summary\n\n"
         
         "════════════════════════════════════════════════════════\n"
         "RULE 9 — ANTI-HALLUCINATION FILTER\n"
         "════════════════════════════════════════════════════════\n"
         "Before finalizing each bullet, ask internally:\n"
-        "  1. Is this metric realistic for this experience level?\n"
-        "  2. Is this technology actually in the original resume\n"
-        "     or explicitly in the JD?\n"
+        "  1. Does every number in this bullet appear in the original resume?\n"
+        "  2. Is this technology actually in the original resume?\n"
+        "     JD presence alone is not permission to claim it.\n"
         "  3. Would a real recruiter believe this?\n"
-        "If any answer is NO → rewrite or lower the claim\n"
+        "If any answer is NO → rewrite without the unsupported claim\n"
         "Never guess company-scale business impact\n\n"
         
         "════════════════════════════════════════════════════════\n"
-        "RULE 10 — MATCH SCORE (HONEST FORMULA)\n"
+        "RULE 10 — APPLICATION SCORING\n"
         "════════════════════════════════════════════════════════\n"
-        "score =\n"
-        "  (JD keywords in output / total JD keywords) * 40\n"
-        "  + (JD skills covered / total JD skills) * 30\n"
-        "  + (experience alignment score 0-20)\n"
-        "  + (bullet quality score 0-10)\n"
-        "  - (5 points per critical missing keyword)\n"
-        "Confidence level rules:\n"
-        "  score >= 75 → High\n"
-        "  score 50-74 → Medium\n"
-        "  score < 50  → Low\n"
-        "Do NOT inflate — an honest 65 is better than a fake 90\n\n"
+        "Do not return a match score estimate or confidence level. The\n"
+        "application calculates score presentation deterministically.\n\n"
         
         "════════════════════════════════════════════════════════\n"
         "OUTPUT FORMAT — STRICT JSON ONLY\n"
@@ -1026,17 +2081,17 @@ async def optimize_resume(body: OptimizeRequest, user=Depends(get_authenticated_
         '  "improved_bullets": [\n'
         '    {\n'
         '      "original": "exact original bullet text",\n'
-        '      "improved": "verb + technology + behavior + **metric**",\n'
+        '      "improved": "verb + technology + behavior + optional source metric",\n'
         '      "keywords_added": ["kw1", "kw2"],\n'
         '      "verb_upgrade": {"from": "worked", "to": "Engineered"},\n'
-        '      "metric_added": "**30%** reduction for **500+** users",\n'
+        '      "metric_added": "source metric preserved from original bullet, or empty string",\n'
         '      "improvement_reason": "plain English one sentence"\n'
         '    }\n'
         '  ],\n'
         
         '  "new_bullets": [\n'
         '    {\n'
-        '      "text": "verb + technology + **metric**",\n'
+        '      "text": "verb + technology + optional source metric",\n'
         '      "reason": "JD requires X, missing from original",\n'
         '      "jd_requirement": "exact JD phrase this addresses"\n'
         '    }\n'
@@ -1052,8 +2107,8 @@ async def optimize_resume(body: OptimizeRequest, user=Depends(get_authenticated_
         '      {"from": "helped", "to": "Implemented"}\n'
         '    ],\n'
         '    "metrics_added": [\n'
-        '      "**30%** latency reduction added to bullet 1",\n'
-        '      "**500+ users** scale added to bullet 2"\n'
+        '      "Source metric preserved in rewritten bullet",\n'
+        '      "No metric added where source bullet had none"\n'
         '    ],\n'
         '    "sections_improved": [\n'
         '      "Summary rewritten with JD-specific technologies",\n'
@@ -1067,38 +2122,48 @@ async def optimize_resume(body: OptimizeRequest, user=Depends(get_authenticated_
         '    "Mention CI/CD in experience bullet 3"\n'
         '  ],\n'
         
-        '  "match_score_estimate": 72,\n'
-        '  "confidence_level": "Medium",\n'
         '  "overall_improvement": "one specific sentence not generic"\n'
         "}"
     )
 
     try:
-        text = await call_groq([
-            {"role": "system", "content": system},
-            {"role": "user",   "content": user_msg}
-        ])
-        result = _extract_json(text)
-        result["optimized_summary"] = generate_structured_summary(
-            result,
+        result, ats_before, ats_after = await _generate_optimizer_attempt(
+            system,
+            user_msg,
             body.resume_text,
-            body.job_title or "",
             body.job_description,
+            body.job_title or "",
+            user["user_id"],
         )
 
-        # Compute real keyword-based ATS scores
-        ats_before = count_kw_coverage(body.resume_text, body.job_description)
+        if result.get("ats_regressed"):
+            first_attempt_after = ats_after
+            logger.warning(
+                f"ATS regression detected for user {user['user_id']}: "
+                f"before={ats_before}, after={ats_after}. Retrying once."
+            )
+            try:
+                result, ats_before, ats_after = await _generate_optimizer_attempt(
+                    system,
+                    user_msg,
+                    body.resume_text,
+                    body.job_description,
+                    body.job_title or "",
+                    user["user_id"],
+                    _ats_regression_retry_addendum(ats_before, ats_after),
+                )
+                result["ats_retry_attempted"] = True
+                result["ats_retry_previous_after"] = first_attempt_after
+            except Exception as retry_error:
+                result["ats_retry_attempted"] = True
+                result["ats_retry_failed"] = True
+                result["ats_retry_error"] = str(retry_error)[:200]
+                logger.warning(
+                    f"ATS regression retry failed for user {user['user_id']}: {retry_error}"
+                )
 
-        optimized_text = " ".join([
-            result.get("optimized_summary", ""),
-            " ".join(b.get("improved", "") for b in result.get("improved_bullets", [])),
-            " ".join(b.get("text", "") for b in result.get("new_bullets", [])),
-            " ".join(result.get("optimized_skills", [])),
-            " ".join(result.get("added_keywords", [])),
-        ])
-        ats_after = count_kw_coverage(optimized_text, body.job_description)
-        result["ats_before"] = ats_before
-        result["ats_after"] = ats_after
+        result["ats_regressed"] = ats_after < ats_before
+        result.setdefault("ats_retry_attempted", False)
 
         try:
             supabase.table("resume_optimizations").insert({
@@ -1115,8 +2180,18 @@ async def optimize_resume(body: OptimizeRequest, user=Depends(get_authenticated_
             "optimization": result,
             "ats_before": ats_before,
             "ats_after": ats_after,
+            "ats_regressed": result["ats_regressed"],
         }
 
+        # ── Domain mismatch threshold check ─────────────────────────────
+        # If the JD requires >= 3 ML skills and the original resume has 0,
+        # we cannot optimize without fabrication. Block and flag.
+        # Log for debugging — KEEP THIS LINE permanently
+        # ── Hallucination guard ───────────────────────────────────────────
+        # A skill can only appear in output if it existed in the original
+        # resume. JD presence alone is NOT enough — the candidate must
+        # actually have the skill. Skills in the JD but absent from the
+        # resume are the GAPS, not license to fabricate.
     except Exception as e:
         logger.error(f"Optimization error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -1130,4 +2205,173 @@ async def get_optimization_history(user=Depends(get_authenticated_user)):
         .order("created_at", desc=True) \
         .limit(10) \
         .execute()
+    return {"success": True, "history": result.data}
+
+
+@router.post("/analyse")
+async def analyse_resume(
+    body: AnalyseRequest,
+    user=Depends(get_authenticated_user)
+):
+    """
+    7-module resume intelligence analysis.
+    Runs: ATS scan, recruiter-lens score, bullet audit,
+    skill gap matrix, rejection diagnosis.
+    Does NOT rewrite or consume an optimization credit.
+    """
+    resume_text = body.resume_text or ""
+    job_description = body.job_description or ""
+    job_title = body.job_title or ""
+
+    if not resume_text.strip():
+        raise HTTPException(status_code=400, detail="Resume text is required.")
+
+    if len(resume_text) > 8000:
+        resume_text = resume_text[:8000]
+
+    has_job_description = bool(job_description.strip())
+    jd_section = (
+        f"JOB TITLE: {job_title}\n\n"
+        f"JOB DESCRIPTION:\n{job_description[:3000]}\n\n"
+        if has_job_description
+        else "JOB DESCRIPTION: Not provided. Run modules 1, 2, 3, 5 only. "
+             "Set module4_skill_gap fields to empty arrays. "
+             "Set keyword_coverage found=0 and missing=[].\n\n"
+    )
+
+    user_msg = (
+        f"{jd_section}"
+        f"RESUME:\n{resume_text}\n\n"
+        f"{ANALYST_OUTPUT_SCHEMA}"
+    )
+
+    try:
+        raw = await call_groq([
+            {"role": "system", "content": ANALYST_SYSTEM_PROMPT},
+            {"role": "user", "content": user_msg}
+        ])
+        analysis = _extract_json(raw)
+        if not isinstance(analysis, dict):
+            raise ValueError("Analysis response was not a JSON object.")
+
+        # Compute recruiter lens total from dimensions if model got it wrong
+        dims = analysis.get("module2_recruiter_lens", {}).get("dimensions", {})
+        if dims:
+            computed_total = 0
+            for v in dims.values():
+                if isinstance(v, dict):
+                    try:
+                        computed_total += int(float(v.get("score", 0) or 0))
+                    except Exception:
+                        computed_total += 0
+            analysis["module2_recruiter_lens"]["total"] = computed_total
+
+            # Set interpretation band
+            total = computed_total
+            if total >= 85:
+                interp = "Strong"
+            elif total >= 70:
+                interp = "Good"
+            elif total >= 55:
+                interp = "Average"
+            elif total >= 40:
+                interp = "Weak"
+            else:
+                interp = "Critical"
+            analysis["module2_recruiter_lens"]["interpretation"] = interp
+
+        # No-JD analyses must not surface skill-gap or keyword-missing content.
+        if not has_job_description:
+            analysis["module4_skill_gap"] = {
+                "critical": [],
+                "partial": [],
+                "strengths": [],
+                "irrelevant": [],
+            }
+            ats = analysis.setdefault("module1_ats", {})
+            keyword_coverage = ats.setdefault("keyword_coverage", {})
+            keyword_coverage["jd_keywords_checked"] = 0
+            keyword_coverage["found"] = 0
+            keyword_coverage["missing"] = []
+            keyword_coverage["buried"] = []
+
+        # Keep the rejection diagnosis contract stable for the frontend.
+        diagnoses = analysis.get("module5_rejection_diagnosis")
+        if not isinstance(diagnoses, list):
+            diagnoses = []
+        normalized_diagnoses = []
+        for index in range(3):
+            item = diagnoses[index] if index < len(diagnoses) and isinstance(diagnoses[index], dict) else {}
+            normalized_diagnoses.append({
+                "rank": index + 1,
+                "summary": str(item.get("summary", "")),
+                "evidence": str(item.get("evidence", "")),
+                "recruiter_thought": str(item.get("recruiter_thought", "")),
+                "fix": str(item.get("fix", "")),
+            })
+        analysis["module5_rejection_diagnosis"] = normalized_diagnoses
+
+        # Deterministic guard for obvious ML-role/domain mismatches.
+        role_context = f"{job_title}\n{job_description}".lower()
+        resume_context = resume_text.lower()
+        ml_jd = bool(re.search(
+            r"\b(machine learning|ml|ai|artificial intelligence|deep learning|"
+            r"pytorch|tensorflow|scikit-learn|sklearn|nlp|computer vision|mlops|llm)\b",
+            role_context,
+        ))
+        ml_resume = bool(re.search(
+            r"\b(machine learning|ml|ai|artificial intelligence|deep learning|pytorch|"
+            r"tensorflow|scikit-learn|sklearn|nlp|computer vision|mlops|llm|"
+            r"model training|data science)\b",
+            resume_context,
+        ))
+        if has_job_description and ml_jd and not ml_resume:
+            analysis["domain_mismatch"] = True
+            analysis["domain_mismatch_reason"] = (
+                analysis.get("domain_mismatch_reason")
+                or "The job description is ML/AI-focused, but the resume has no clear ML/AI skill, project, framework, or deployment signal."
+            )
+            analysis["optimizable"] = False
+            analysis["optimizable_reason"] = (
+                analysis.get("optimizable_reason")
+                or "Keyword optimization cannot fix a missing core ML/AI experience signal for this role."
+            )
+
+        # Save analysis to DB
+        try:
+            supabase.table("resume_analyses").insert({
+                "user_id":         user["user_id"],
+                "job_title":       job_title,
+                "job_description": job_description[:500],
+                "result_json":     analysis,
+            }).execute()
+        except Exception as db_err:
+            logger.warning(f"Analysis DB save failed: {db_err}")
+
+        return {
+            "success":           True,
+            "analysis":          analysis,
+            "recruiter_score":   analysis.get("module2_recruiter_lens", {}).get("total", 0),
+            "interpretation":    analysis.get("module2_recruiter_lens", {}).get("interpretation", ""),
+            "optimizable":       analysis.get("optimizable", True),
+            "optimizable_reason": analysis.get("optimizable_reason", ""),
+            "domain_mismatch":   analysis.get("domain_mismatch", False),
+            "next_action":       analysis.get("next_action", ""),
+        }
+
+    except Exception as e:
+        logger.error(f"Analysis error for user {user['user_id']}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/analyse/history")
+async def get_analysis_history(user=Depends(get_authenticated_user)):
+    result = (
+        supabase.table("resume_analyses")
+        .select("id, job_title, job_description, created_at, result_json")
+        .eq("user_id", user["user_id"])
+        .order("created_at", desc=True)
+        .limit(10)
+        .execute()
+    )
     return {"success": True, "history": result.data}

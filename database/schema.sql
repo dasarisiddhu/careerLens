@@ -59,11 +59,14 @@ CREATE TABLE public.resume_analyses (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id         UUID NOT NULL REFERENCES public.users(user_id) ON DELETE CASCADE,
     resume_file     TEXT,                    -- Supabase Storage path
-    github_url      TEXT NOT NULL,
-    linkedin_url    TEXT NOT NULL,
-    job_role        TEXT NOT NULL,
+    github_url      TEXT NOT NULL DEFAULT '',
+    linkedin_url    TEXT NOT NULL DEFAULT '',
+    job_role        TEXT NOT NULL DEFAULT '',
+    job_title       TEXT NOT NULL DEFAULT '',
+    job_description TEXT NOT NULL DEFAULT '',
     score           INTEGER CHECK (score >= 0 AND score <= 100),
     results_json    JSONB,                   -- Full Gemini response
+    result_json     JSONB NOT NULL DEFAULT '{}',
     status          TEXT DEFAULT 'pending',  -- pending | processing | done | failed
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()

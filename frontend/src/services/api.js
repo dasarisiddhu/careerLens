@@ -8,24 +8,24 @@ async function getToken() {
     const sessionToken = data?.session?.access_token
     if (sessionToken) return sessionToken
   } catch {
-    // fall back to storage lookup below
+    // fall through to an explicit refresh attempt below
   }
 
+  // getSession() failed or returned no token. Previously this fell back to
+  // reading a raw access_token straight out of localStorage with no check
+  // on whether it was still valid — meaning a genuinely expired token could
+  // get sent to the backend. Attempt a real refresh instead; if that also
+  // fails, return null so the backend correctly responds with 401 rather
+  // than us silently forwarding a stale token that only looks valid.
   try {
-    const projectRef = import.meta.env.VITE_SUPABASE_URL
-      ?.replace('https://', '')
-      ?.split('.')[0]
-    const raw = localStorage.getItem(`sb-${projectRef}-auth-token`)
-      || localStorage.getItem('supabase.auth.token')
-    if (!raw) return null
-    const parsed = JSON.parse(raw)
-    return parsed?.access_token
-      || parsed?.currentSession?.access_token
-      || parsed?.session?.access_token
-      || null
+    const { data, error } = await supabase.auth.refreshSession()
+    const refreshedToken = data?.session?.access_token
+    if (!error && refreshedToken) return refreshedToken
   } catch {
-    return null
+    // refresh failed — fall through to returning null below
   }
+
+  return null
 }
 
 async function request(method, url, data, isBlob = false) {
@@ -104,7 +104,6 @@ export const api = {
 
   // Optimizer
   optimizeResume: (body) => request('POST', '/api/optimizer/', body),
-  generateProfessionalResumePdf: (body) => request('POST', '/api/optimizer/professional-resume-pdf', body, true),
 
   // Job Match
   matchJobs: (body) => request('POST', '/api/job-match/', body),
