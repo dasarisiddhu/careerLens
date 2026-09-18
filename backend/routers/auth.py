@@ -84,7 +84,7 @@ async def signup(request: Request, response: Response, body: SignUpRequest):
         raise
     except Exception as e:
         logger.error(f"Signup error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Signup failed. Please try again.")
 
 
 @router.post("/login")
@@ -224,4 +224,5 @@ async def update_profile(body: UpdateProfileRequest, user=Depends(get_authentica
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Profile update error for user {user['user_id']}: {e}")
+        raise HTTPException(status_code=500, detail="Profile update failed. Please try again.")

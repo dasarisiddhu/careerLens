@@ -1821,41 +1821,36 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
     }
   }, [resumeText])
 
-  const generateStyledPDF = (resultData, meta = {}) => {
-    const stored = readStoredContact()
-    const fallbackSourceText = resumeText || prefillResume || resultData?.source_resume_text || resultData?.optimized_resume || ''
-    const fallbackContact = extractContactInfo(resumeText || prefillResume || fallbackSourceText)
-    const name  = meta.name  || fallbackContact.name || stored.name || 'Your Name'
-    const email = meta.email || fallbackContact.email || stored.email || ''
-    const phone = meta.phone || fallbackContact.phone || stored.phone || ''
-    const summary = normalizeGeneratedSummary(meta.summary || editedSummary)
-      || buildProfessionalSummary(resultData, fallbackSourceText, jobTitle)
-    const onePageContent = buildOnePageResumeContent(
-      {
-        ...resultData,
-        optimized_summary: summary,
-        githubProjects: includeGitHubProjects ? githubProjects : [],
-      },
-      fallbackSourceText,
-      jobTitle,
-    )
-    if (onePageContent) {
-      const html = buildProfessionalResumePrintHtml({
-        name,
-        email,
-        phone,
-        content: onePageContent,
-      })
-      const win = window.open('', '_blank')
-      if (win) {
-        win.document.write(html)
-        win.document.close()
-        win.focus()
-      }
-      return
-    }
+  const generateStyledPDF = async (resultData, meta = {}) => {
+  const stored = readStoredContact()
+  const fallbackSourceText = resumeText || prefillResume || resultData?.source_resume_text || resultData?.optimized_resume || ''
+  const fallbackContact = extractContactInfo(resumeText || prefillResume || fallbackSourceText)
+  const name  = meta.name  || fallbackContact.name || stored.name || 'Your Name'
+  const email = meta.email || fallbackContact.email || stored.email || ''
+  const phone = meta.phone || fallbackContact.phone || stored.phone || ''
+  const summary = normalizeGeneratedSummary(meta.summary || editedSummary)
+    || buildProfessionalSummary(resultData, fallbackSourceText, jobTitle)
+  const onePageContent = buildOnePageResumeContent(
+    { ...resultData, optimized_summary: summary, githubProjects: includeGitHubProjects ? githubProjects : [] },
+    fallbackSourceText,
+    jobTitle,
+  )
+  if (!onePageContent) return
 
-  }
+  const blob = await api.downloadProfessionalResumePdf({
+    name, email, phone,
+    job_title: jobTitle,
+    source_resume_text: fallbackSourceText,
+    content: onePageContent,
+  })
+
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `${(name || 'resume').toLowerCase().replace(/[^a-z0-9]+/g, '-')}.pdf`
+  link.click()
+  URL.revokeObjectURL(url)
+}
 
   const handleFile = async (file) => {
     if (!file || (file.type !== 'application/pdf' && !file.name?.toLowerCase().endsWith('.pdf'))) {
@@ -2086,9 +2081,13 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
     const displaySummary = normalizeGeneratedSummary(editedSummary)
       || buildProfessionalSummary(result, resumeText || result?.source_resume_text || '', jobTitle)
 
-    const handleStyledDownload = () => {
-      generateStyledPDF({ ...result, optimized_summary: displaySummary }, pdfMeta)
-      toast.success('Professional resume preview opened.')
+    const handleStyledDownload = async () => {
+      try {
+        await generateStyledPDF({ ...result, optimized_summary: displaySummary }, pdfMeta)
+        toast.success('Resume PDF downloaded.')
+      } catch (err) {
+        toast.error(err.message || 'Could not generate resume PDF.')
+      }
     }
     const toggleTip = (idx) => setCheckedTips((prev) => ({ ...prev, [idx]: !prev[idx] }))
 

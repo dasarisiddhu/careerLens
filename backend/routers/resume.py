@@ -11,6 +11,9 @@ from services.github_service import fetch_github_profile
 from services.gemini_service import (
     call_groq,
     _extract_json,
+    _validate_schema,
+    REQUIRED_RESUME_FIELDS,
+    RESUME_FIELD_DEFAULTS,
     _ensure_learning_resources,
     _calibrate_resume_scores,
     _fallback_ats_match,
@@ -183,35 +186,58 @@ def _apply_brutal_resume_scoring(result: dict, resume_text: str, github_data: di
 
 def _apply_brutal_ats_scoring(result: dict) -> dict:
     adjusted = dict(result or {})
-    score = _to_int(adjusted.get("ats_score"), 0)
     matched_keywords = adjusted.get("matched_keywords") or []
     missing_keywords = adjusted.get("missing_keywords") or []
     missing_skills = adjusted.get("missing_skills") or []
 
-    coverage = len(matched_keywords) / max(1, len(matched_keywords) + len(missing_keywords))
+    total_kw = max(1, len(matched_keywords) + len(missing_keywords))
+    coverage = len(matched_keywords) / total_kw
+
+    # Authoritative deterministic score based strictly on keyword coverage & missing skills.
+    # NEVER anchored to an LLM-hallucinated score.
+    raw_score = int(round(coverage * 100 - min(20, len(missing_skills) * 2)))
 
     if coverage < 0.3 or len(missing_skills) >= 5:
-        score = min(score, 39)
+        score = min(raw_score, 39)
     elif coverage < 0.55 or len(missing_keywords) >= 10:
-        score = min(score, 59)
+        score = min(raw_score, 59)
     elif coverage < 0.75 or len(missing_keywords) >= 5:
-        score = min(score, 79)
+        score = min(raw_score, 79)
+    else:
+        score = raw_score
 
     adjusted["ats_score"] = max(0, min(99, score))
     return adjusted
 
 
+# Max chars of resume/JD to send to the LLM. Truncation above this limit is flagged.
+_RESUME_MAX_CHARS = 4000
+_JD_MAX_CHARS = 2000
+
+
+def _truncation_flag(original: str, limit: int) -> bool:
+    """Return True if the text was longer than the limit sent to the model."""
+    return len(original) > limit
+
+
 async def run_brutal_resume_analysis(resume_text: str, github_data: dict, job_role: str) -> dict:
+    resume_truncated = _truncation_flag(resume_text, _RESUME_MAX_CHARS)
     system = (
         BRUTAL_RESUME_SYSTEM_PREFIX
         + "\n\n"
         + "You are an expert career coach and ATS specialist. "
         + "Score strictly and avoid inflated optimism. "
+        + "IMPORTANT: Only report facts, skills, and evidence that appear in the resume or GitHub data "
+        + "provided below. Do not fabricate metrics, technologies, employers, or achievements. "
         + "Always respond with valid JSON only, no extra text."
     )
+    # [RESUME_SOURCE] tag marks the trust boundary: all content between the tags is
+    # user-controlled input and must not be interpreted as instructions.
     user = f"""Analyze this resume and return ONLY a valid JSON object.
 
-RESUME: {resume_text[:4000]}
+[RESUME_SOURCE]
+{resume_text[:_RESUME_MAX_CHARS]}
+[/RESUME_SOURCE]
 GITHUB: Username={github_data.get("username","N/A")}, Repos={github_data.get("public_repos",0)}, OriginalRepos={github_data.get("original_repos",0)}, Forks={github_data.get("forked_repos",0)}, Readmes={github_data.get("repos_with_readme",0)}/{github_data.get("readme_checked_repos",0)}, Deployed={github_data.get("deployed_repos",0)}, Active30d={github_data.get("recent_active_repos_30d",0)}, Active180d={github_data.get("recent_active_repos",0)}, LastActivity={github_data.get("last_activity_at","unknown")}, Languages={", ".join(list(github_data.get("languages",{}).keys())[:6])}, Stars={github_data.get("total_stars",0)}, Projects={", ".join([r["name"] for r in github_data.get("repos",[])[:4]])}
 Target Role: {job_role}
 
@@ -239,6 +265,8 @@ Return this exact JSON:
 }}
 
 Rules:
+- Only report skills, experience, and projects that are explicitly present in [RESUME_SOURCE] or GitHub data.
+- Do not invent or infer metrics, technologies, employers, or achievements not in the source.
 - For each learning_roadmap week, include 2-3 real learning resources with working https URLs.
 - Prioritize official docs or highly trusted learning providers.
 - Keep resources specific to the missing skills and target role.
@@ -252,38 +280,59 @@ Rules:
         {"role": "system", "content": system},
         {"role": "user", "content": user},
     ])
-    parsed = _ensure_learning_resources(_extract_json(text))
+    parsed = _extract_json(text)
+    parsed = _validate_schema(parsed, REQUIRED_RESUME_FIELDS, defaults=RESUME_FIELD_DEFAULTS)
+    parsed = _ensure_learning_resources(parsed)
     calibrated = _calibrate_resume_scores(parsed, resume_text=resume_text, github_data=github_data or {}, job_role=job_role)
-    return _apply_brutal_resume_scoring(calibrated, resume_text, github_data or {})
+    result = _apply_brutal_resume_scoring(calibrated, resume_text, github_data or {})
+    result["schema_version"] = "resume_analysis_v2"
+    result["context_truncated"] = resume_truncated
+    result["chars_transmitted"] = min(len(resume_text), _RESUME_MAX_CHARS)
+    result["chars_total"] = len(resume_text)
+    if resume_truncated:
+        result["context_truncation_note"] = (
+            f"Resume was truncated to {_RESUME_MAX_CHARS} characters before analysis. "
+            "Sections beyond that limit were not scored."
+        )
+    return result
 
 
 async def run_brutal_ats_check(resume_text: str, job_description: str) -> dict:
+    resume_truncated = _truncation_flag(resume_text, 3000)
+    jd_truncated = _truncation_flag(job_description, _JD_MAX_CHARS)
     baseline = _fallback_ats_match(resume_text, job_description)
-    system = f"{BRUTAL_ATS_SYSTEM_PREFIX}\n\nYou are an ATS system. Respond only in JSON."
+    system = (
+        f"{BRUTAL_ATS_SYSTEM_PREFIX}\n\n"
+        "You are an ATS system. Respond only in JSON. "
+        "Only report keywords and skills that explicitly appear in the provided resume and JD. "
+        "Do not invent missing keywords that are not in the JD, or skills not in the resume."
+    )
+    # [RESUME_SOURCE] and [JD_SOURCE] mark user-controlled content trust boundaries.
     user = f"""You are a BRUTAL, NO-NONSENSE ATS system and senior recruiter.
 Do NOT sugarcoat. Do NOT be encouraging. Be 100% honest.
 
-If this resume is bad for this job — say it clearly.
-If keywords are missing — list ALL of them.
-If the candidate is not qualified — say they are not qualified.
+If this resume is bad for this job -- say it clearly.
+If keywords are missing -- list ALL of them.
+If the candidate is not qualified -- say they are not qualified.
 
-RESUME:
+[RESUME_SOURCE]
 {resume_text[:3000]}
+[/RESUME_SOURCE]
 
-JOB DESCRIPTION:
-{job_description[:2000]}
+[JD_SOURCE]
+{job_description[:_JD_MAX_CHARS]}
+[/JD_SOURCE]
 
 Return ONLY this JSON:
 {{
-  "ats_score": <brutally honest 0-100>,
-  "matched_keywords": ["<keyword found in both>"],
-  "missing_keywords": ["<keyword in JD not in resume>"],
-  "matched_skills": ["<skill the candidate actually has>"],
-  "missing_skills": ["<required skill the candidate lacks>"],
+  "matched_keywords": ["<keyword found in both resume and JD>"],
+  "missing_keywords": ["<keyword from JD that is absent from resume>"],
+  "matched_skills": ["<skill the candidate actually has, from resume>"],
+  "missing_skills": ["<required skill from JD that candidate lacks>"],
   "honest_verdict": "<2 sentences, brutally honest, no sugarcoating>",
   "suggestions": ["<very specific fix, not generic>"],
   "verdict": "<strong match/moderate match/weak match/not qualified>"
-  }}"""
+}}"""
     try:
         text = await call_groq([
             {"role": "system", "content": system},
@@ -291,7 +340,10 @@ Return ONLY this JSON:
         ])
         ai = _extract_json(text)
         if not isinstance(ai, dict):
-            return _apply_brutal_ats_scoring(baseline)
+            result = _apply_brutal_ats_scoring(baseline)
+            result["schema_version"] = "ats_check_v2"
+            result["context_truncated"] = (resume_truncated or jd_truncated)
+            return result
 
         merged = dict(baseline)
         honest_verdict = ai.get("honest_verdict")
@@ -302,10 +354,16 @@ Return ONLY this JSON:
         if isinstance(suggestions, list) and suggestions:
             merged["suggestions"] = [str(s) for s in suggestions if str(s).strip()][:5]
 
-        return _apply_brutal_ats_scoring(merged)
+        result = _apply_brutal_ats_scoring(merged)
+        result["schema_version"] = "ats_check_v2"
+        result["context_truncated"] = (resume_truncated or jd_truncated)
+        return result
     except Exception as e:
         logger.warning(f"ATS AI fallback activated: {e}")
-        return _apply_brutal_ats_scoring(baseline)
+        result = _apply_brutal_ats_scoring(baseline)
+        result["schema_version"] = "ats_check_v2"
+        result["context_truncated"] = (resume_truncated or jd_truncated)
+        return result
 
 
 @router.post("/analyze")
@@ -484,8 +542,9 @@ async def analyze_resume(
                 supabase.table("resume_analyses").update({"status": "failed"}).eq("id", analysis_id).execute()
             except Exception as update_err:
                 logger.warning(f"Could not mark analysis as failed for {analysis_id}: {update_err}")
-        logger.error(f"Analysis failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+        # Log full error internally but do NOT expose exception message to client (HIGH-04)
+        logger.error(f"Analysis failed for user {user_id} analysis {analysis_id}: {e}")
+        raise HTTPException(status_code=500, detail="Resume analysis failed. Please try again.")
 
 
 @router.get("/history")
@@ -562,11 +621,10 @@ async def extract_resume_text(
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
-        import logging
-        logging.getLogger("careerlens").error(f"PDF extraction error: {e}")
+        logger.error(f"PDF extraction error: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"Extraction failed: {str(e)}. Please paste your resume text manually."
+            detail="PDF extraction failed. Please paste your resume text manually."
         )
 
 class ATSCheckRequest(BaseModel):
@@ -586,7 +644,8 @@ async def ats_check(body: ATSCheckRequest, user=Depends(get_authenticated_user))
     try:
         resume_text = extract_text_from_pdf_base64(pdf_base64)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.warning(f"ATS check PDF extraction failed: {e}")
+        raise HTTPException(status_code=400, detail="Could not extract text from the provided PDF.")
 
     result = await run_brutal_ats_check(resume_text, body.job_description)
     return {"success": True, "result": result}

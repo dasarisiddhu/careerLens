@@ -215,14 +215,13 @@ def count_kw_coverage(text: str, jd: str) -> int:
 router = APIRouter()
 
 
-SUMMARY_FALLBACK_ROLE = "Software Engineer"
-SUMMARY_FALLBACK_SUMMARY = (
-    "Machine Learning Engineer specializing in scalable AI systems and data pipelines. "
-    "Focused on building efficient backend solutions."
-)
-SUMMARY_NO_METRIC_SENTENCE = (
-    "Focused on building efficient backend solutions."
-)
+# Sentinel returned when the optimizer's number guard fires but cannot fall
+# back to the original text (e.g. original was also ungrounded).
+# The UI must detect this sentinel and prompt the user to add evidence.
+SUMMARY_NOT_SUPPORTED = "ADD_EVIDENCE_REQUIRED"
+# SUMMARY_FALLBACK_SUMMARY is intentionally not defined here.
+# The fallback path now returns the original user summary (or the sentinel)
+# rather than fabricating an ML Engineer identity.
 SUMMARY_BUZZWORD_RE = re.compile(
     r"\b(production-grade|applied engineering work|reliable deployment practices|"
     r"practical, measurable|maintainable solutions|delivery quality|"
@@ -649,13 +648,25 @@ def _enforce_source_number_grounding(result: dict, resume_text: str, user_id: st
     result["new_bullets"] = safe_new_bullets
 
     summary = str(result.get("optimized_summary", "") or "")
-    if _find_ungrounded_numbers(summary, source_text):
+    if summary and _find_ungrounded_numbers(summary, source_text):
         logger.warning(
-            "Optimizer number guard replaced optimized_summary for user %s: %s",
+            "Optimizer number guard triggered for optimized_summary, user %s: ungrounded numbers=%s",
             user_id,
             _find_ungrounded_numbers(summary, source_text),
         )
-        result["optimized_summary"] = SUMMARY_FALLBACK_SUMMARY
+        # Use the original user-provided summary text if available, to avoid fabrication.
+        # If it also contains ungrounded numbers, emit the ADD_EVIDENCE_REQUIRED sentinel.
+        original_summary = str(result.get("original_summary", "") or source_text[:120] or "")
+        original_ungrounded = _find_ungrounded_numbers(original_summary, source_text) if original_summary else True
+        if original_summary and not original_ungrounded:
+            result["optimized_summary"] = original_summary
+        else:
+            result["optimized_summary"] = SUMMARY_NOT_SUPPORTED
+            result["summary_grounding_note"] = (
+                "The AI-generated summary contained metrics that could not be verified against your resume. "
+                "Please add quantified achievements (numbers, percentages, scale) to your resume "
+                "to generate a grounded summary."
+            )
         guard_applied = True
 
     for key in (
@@ -855,7 +866,7 @@ def _summary_role(raw_role: str = "") -> str:
         return "Cloud Engineer"
     if "software" in lowered:
         return "Software Engineer"
-    return cleaned.title() if cleaned else SUMMARY_FALLBACK_ROLE
+    return cleaned.title() if cleaned else "Software Engineer"
 
 
 def _summary_skill_items(value) -> list[str]:
@@ -1421,11 +1432,29 @@ def generate_structured_summary(
     job_title: str = "",
     job_description: str = "",
 ) -> str:
+    """
+    Build a grounded, evidence-based 2-sentence summary.
+
+    Rule: NEVER introduce a persona (e.g. "Machine Learning Engineer") that is
+    not supported by resume_text or job_title. The role is derived from the
+    user's own data, not hardcoded.
+
+    Returns ADD_EVIDENCE_REQUIRED when there are no grounded metrics to anchor
+    the second sentence.
+    """
     metric_record = _summary_select_metric(result, resume_text)
     if not metric_record:
-        return SUMMARY_FALLBACK_SUMMARY
+        return SUMMARY_NOT_SUPPORTED
 
-    first_sentence = "Machine Learning Engineer specializing in scalable AI systems and data pipelines."
+    # Derive role from user-supplied data only.
+    role = _summary_role(job_title) if job_title else _summary_role("")
+    top_skills = _summary_top_skills(result, resume_text)
+    if top_skills:
+        skills_phrase = _summary_join_skills(top_skills[:3])
+        first_sentence = f"{role} specializing in {skills_phrase}."
+    else:
+        first_sentence = f"{role} with a background in software engineering."
+
     impact_sentence = _summary_metric_sentence(metric_record)
     return " ".join([first_sentence, impact_sentence])
 
@@ -1786,7 +1815,7 @@ async def _generate_optimizer_attempt(
         user_id,
         json.dumps(messages, ensure_ascii=False, indent=2),
     )
-    text = await call_groq(messages)
+    text = await call_groq(messages, json_mode=True)
     result = _extract_json(text)
     if not isinstance(result, dict):
         raise ValueError("Optimizer response was not a JSON object.")
@@ -2249,7 +2278,7 @@ async def analyse_resume(
         raw = await call_groq([
             {"role": "system", "content": ANALYST_SYSTEM_PROMPT},
             {"role": "user", "content": user_msg}
-        ])
+        ], json_mode=True)
         analysis = _extract_json(raw)
         if not isinstance(analysis, dict):
             raise ValueError("Analysis response was not a JSON object.")

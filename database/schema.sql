@@ -229,15 +229,13 @@ CREATE POLICY "Users can view their own payments"
     USING (auth.uid() = user_id);
 
 -- ---------- github_cache ----------
--- Allow all authenticated users to read cache (shared)
+-- Allow all authenticated users to read cache (shared).
+-- The service-role client bypasses RLS entirely at the connection level;
+-- no policy is needed or useful for it. Writing is therefore already
+-- restricted to the backend's service-role client without a policy.
 CREATE POLICY "Authenticated users can read github cache"
     ON public.github_cache FOR SELECT
     USING (auth.role() = 'authenticated');
-
--- Only service role can insert/update cache
-CREATE POLICY "Service role can manage github cache"
-    ON public.github_cache FOR ALL
-    USING (auth.role() = 'service_role');
 
 -- ============================================================
 -- FUNCTION: Auto-create user profile on signup
@@ -373,3 +371,169 @@ CREATE INDEX IF NOT EXISTS idx_users_plan_type ON public.users(plan_type);
 CREATE INDEX IF NOT EXISTS idx_resume_analyses_status ON public.resume_analyses(status);
 CREATE INDEX IF NOT EXISTS idx_interview_sessions_status ON public.interview_sessions(status);
 CREATE INDEX IF NOT EXISTS idx_chatbot_messages_created ON public.chatbot_messages(created_at DESC);
+
+-- Partial unique index: one CareerLens account per github_url.
+-- NULL is allowed (user has no GitHub linked yet); only non-null values must be unique.
+-- Run this AFTER checking for duplicate non-null github_url rows:
+--   SELECT github_url, COUNT(*) FROM public.users WHERE github_url IS NOT NULL
+--   GROUP BY github_url HAVING COUNT(*) > 1;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_github_url_unique
+    ON public.users(github_url)
+    WHERE github_url IS NOT NULL;
+
+-- ============================================================
+-- TABLE: github_identities
+-- Enforces durable GitHub ownership at the database level.
+-- UNIQUE(careerlens_user_id) → one GitHub account per CareerLens user (Invariant B)
+-- UNIQUE(github_user_id)     → one CareerLens user per GitHub account (Invariant A)
+-- github_user_id is the numeric GitHub account ID stored as TEXT
+-- to avoid JavaScript integer-precision issues with large IDs.
+-- The mutable github_login (username) is stored only for display;
+-- it is NEVER used as an identity key.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS public.github_identities (
+    id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    careerlens_user_id  UUID NOT NULL UNIQUE REFERENCES public.users(user_id) ON DELETE CASCADE,
+    github_user_id      TEXT NOT NULL UNIQUE,   -- GitHub numeric ID (immutable, as TEXT)
+    github_login        TEXT NOT NULL,           -- mutable username (display only)
+    avatar_url          TEXT,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TRIGGER github_identities_updated_at
+    BEFORE UPDATE ON public.github_identities
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+ALTER TABLE public.github_identities ENABLE ROW LEVEL SECURITY;
+
+-- Users may only read their own identity record.
+-- The service-role backend client bypasses RLS to write.
+CREATE POLICY "Users view own github identity"
+    ON public.github_identities FOR SELECT
+    USING (auth.uid() = careerlens_user_id);
+
+CREATE INDEX IF NOT EXISTS idx_github_identities_user_id
+    ON public.github_identities(careerlens_user_id);
+CREATE INDEX IF NOT EXISTS idx_github_identities_github_user_id
+    ON public.github_identities(github_user_id);
+
+-- ============================================================
+-- TABLE: resume_versions
+-- Tracks score history per user for the progress chart.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS public.resume_versions (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id         UUID NOT NULL REFERENCES public.users(user_id) ON DELETE CASCADE,
+    version_number  INTEGER NOT NULL DEFAULT 1,
+    resume_score    INTEGER CHECK (resume_score >= 0 AND resume_score <= 100),
+    ats_score       INTEGER CHECK (ats_score >= 0 AND ats_score <= 100),
+    job_role        TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.resume_versions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users view own resume versions"
+    ON public.resume_versions FOR SELECT
+    USING (auth.uid() = user_id);
+
+CREATE POLICY "Users insert own resume versions"
+    ON public.resume_versions FOR INSERT
+    WITH CHECK (auth.uid() = user_id);
+
+CREATE INDEX IF NOT EXISTS idx_resume_versions_user_id
+    ON public.resume_versions(user_id);
+
+-- ============================================================
+-- TABLE: community_posts, post_likes, post_comments
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS public.community_posts (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id         UUID NOT NULL REFERENCES public.users(user_id) ON DELETE CASCADE,
+    author_name     TEXT NOT NULL DEFAULT '',
+    -- author_email is intentionally NOT stored; use users table with RLS if needed.
+    post_type       TEXT NOT NULL DEFAULT 'blog',  -- project|job|funding|blog|hiring
+    title           TEXT NOT NULL,
+    content         TEXT NOT NULL,
+    demo_url        TEXT NOT NULL DEFAULT '',
+    github_url      TEXT NOT NULL DEFAULT '',
+    tags            TEXT[] NOT NULL DEFAULT '{}',
+    likes_count     INTEGER NOT NULL DEFAULT 0 CHECK (likes_count >= 0),
+    comments_count  INTEGER NOT NULL DEFAULT 0 CHECK (comments_count >= 0),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TRIGGER community_posts_updated_at
+    BEFORE UPDATE ON public.community_posts
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+ALTER TABLE public.community_posts ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Authenticated users can read posts"
+    ON public.community_posts FOR SELECT
+    USING (auth.role() = 'authenticated');
+
+CREATE POLICY "Users can create own posts"
+    ON public.community_posts FOR INSERT
+    WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete own posts"
+    ON public.community_posts FOR DELETE
+    USING (auth.uid() = user_id);
+
+CREATE INDEX IF NOT EXISTS idx_community_posts_user_id
+    ON public.community_posts(user_id);
+CREATE INDEX IF NOT EXISTS idx_community_posts_created_at
+    ON public.community_posts(created_at DESC);
+
+-- post_likes: UNIQUE(post_id, user_id) prevents race-condition duplicate likes.
+CREATE TABLE IF NOT EXISTS public.post_likes (
+    id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    post_id     UUID NOT NULL REFERENCES public.community_posts(id) ON DELETE CASCADE,
+    user_id     UUID NOT NULL REFERENCES public.users(user_id) ON DELETE CASCADE,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(post_id, user_id)  -- DB-level duplicate-like prevention
+);
+
+ALTER TABLE public.post_likes ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users view own likes"
+    ON public.post_likes FOR SELECT
+    USING (auth.uid() = user_id);
+
+CREATE POLICY "Users manage own likes"
+    ON public.post_likes FOR ALL
+    USING (auth.uid() = user_id)
+    WITH CHECK (auth.uid() = user_id);
+
+CREATE TABLE IF NOT EXISTS public.post_comments (
+    id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    post_id     UUID NOT NULL REFERENCES public.community_posts(id) ON DELETE CASCADE,
+    user_id     UUID NOT NULL REFERENCES public.users(user_id) ON DELETE CASCADE,
+    author_name TEXT NOT NULL DEFAULT '',
+    content     TEXT NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.post_comments ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Authenticated users can read comments"
+    ON public.post_comments FOR SELECT
+    USING (auth.role() = 'authenticated');
+
+CREATE POLICY "Users can insert own comments"
+    ON public.post_comments FOR INSERT
+    WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete own comments"
+    ON public.post_comments FOR DELETE
+    USING (auth.uid() = user_id);
+
+CREATE INDEX IF NOT EXISTS idx_post_comments_post_id
+    ON public.post_comments(post_id);
+

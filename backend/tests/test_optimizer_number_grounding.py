@@ -150,7 +150,7 @@ class OptimizerNumberGroundingTests(unittest.TestCase):
             "confidence_level": "Medium",
         }
 
-        async def fabricated_call(_messages):
+        async def fabricated_call(_messages, **_kwargs):
             return json.dumps(model_result)
 
         original_call = optimizer.call_groq

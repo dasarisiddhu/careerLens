@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 # ============================================================
-# CareerLens – AI Service (Groq API)
+# CareerLens -- AI Service (Groq API)
 # File: backend/services/gemini_service.py
 # Uses Groq's fast inference API with Llama models
 # ============================================================
@@ -246,31 +247,93 @@ def _calibrate_resume_scores(result: dict, resume_text: str, github_data: dict, 
     )
     score = _clamp(raw_score)
 
+    # -------------------------------------------------------
+    # ATS_READINESS: document-level characteristics only.
+    # Measures whether the resume is structurally ATS-parseable
+    # and keyword-dense. Does NOT depend on a specific JD.
+    # -------------------------------------------------------
     section_count = _count_resume_sections(resume_text)
     section_bonus = min(12, section_count * 2)
+    # Presence of quantified achievements is a format readiness signal.
+    has_numbers = bool(re.search(r"\d+[%+]?|\$\d+", str(resume_text or "")))
+    number_bonus = 5 if has_numbers else 0
+    # Short resume penalty (< 700 chars is almost certainly incomplete)
+    short_resume_penalty = 5 if len(str(resume_text or "")) < 700 else 0
+
+    ats_readiness_raw = (
+        30
+        + section_bonus
+        + number_bonus
+        + min(5, languages_count * 1.0)
+        - short_resume_penalty
+        - min(8, len(weaknesses) * 1.5)
+    )
+    ats_readiness_score = _clamp(ats_readiness_raw)
+
+    # -------------------------------------------------------
+    # JOB_MATCH: depends on keyword coverage against the JD.
+    # Only meaningful when a JD is supplied.
+    # -------------------------------------------------------
     keyword_penalty = min(20, len(top_keywords_missing) * 4)
-    ats_raw = (
+    job_match_raw = (
         24
         + (skill_match * 0.5)
-        + section_bonus
         - keyword_penalty
         - min(18, len(missing_skills) * 2.5)
     )
-    ats_score = _clamp(ats_raw)
+    job_match_score = _clamp(job_match_raw)
+
+    # -------------------------------------------------------
+    # ats_score: composite kept for backward compatibility.
+    # Weighted average: readiness 40% + job_match 60%
+    # (job_match is the dominant factor for actual placement).
+    # -------------------------------------------------------
+    ats_score = _clamp(ats_readiness_score * 0.4 + job_match_score * 0.6)
 
     calibrated["skill_match_percentage"] = skill_match
     calibrated["score"] = score
-    calibrated["ats_score"] = ats_score
+    calibrated["ats_readiness_score"] = ats_readiness_score
+    calibrated["job_match_score"] = job_match_score
+    calibrated["ats_score"] = ats_score  # backward-compat composite
     calibrated["grade"] = _grade_from_score(score)
     calibrated["job_readiness"] = _readiness_from_score(score)
-    calibrated["scoring_note"] = "Scores are strictly calibrated for realism based on skill match, role gaps, and evidence."
+    calibrated["scoring_version"] = "v2"  # increment when formula changes
+    calibrated["scoring_note"] = (
+        "Scores are strictly calibrated for realism. "
+        "ats_readiness_score reflects document format/completeness. "
+        "job_match_score reflects keyword coverage against this specific JD. "
+        "ats_score is a weighted composite of both (40% readiness / 60% match)."
+    )
     return calibrated
 
 
-async def call_groq(messages: list, temperature: float = 0.3) -> str:
+
+async def call_groq(
+    messages: list,
+    temperature: float = 0.3,
+    json_mode: bool = False,
+    reasoning_effort: str | None = None,
+) -> str:
     groq_api_key = settings.GROQ_API_KEY
     if not groq_api_key:
         raise ValueError("GROQ_API_KEY is not set in your .env file")
+
+    payload = {
+        "model": GROQ_MODEL,
+        "messages": messages,
+        "temperature": temperature,
+        "max_completion_tokens": 8192,
+    }
+    if json_mode:
+        payload["response_format"] = {"type": "json_object"}
+        # gpt-oss models spend completion tokens on hidden chain-of-thought
+        # before emitting visible content. JSON extraction/formatting tasks
+        # don't need deep reasoning, so default to "low" to leave headroom
+        # for the actual output unless the caller explicitly overrides it.
+        payload["reasoning_effort"] = reasoning_effort or "low"
+    elif reasoning_effort:
+        payload["reasoning_effort"] = reasoning_effort
+
     async with httpx.AsyncClient(timeout=60) as client:
         response = await client.post(
             GROQ_API_URL,
@@ -278,19 +341,14 @@ async def call_groq(messages: list, temperature: float = 0.3) -> str:
                 "Authorization": f"Bearer {groq_api_key}",
                 "Content-Type": "application/json",
             },
-            json={
-                "model": GROQ_MODEL,
-                "messages": messages,
-                "temperature": temperature,
-                "max_completion_tokens": 2048,
-            },
+            json=payload,
         )
         if response.status_code >= 400:
             err_detail = response.text
             try:
-                payload = response.json()
-                if isinstance(payload, dict):
-                    err = payload.get("error", payload)
+                error_payload = response.json()
+                if isinstance(error_payload, dict):
+                    err = error_payload.get("error", error_payload)
                     if isinstance(err, dict):
                         err_detail = err.get("message") or err.get("type") or response.text
                     else:
@@ -300,7 +358,31 @@ async def call_groq(messages: list, temperature: float = 0.3) -> str:
             raise ValueError(f"Groq API error ({response.status_code}): {err_detail}")
 
         data = response.json()
-        return data["choices"][0]["message"]["content"]
+        choice = data["choices"][0]
+        content = choice["message"]["content"]
+        finish_reason = choice.get("finish_reason")
+
+        if not content and finish_reason == "length":
+            reasoning_tokens = (
+                data.get("usage", {})
+                .get("completion_tokens_details", {})
+                .get("reasoning_tokens")
+            )
+            logger.error(
+                "Groq returned empty content: the model spent its entire "
+                "max_completion_tokens budget (%s) on hidden reasoning "
+                "(reasoning_tokens=%s) and had nothing left for visible output. "
+                "Lower reasoning_effort or raise max_completion_tokens.",
+                payload["max_completion_tokens"],
+                reasoning_tokens,
+            )
+            raise ValueError(
+                "Groq returned empty content because reasoning consumed the "
+                "entire token budget before any output was written. Try again "
+                "or reduce prompt complexity."
+            )
+
+        return content
 
 
 def _extract_json(text: str) -> dict:
@@ -343,15 +425,70 @@ def _extract_json(text: str) -> dict:
                 out.append(ch)
         return "".join(out)
 
+    original_text = text
     text = re.sub(r"```json|```", "", text).strip()
     text = _sanitize_json_text(text)
     try:
         return json.loads(text)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
+        logger.error(
+            "JSON parse failed (%s). Raw model output:\n%s",
+            str(e),
+            original_text[:4000],
+        )
         match = re.search(r"\{.*\}", text, re.DOTALL)
         if match:
-            return json.loads(_sanitize_json_text(match.group()))
-        raise ValueError(f"Could not parse JSON: {text[:300]}")
+            try:
+                return json.loads(_sanitize_json_text(match.group()))
+            except json.JSONDecodeError as e2:
+                logger.error("Fallback regex extraction also failed (%s).", str(e2))
+        raise ValueError(f"Could not parse JSON: {original_text[:300]}")
+
+
+REQUIRED_RESUME_FIELDS = {"score", "grade", "summary", "strengths", "weaknesses", "missing_skills", "ats_score"}
+RESUME_FIELD_DEFAULTS = {
+    "score": 50,
+    "grade": "C",
+    "summary": "Analysis completed.",
+    "strengths": [],
+    "weaknesses": [],
+    "missing_skills": [],
+    "ats_score": 50,
+    "skill_match_percentage": 50,
+    "suggested_projects": [],
+    "learning_roadmap": [],
+    "ats_tips": [],
+    "top_keywords_missing": [],
+}
+
+
+def _validate_schema(data: dict, required_fields: set[str], defaults: dict | None = None) -> dict:
+    """
+    Validates that a parsed JSON dictionary contains the required keys.
+    Fills in safe defaults for missing optional fields.
+    """
+    if not isinstance(data, dict):
+        raise ValueError("Parsed output is not a valid JSON dictionary.")
+
+    if defaults:
+        for key, val in defaults.items():
+            if key not in data or data[key] is None:
+                data[key] = val
+
+    missing = [f for f in required_fields if f not in data or data[f] is None]
+    if missing:
+        logger.warning("Schema validation warning: model output missing required fields: %s", missing)
+        for f in missing:
+            if f == "score" or f == "ats_score":
+                data[f] = 50
+            elif f == "grade":
+                data[f] = "C"
+            elif f == "summary":
+                data[f] = "Analysis completed."
+            elif f in ("strengths", "weaknesses", "missing_skills"):
+                data[f] = []
+
+    return data
 
 
 async def analyze_resume_with_gemini(resume_text, github_data, job_role):
@@ -393,10 +530,11 @@ Rules:
 - For each learning_roadmap week, include 2-3 real learning resources with working https URLs.
 - Prioritize official docs or highly trusted learning providers.
 - Keep resources specific to the missing skills and target role.
-- Be brutally honest: do not inflate score just for potential.
-- If there are critical role gaps, keep score conservative (typically 35-60)."""
-    text = await call_groq([{"role":"system","content":system},{"role":"user","content":user}])
-    parsed = _ensure_learning_resources(_extract_json(text))
+- Be brutally honest: do not inflate score just for potential."""
+    text = await call_groq([{"role":"system","content":system},{"role":"user","content":user}], json_mode=True)
+    parsed = _extract_json(text)
+    parsed = _validate_schema(parsed, REQUIRED_RESUME_FIELDS, defaults=RESUME_FIELD_DEFAULTS)
+    parsed = _ensure_learning_resources(parsed)
     return _calibrate_resume_scores(parsed, resume_text=resume_text, github_data=github_data or {}, job_role=job_role)
 
 
@@ -439,7 +577,7 @@ async def generate_interview_questions(
     system = (
         "You are a senior technical interviewer at a top tech company. "
         "You write brutally realistic interview questions. "
-        "Respond with a valid JSON array only — no markdown, no extra text."
+        "Respond with a valid JSON array only -- no markdown, no extra text."
     )
 
     user = f"""Generate exactly {count} interview questions for: {job_role}
@@ -453,18 +591,18 @@ CANDIDATE CONTEXT:
 - Projects: {", ".join(github_projects) if github_projects else "not specified"}
 - Variation seed: {variation_seed}
 
-QUESTION BREAKDOWN — you MUST follow this exactly:
+QUESTION BREAKDOWN -- you MUST follow this exactly:
 - {technical_count} questions with category "technical" (system design, concepts, architecture)
 - {behavioral_count} questions with category "behavioral" (STAR format, past experience)
 - {coding_count} questions with category "code_fix" OR "code_write" OR "debugging" OR "error_handling"
 
 CODING QUESTION RULES (mandatory for all coding categories):
-- "code_fix"       → Write a {code_lang} function with a REAL subtle bug (off-by-one, wrong logic, race condition, etc). The bug must not be obvious. Set code_snippet to the buggy code.
-- "code_write"     → Write a clear algorithmic problem statement. Set code_snippet to null.
-- "debugging"      → Write {code_lang} code with a RUNTIME or LOGIC error (null pointer, infinite loop, wrong output). Set code_snippet to the broken code.
-- "error_handling" → Write {code_lang} code that CRASHES on edge cases (empty input, division by zero, missing key). Set code_snippet to the fragile code.
+- "code_fix"       -> Write a {code_lang} function with a REAL subtle bug (off-by-one, wrong logic, race condition, etc). The bug must not be obvious. Set code_snippet to the buggy code.
+- "code_write"     -> Write a clear algorithmic problem statement. Set code_snippet to null.
+- "debugging"      -> Write {code_lang} code with a RUNTIME or LOGIC error (null pointer, infinite loop, wrong output). Set code_snippet to the broken code.
+- "error_handling" -> Write {code_lang} code that CRASHES on edge cases (empty input, division by zero, missing key). Set code_snippet to the fragile code.
 
-For code_snippet: write 8-18 lines of REALISTIC, PLAUSIBLE-LOOKING code — not toy examples. 
+For code_snippet: write 8-18 lines of REALISTIC, PLAUSIBLE-LOOKING code -- not toy examples. 
 The bug/issue must be genuinely subtle. Indent properly using \\n for newlines.
 
 SCORING CONTEXT (tell the evaluator what a good answer looks like):
@@ -538,7 +676,7 @@ Return ONLY this JSON array (exactly {count} items):
             expected_points = []
         expected_points = [str(p).strip() for p in expected_points if str(p).strip()][:4]
 
-        # Code fields — only for coding categories
+        # Code fields -- only for coding categories
         code_snippet = None
         language = None
         if category in coding_categories:
@@ -592,7 +730,7 @@ Return ONLY this JSON array (exactly {count} items):
 
 
 
-# Lookup table — maps platform names the AI commonly returns → their real URLs
+# Lookup table -- maps platform names the AI commonly returns -> their real URLs
 PLATFORM_URL_MAP: dict[str, str] = {
     "leetcode": "https://leetcode.com/",
     "neetcode": "https://neetcode.io/",
@@ -649,7 +787,7 @@ PLATFORM_URL_MAP: dict[str, str] = {
 def _resolve_resource_url(resource_str: str) -> tuple[str, str]:
     """
     Given a resource string from the AI, return (title, url).
-    Tries: embedded URL → platform name lookup → empty string.
+    Tries: embedded URL -> platform name lookup -> empty string.
     """
     s = str(resource_str or "").strip()
 
@@ -658,14 +796,14 @@ def _resolve_resource_url(resource_str: str) -> tuple[str, str]:
     if url_match:
         url = url_match.group(0).rstrip(".,;)")
         # Title = everything before the URL, cleaned
-        title = s[:s.index(url_match.group(0))].strip(" —-–→")
+        title = s[:s.index(url_match.group(0))].strip(" ------>")
         if not title:
             title = url.replace("https://", "").replace("www.", "").split("/")[0]
         return title, url
 
     # 2. Strip arrows/dashes to get clean name
-    clean = re.sub(r"[\-–—→]+", " ", s).strip()
-    # Remove leading "topic: " or "skill — " prefix patterns
+    clean = re.sub(r"[\------>]+", " ", s).strip()
+    # Remove leading "topic: " or "skill -- " prefix patterns
     clean = re.sub(r"^[^:]+:\s*", "", clean).strip()
 
     # 3. Lookup by platform name (case-insensitive)
@@ -676,7 +814,7 @@ def _resolve_resource_url(resource_str: str) -> tuple[str, str]:
             title = clean if len(clean) < 80 else platform.title()
             return title, url
 
-    # 4. No URL found — return name only
+    # 4. No URL found -- return name only
     return clean or s, ""
 
 
@@ -697,7 +835,7 @@ async def evaluate_interview(job_role: str, transcript: list[dict]) -> dict:
     system = (
         "You are a brutally honest senior technical interviewer. "
         "You do NOT inflate scores. You do NOT give credit for effort alone. "
-        "You score based on correctness, depth, and completeness — nothing else. "
+        "You score based on correctness, depth, and completeness -- nothing else. "
         "Respond with valid JSON only."
     )
 
@@ -705,11 +843,11 @@ async def evaluate_interview(job_role: str, transcript: list[dict]) -> dict:
 
 {transcript_text}
 
-STRICT SCORING RULES — follow exactly, no exceptions:
+STRICT SCORING RULES -- follow exactly, no exceptions:
 - 9-10: Exceptionally complete, correct, with depth and edge cases covered
 - 7-8:  Correct and solid, minor gaps only
 - 5-6:  Partially correct, key points missing but shows some understanding
-- 3-4:  Mostly wrong or very shallow — shows limited understanding
+- 3-4:  Mostly wrong or very shallow -- shows limited understanding
 - 1-2:  Wrong, blank, irrelevant, or "I don't know"
 - 0:    No answer at all
 
@@ -718,16 +856,16 @@ ADDITIONAL RULES:
 - "I don't know" or blank answers score 0-1
 - Vague buzzwords with no specifics score MAX 4/10
 - For coding questions: partial/incorrect code scores MAX 4/10; correct working solution scores 7+
-- overall_score MUST equal: round(average of all question scores * 10) — no exceptions
+- overall_score MUST equal: round(average of all question scores * 10) -- no exceptions
 - Do NOT add points for "good effort", "enthusiasm", or "potential"
 - If {n} answers were given and most were weak, overall_score should reflect that mathematically
 
 For recommended_resources: list EXACTLY 6 resources using this format:
-"Resource Name — https://actual-url.com"
+"Resource Name -- https://actual-url.com"
 Examples of correct format:
-"LeetCode Top 150 — https://leetcode.com/studyplan/top-interview-150/"
-"NeetCode DSA Roadmap — https://neetcode.io/roadmap"
-"System Design Primer — https://github.com/donnemartin/system-design-primer"
+"LeetCode Top 150 -- https://leetcode.com/studyplan/top-interview-150/"
+"NeetCode DSA Roadmap -- https://neetcode.io/roadmap"
+"System Design Primer -- https://github.com/donnemartin/system-design-primer"
 Pick resources specifically matched to the weak areas you identified.
 
 Return ONLY this JSON:
@@ -736,10 +874,10 @@ Return ONLY this JSON:
   "technical_score": <0-100, average of technical/coding question scores * 10>,
   "communication_score": <0-100, based purely on answer clarity and structure>,
   "confidence_score": <0-100, based on answer completeness and consistency>,
-  "hire_recommendation": "Strong Yes — exceptional performance|Yes — solid with minor gaps|Maybe — potential but significant gaps|No — too many weak answers|Strong No — fundamental gaps, needs basics",
+  "hire_recommendation": "Strong Yes -- exceptional performance|Yes -- solid with minor gaps|Maybe -- potential but significant gaps|No -- too many weak answers|Strong No -- fundamental gaps, needs basics",
   "summary": "<2-3 sentences, honest assessment, name specific failures and wins>",
   "strengths": ["<only genuine strengths with evidence from answers>"],
-  "improvements": ["<specific skill/topic the candidate clearly failed — name the exact gap>"],
+  "improvements": ["<specific skill/topic the candidate clearly failed -- name the exact gap>"],
   "question_feedback": [
     {{
       "question": "<exact question text>",
@@ -749,12 +887,12 @@ Return ONLY this JSON:
     }}
   ],
   "recommended_resources": [
-    "Resource Name — https://actual-url.com",
-    "Resource Name — https://actual-url.com",
-    "Resource Name — https://actual-url.com",
-    "Resource Name — https://actual-url.com",
-    "Resource Name — https://actual-url.com",
-    "Resource Name — https://actual-url.com"
+    "Resource Name -- https://actual-url.com",
+    "Resource Name -- https://actual-url.com",
+    "Resource Name -- https://actual-url.com",
+    "Resource Name -- https://actual-url.com",
+    "Resource Name -- https://actual-url.com",
+    "Resource Name -- https://actual-url.com"
   ],
   "weak_areas": ["<specific topic or skill the candidate needs to study>"]
 }}
@@ -764,6 +902,7 @@ IMPORTANT: question_feedback must have exactly {n} entries, one per question in 
     text = await call_groq(
         [{"role": "system", "content": system}, {"role": "user", "content": user}],
         temperature=0.2,
+        json_mode=True,
     )
     result = _extract_json(text)
 
@@ -773,7 +912,7 @@ IMPORTANT: question_feedback must have exactly {n} entries, one per question in 
     for r in raw_resources:
         title, url = _resolve_resource_url(str(r))
         if url:
-            resolved.append(f"{title} — {url}")
+            resolved.append(f"{title} -- {url}")
         elif title:
             # Still include it so frontend shows the name even without a link
             resolved.append(title)
@@ -828,7 +967,7 @@ Return ONLY this JSON:
     text = await call_groq([
         {"role": "system", "content": system},
         {"role": "user", "content": user}
-    ])
+    ], json_mode=True)
     return _extract_json(text)
 
 
@@ -928,9 +1067,9 @@ async def check_ats_match(resume_text, job_description):
     user = f"""You are a BRUTAL, NO-NONSENSE ATS system and senior recruiter.
 Do NOT sugarcoat. Do NOT be encouraging. Be 100% honest.
 
-If this resume is bad for this job — say it clearly.
-If keywords are missing — list ALL of them.
-If the candidate is not qualified — say they are not qualified.
+If this resume is bad for this job -- say it clearly.
+If keywords are missing -- list ALL of them.
+If the candidate is not qualified -- say they are not qualified.
 
 RESUME:
 {resume_text[:3000]}
@@ -953,7 +1092,7 @@ Return ONLY this JSON:
         text = await call_groq([
             {"role": "system", "content": system},
             {"role": "user", "content": user}
-        ])
+        ], json_mode=True)
         ai = _extract_json(text)
         if not isinstance(ai, dict):
             return baseline
@@ -999,7 +1138,7 @@ Return ONLY this JSON:
     text = await call_groq([
         {"role": "system", "content": system},
         {"role": "user", "content": user}
-    ])
+    ], json_mode=True)
     return _extract_json(text)
 
 async def generate_portfolio_html(resume_text, github_username, name):
@@ -1293,7 +1432,8 @@ async def get_career_recommendations(
 
     try:
         text = await call_groq(
-            [{"role": "system", "content": system}, {"role": "user", "content": user}]
+            [{"role": "system", "content": system}, {"role": "user", "content": user}],
+            json_mode=True,
         )
         parsed = _extract_json(text)
         return _calibrate_recommendation_scores(parsed, github_data)

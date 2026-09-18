@@ -1,5 +1,5 @@
-# ============================================================
-# CareerLens – FastAPI Backend Entry Point
+﻿# ============================================================
+# CareerLens -- FastAPI Backend Entry Point
 # File: backend/main.py
 # ============================================================
 
@@ -49,11 +49,11 @@ def add_security_headers(response):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Handle startup and shutdown logic."""
-    logger.info("🚀 CareerLens API starting up...")
+    logger.info("CareerLens API starting up...")
     logger.info(f"   Environment : {settings.ENVIRONMENT}")
     logger.info(f"   Allowed origins: {settings.ALLOWED_ORIGINS}")
     yield
-    logger.info("🛑 CareerLens API shutting down...")
+    logger.info("CareerLens API shutting down...")
 
 
 # ============================================================
@@ -81,7 +81,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # Middleware
 # ============================================================
 
-# CORS – allow frontend origin(s)
+# CORS -- allow frontend origin(s)
 dev_origin_regex = (
     r"https?://(localhost|127\.0\.0\.1|0\.0\.0\.0|192\.168\.\d+\.\d+)(:\d+)?$"
     if settings.ENVIRONMENT != "production"
@@ -108,7 +108,6 @@ if settings.ENVIRONMENT == "production":
 
 # ============================================================
 # Request Timing Middleware
-# Logs every request with method, path, status, and duration
 # ============================================================
 
 @app.middleware("http")
@@ -119,7 +118,7 @@ async def log_requests(request: Request, call_next):
     duration = round((time.time() - start) * 1000, 2)
     logger.info(
         f"{request.method} {request.url.path} "
-        f"→ {response.status_code} [{duration}ms]"
+        f"-> {response.status_code} [{duration}ms]"
     )
     return response
 
@@ -141,7 +140,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 # ============================================================
-# Routers – all prefixed under /api
+# Routers -- all prefixed under /api
 # ============================================================
 
 app.include_router(auth.router,      prefix="/api/auth",      tags=["Authentication"])
@@ -151,8 +150,25 @@ app.include_router(chatbot.router,   prefix="/api/chatbot",   tags=["Honest Care
 app.include_router(news.router,      prefix="/api/news",      tags=["News"])
 app.include_router(github.router,    prefix="/api/github",    tags=["GitHub"])
 app.include_router(premium.router,   prefix="/api/premium",   tags=["Premium / Payments"])
-app.include_router(beginner.router, prefix="/api/beginner", tags=["Beginner"])
+app.include_router(beginner.router,  prefix="/api/beginner",  tags=["Beginner"])
 app.include_router(portfolio.router, prefix="/api/portfolio", tags=["Portfolio"])
+
+from routers import recommendations
+app.include_router(recommendations.router, prefix="/api/recommendations", tags=["Recommendations"])
+
+from routers import community
+app.include_router(community.router, prefix="/api/community", tags=["Community"])
+
+from routers import interview_probability
+app.include_router(interview_probability.router, prefix="/api/interview-probability", tags=["Interview Probability"])
+
+from routers import optimizer, job_match
+app.include_router(optimizer.router, prefix="/api/optimizer", tags=["Optimizer"])
+app.include_router(job_match.router, prefix="/api/job-match", tags=["Job Match"])
+
+from routers import github_identity
+app.include_router(github_identity.router, prefix="/api/github-identity", tags=["GitHub Identity"])
+
 
 # ============================================================
 # Root & Health Check Endpoints
@@ -160,10 +176,10 @@ app.include_router(portfolio.router, prefix="/api/portfolio", tags=["Portfolio"]
 
 @app.get("/", tags=["Health"])
 async def root():
-    """Root endpoint – confirms API is live."""
+    """Root endpoint -- confirms API is live."""
     return {
         "success": True,
-        "message": "CareerLens API is running 🚀",
+        "message": "CareerLens API is running",
         "version": "1.0.0",
         "docs": "/docs",
     }
@@ -171,10 +187,7 @@ async def root():
 
 @app.get("/health", tags=["Health"])
 async def health_check():
-    """
-    Health check endpoint.
-    Used by Docker, load balancers, and monitoring tools.
-    """
+    """Health check endpoint. Used by Docker, load balancers, and monitoring tools."""
     return {
         "success": True,
         "status": "healthy",
@@ -188,27 +201,20 @@ async def api_index():
     return {
         "success": True,
         "available_routes": [
-            "/api/auth      – Authentication (login, signup, profile)",
-            "/api/resume    – Resume upload & AI analysis",
-            "/api/interview – Mock interview sessions",
-            "/api/chatbot   – Honest Career Coach",
-            "/api/news      – Tech & hiring news",
-            "/api/github    – GitHub profile analysis",
-            "/api/premium   – Upgrade & payment",
-            "/api/beginner  – Beginner learning roadmap",
-            "/api/portfolio – Portfolio generator",
+            "/api/auth             -- Authentication (login, signup, profile)",
+            "/api/resume           -- Resume upload & AI analysis",
+            "/api/interview        -- Mock interview sessions",
+            "/api/chatbot          -- Honest Career Coach",
+            "/api/news             -- Tech & hiring news",
+            "/api/github           -- GitHub profile analysis",
+            "/api/github-identity  -- GitHub identity linking (durable ownership)",
+            "/api/premium          -- Upgrade & payment",
+            "/api/beginner         -- Beginner learning roadmap",
+            "/api/portfolio        -- Portfolio generator",
+            "/api/recommendations  -- Role recommendations",
+            "/api/community        -- Community feed",
+            "/api/interview-probability -- Interview probability engine",
+            "/api/optimizer        -- Resume optimizer",
+            "/api/job-match        -- Job matching engine",
         ],
     }
-
-from routers import recommendations
-app.include_router(recommendations.router, prefix="/api/recommendations", tags=["Recommendations"])
-
-from routers import community
-app.include_router(community.router, prefix="/api/community", tags=["Community"])
-
-from routers import interview_probability
-app.include_router(interview_probability.router, prefix="/api/interview-probability", tags=["Interview Probability"])
-#=====================================================
-from routers import optimizer, job_match
-app.include_router(optimizer.router,  prefix="/api/optimizer",  tags=["Optimizer"])
-app.include_router(job_match.router,  prefix="/api/job-match",  tags=["Job Match"])

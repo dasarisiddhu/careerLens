@@ -62,14 +62,13 @@ async def create_post(body: CreatePostRequest, user=Depends(get_authenticated_us
     # Get author name from users table
     try:
         profile = supabase.table("users").select("full_name").eq("user_id", user["user_id"]).single().execute()
-        author_name = profile.data.get("full_name") or user.get("email", "Anonymous")
+        author_name = profile.data.get("full_name") or (user.get("email", "").split("@")[0] if user.get("email") else "Community Member")
     except Exception:
-        author_name = user.get("email", "Anonymous")
+        author_name = user.get("email", "").split("@")[0] if user.get("email") else "Community Member"
 
     result = supabase.table("community_posts").insert({
         "user_id": user["user_id"],
         "author_name": author_name,
-        "author_email": user.get("email", ""),
         "post_type": body.post_type,
         "title": body.title.strip(),
         "content": body.content.strip(),
@@ -103,18 +102,35 @@ async def delete_post(post_id: str, user=Depends(get_authenticated_user)):
 @router.post("/posts/{post_id}/like")
 async def like_post(post_id: str, user=Depends(get_authenticated_user)):
     # Check if already liked
-    existing = supabase.table("post_likes").select("id").eq("post_id", post_id).eq("user_id", user["user_id"]).execute()
+    existing = (
+        supabase.table("post_likes")
+        .select("id")
+        .eq("post_id", post_id)
+        .eq("user_id", user["user_id"])
+        .execute()
+    )
 
     if existing.data:
         # Unlike
         supabase.table("post_likes").delete().eq("post_id", post_id).eq("user_id", user["user_id"]).execute()
-        supabase.table("community_posts").update({"likes_count": supabase.raw("likes_count - 1")}).eq("id", post_id).execute()
-        return {"success": True, "liked": False}
+        liked = False
     else:
-        # Like
-        supabase.table("post_likes").insert({"post_id": post_id, "user_id": user["user_id"]}).execute()
-        supabase.table("community_posts").update({"likes_count": supabase.raw("likes_count + 1")}).eq("id", post_id).execute()
-        return {"success": True, "liked": True}
+        # Like (safe against concurrent race condition via UNIQUE constraint)
+        try:
+            supabase.table("post_likes").insert({"post_id": post_id, "user_id": user["user_id"]}).execute()
+        except Exception:
+            pass  # Already liked concurrently
+        liked = True
+
+    # Synchronize likes_count accurately from post_likes
+    try:
+        count_res = supabase.table("post_likes").select("id", count="exact").eq("post_id", post_id).execute()
+        new_count = count_res.count if count_res.count is not None else 0
+        supabase.table("community_posts").update({"likes_count": new_count}).eq("id", post_id).execute()
+    except Exception as e:
+        logger.warning(f"Could not update likes count for post {post_id}: {e}")
+
+    return {"success": True, "liked": liked}
 
 
 # ============================================================
@@ -149,9 +165,9 @@ async def add_comment(body: CreateCommentRequest, user=Depends(get_authenticated
 
     try:
         profile = supabase.table("users").select("full_name").eq("user_id", user["user_id"]).single().execute()
-        author_name = profile.data.get("full_name") or user.get("email", "Anonymous")
+        author_name = profile.data.get("full_name") or (user.get("email", "").split("@")[0] if user.get("email") else "Community Member")
     except Exception:
-        author_name = user.get("email", "Anonymous")
+        author_name = user.get("email", "").split("@")[0] if user.get("email") else "Community Member"
 
     result = supabase.table("post_comments").insert({
         "post_id": body.post_id,
@@ -160,8 +176,13 @@ async def add_comment(body: CreateCommentRequest, user=Depends(get_authenticated
         "content": body.content.strip(),
     }).execute()
 
-    # Increment comment count
-    supabase.table("community_posts").update({"comments_count": supabase.raw("comments_count + 1")}).eq("id", body.post_id).execute()
+    # Synchronize comment count accurately
+    try:
+        count_res = supabase.table("post_comments").select("id", count="exact").eq("post_id", body.post_id).execute()
+        new_count = count_res.count if count_res.count is not None else 0
+        supabase.table("community_posts").update({"comments_count": new_count}).eq("id", body.post_id).execute()
+    except Exception as e:
+        logger.warning(f"Could not update comment count for post {body.post_id}: {e}")
 
     return {"success": True, "comment": result.data[0] if result.data else {}}
 
@@ -180,5 +201,13 @@ async def delete_comment(comment_id: str, user=Depends(get_authenticated_user)):
 
     post_id = result.data["post_id"]
     supabase.table("post_comments").delete().eq("id", comment_id).execute()
-    supabase.table("community_posts").update({"comments_count": supabase.raw("comments_count - 1")}).eq("id", post_id).execute()
+
+    # Synchronize comment count accurately
+    try:
+        count_res = supabase.table("post_comments").select("id", count="exact").eq("post_id", post_id).execute()
+        new_count = count_res.count if count_res.count is not None else 0
+        supabase.table("community_posts").update({"comments_count": new_count}).eq("id", post_id).execute()
+    except Exception as e:
+        logger.warning(f"Could not update comment count for post {post_id}: {e}")
+
     return {"success": True}
