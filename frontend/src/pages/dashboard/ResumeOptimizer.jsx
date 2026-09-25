@@ -591,6 +591,108 @@ function buildFallbackSummary(role = '', specialization = '') {
   return `${roleText} with a background in ${specText}.`
 }
 
+const ROLE_SUPPORT_CRITERIA = {
+  'Machine Learning Engineer': {
+    patterns: [
+      /machine learning|\bml\b|\bai\b|artificial intelligence|deep learning|pytorch|tensorflow|scikit|nlp|\bllm\b|computer vision|neural network|keras|huggingface|transformers|mlops/i,
+    ],
+  },
+  'Data Scientist': {
+    patterns: [
+      /data scientist|data science|machine learning|\bml\b|statistical modeling|statistics|pandas|numpy|scikit|\br programming\b|\bjupyter\b/i,
+    ],
+  },
+  'Data Analyst': {
+    patterns: [
+      /data analyst|analytics|business intelligence|tableau|power bi|powerbi|\bexcel\b|\bsql\b|dashboard|reporting|data visualization|\betl\b/i,
+    ],
+  },
+  'Frontend Engineer': {
+    patterns: [
+      /frontend|front-end|react|vue|angular|javascript|\bjs\b|typescript|\bts\b|html|css|next\.js|svelte|tailwind|redux|\bui\b|\bux\b|web development/i,
+    ],
+  },
+  'Backend Engineer': {
+    patterns: [
+      /backend|back-end|\bapi\b|\bapis\b|\brest\b|\bnode\b|express|fastapi|django|flask|spring|golang|\bgo\b|postgres|mysql|mongodb|database|microservices|\bsql\b|\bredis\b/i,
+    ],
+  },
+  'Full Stack Engineer': {
+    patterns: [/full stack|full-stack/i],
+    dualCheck: true,
+  },
+  'Cloud Engineer': {
+    patterns: [
+      /cloud|devops|\baws\b|azure|\bgcp\b|docker|kubernetes|terraform|ci\/cd|site reliability|\bsre\b|infrastructure|linux/i,
+    ],
+  },
+  'Software Engineer': {
+    patterns: [
+      /software|developer|engineer|programming|code|coding|git|python|java|javascript|typescript|c\+\+|golang|ruby|php|swift|rust/i,
+    ],
+  },
+}
+
+function isRoleSupportedByResume(role = '', sourceText = '', skills = []) {
+  if (!role) return false
+  const combinedText = `${sourceText} ${skills.join(' ')}`.toLowerCase()
+  if (!combinedText.trim()) return false
+
+  const normalizedRole = role.toLowerCase().trim()
+  if (combinedText.includes(normalizedRole)) return true
+
+  const criteria = ROLE_SUPPORT_CRITERIA[role]
+  if (criteria) {
+    if (criteria.dualCheck) {
+      if (criteria.patterns.some((p) => p.test(combinedText))) return true
+      const hasFrontend = /frontend|front-end|react|vue|angular|javascript|typescript|html|css|\bui\b/i.test(combinedText)
+      const hasBackend = /backend|back-end|\bapi\b|\bnode\b|express|django|flask|fastapi|\bsql\b|database/i.test(combinedText)
+      return hasFrontend && hasBackend
+    }
+    return criteria.patterns.some((p) => p.test(combinedText))
+  }
+
+  const roleWords = normalizedRole
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length > 2 && !['and', 'the', 'for', 'with', 'engineer', 'developer', 'specialist'].includes(w))
+
+  if (!roleWords.length) {
+    return /developer|engineer|programmer|software/i.test(combinedText)
+  }
+
+  const matchingWords = roleWords.filter((w) => combinedText.includes(w))
+  return matchingWords.length >= Math.ceil(roleWords.length / 2)
+}
+
+function deriveRoleFromResume(sourceText = '', skills = []) {
+  const text = `${sourceText} ${skills.join(' ')}`.toLowerCase()
+
+  if (/machine learning engineer|ml engineer|ai engineer/i.test(text)) return 'Machine Learning Engineer'
+  if (/data scientist/i.test(text)) return 'Data Scientist'
+  if (/data analyst|bi analyst|business intelligence analyst/i.test(text)) return 'Data Analyst'
+  if (/full stack engineer|full stack developer|fullstack developer/i.test(text)) return 'Full Stack Engineer'
+  if (/frontend engineer|frontend developer|front-end developer|front end developer|ui engineer/i.test(text)) return 'Frontend Engineer'
+  if (/backend engineer|backend developer|back-end developer|back end developer|api developer/i.test(text)) return 'Backend Engineer'
+  if (/cloud engineer|devops engineer|site reliability engineer|\bsre\b/i.test(text)) return 'Cloud Engineer'
+
+  const hasML = /(machine learning|\bml\b|\bai\b|artificial intelligence|deep learning|pytorch|tensorflow|scikit|nlp|\bllm\b)/i.test(text)
+  const hasData = /(data science|data analyst|analytics|tableau|power bi|\bpandas\b|\betl\b)/i.test(text)
+  const hasFrontend = /(frontend|front-end|react|vue|angular|javascript|typescript|html|css|\bui\b)/i.test(text)
+  const hasBackend = /(backend|back-end|\bapi\b|\bnode\b|express|django|flask|fastapi|\bsql\b|postgres|database)/i.test(text)
+  const hasCloud = /(cloud|devops|\baws\b|azure|\bgcp\b|docker|kubernetes|terraform)/i.test(text)
+
+  if (hasML) return 'Machine Learning Engineer'
+  if (hasFrontend && hasBackend) return 'Full Stack Engineer'
+  if (hasFrontend) return 'Frontend Engineer'
+  if (hasBackend) return 'Backend Engineer'
+  if (hasData) return 'Data Analyst'
+  if (hasCloud) return 'Cloud Engineer'
+
+  return 'Software Engineer'
+}
+
+
 function metricValue(metric = '') {
   const number = String(metric || '').match(/\d+(?:\.\d+)?/)
   if (!number) return 0
@@ -860,10 +962,14 @@ function extractAchievementDetails(result = {}, sourceText = '') {
 }
 
 function buildProfessionalSummary(result = {}, sourceText = '', currentJobTitle = '') {
-  const role = resolveTargetRole(result, currentJobTitle)
-  const skills = getTopSkills(result, sourceText)
+  const resolvedRole = resolveTargetRole(result, currentJobTitle)
+  const resumeContent = sourceText || result?.source_resume_text || result?.resume_text || ''
+  const skills = getTopSkills(result, resumeContent)
+  const role = isRoleSupportedByResume(resolvedRole, resumeContent, skills)
+    ? resolvedRole
+    : deriveRoleFromResume(resumeContent, skills)
   const specialization = inferSpecialization(role, skills)
-  const achievement = extractAchievementDetails(result, sourceText)
+  const achievement = extractAchievementDetails(result, resumeContent)
 
   if (!achievement) {
     return buildFallbackSummary(role, specialization)

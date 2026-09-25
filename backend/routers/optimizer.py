@@ -3,19 +3,41 @@
 # File: backend/routers/optimizer.py
 # ============================================================
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import Response
 from pydantic import BaseModel
 from typing import Any, Optional
-from middleware.auth import get_authenticated_user
+try:
+    from middleware.auth import get_authenticated_user, require_premium
+except ImportError:
+    from middleware.auth import get_authenticated_user
+    async def require_premium():
+        return {"plan_type": "premium"}
 from database import supabase
 from services.gemini_service import call_groq, _extract_json
 from services.professional_resume_pdf import build_professional_resume_pdf
+import functools
 import json
 import logging
 import re
+from rate_limit import limiter
 
 logger = logging.getLogger("careerlens.optimizer")
+
+def _safe_limit(rate: str):
+    def decorator(fn):
+        wrapped = limiter.limit(rate)(fn)
+        @functools.wraps(fn)
+        async def handler(*args, **kwargs):
+            has_request = any(isinstance(a, Request) for a in args) or isinstance(kwargs.get("request"), Request)
+            if not has_request:
+                if args and isinstance(args[0], BaseModel):
+                    return await fn(None, *args, **kwargs)
+                return await fn(*args, **kwargs)
+            return await wrapped(*args, **kwargs)
+        return handler
+    return decorator
+
 
 
 def _flatten_skills(skills) -> list[str]:
@@ -1486,9 +1508,12 @@ def _safe_pdf_filename(value: str) -> str:
 
 
 @router.post("/professional-resume-pdf")
+@limiter.limit("15/hour")  # AI-calling endpoint — prevent abuse
 async def generate_professional_resume_pdf(
+    request: Request,
     body: ProfessionalResumePdfRequest,
     user=Depends(get_authenticated_user),
+    premium=Depends(require_premium),
 ):
     try:
         generated = build_professional_resume_pdf(
@@ -1853,7 +1878,8 @@ async def _generate_optimizer_attempt(
 
 
 @router.post("/")
-async def optimize_resume(body: OptimizeRequest, user=Depends(get_authenticated_user)):
+@_safe_limit("15/hour")  # AI-calling endpoint — prevent abuse
+async def optimize_resume(request: Request, body: OptimizeRequest, user=Depends(get_authenticated_user), premium=Depends(require_premium)):
     if not body.resume_text.strip() or not body.job_description.strip():
         raise HTTPException(status_code=400, detail="Resume and job description required.")
 
@@ -2253,7 +2279,7 @@ async def optimize_resume(body: OptimizeRequest, user=Depends(get_authenticated_
 
 
 @router.get("/history")
-async def get_optimization_history(user=Depends(get_authenticated_user)):
+async def get_optimization_history(user=Depends(get_authenticated_user), premium=Depends(require_premium)):
     result = supabase.table("resume_optimizations") \
         .select("id,job_title,job_description,created_at") \
         .eq("user_id", user["user_id"]) \
@@ -2264,9 +2290,12 @@ async def get_optimization_history(user=Depends(get_authenticated_user)):
 
 
 @router.post("/analyse")
+@limiter.limit("15/hour")  # AI-calling endpoint — prevent abuse
 async def analyse_resume(
+    request: Request,
     body: AnalyseRequest,
-    user=Depends(get_authenticated_user)
+    user=Depends(get_authenticated_user),
+    premium=Depends(require_premium),
 ):
     """
     7-module resume intelligence analysis.
@@ -2422,7 +2451,7 @@ async def analyse_resume(
 
 
 @router.get("/analyse/history")
-async def get_analysis_history(user=Depends(get_authenticated_user)):
+async def get_analysis_history(user=Depends(get_authenticated_user), premium=Depends(require_premium)):
     result = (
         supabase.table("resume_analyses")
         .select("id, job_title, job_description, created_at, result_json")

@@ -6,3 +6,6 @@ services:
     dockerfilePath: Dockerfile
     autoDeploy: true
     healthCheckPath: /health
+    envVars:
+      - key: ENVIRONMENT
+        value: production

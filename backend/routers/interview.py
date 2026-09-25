@@ -3,9 +3,7 @@
 # File: backend/routers/interview.py
 # ============================================================
 
-from __future__ import annotations
-
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel, Field
 from middleware.auth import get_authenticated_user, get_user_profile
 from services.gemini_service import generate_interview_questions, evaluate_interview
@@ -16,6 +14,7 @@ import logging
 import random
 import re
 import uuid
+from rate_limit import limiter
 
 logger = logging.getLogger("careerlens.interview")
 router = APIRouter()
@@ -903,7 +902,8 @@ async def _build_randomized_questions(
 
 
 @router.post("/start")
-async def start_interview(body: StartInterviewRequest, profile=Depends(get_user_profile)):
+@limiter.limit("15/hour")  # AI-calling endpoint — prevent abuse
+async def start_interview(request: Request, body: StartInterviewRequest, profile=Depends(get_user_profile)):
     """Start a new mock interview session and return randomized, role-based questions."""
     user_id = profile["user_id"]
 
@@ -1245,7 +1245,8 @@ def _enforce_honest_scores(evaluation: dict, transcript: list[dict]) -> dict:
 
 
 @router.post("/evaluate")
-async def evaluate_session(body: EvaluateRequest, user=Depends(get_authenticated_user)):
+@limiter.limit("15/hour")  # AI-calling endpoint — prevent abuse
+async def evaluate_session(request: Request, body: EvaluateRequest, user=Depends(get_authenticated_user)):
     """Submit full transcript and get AI evaluation scores."""
     session = (
         supabase.table("interview_sessions")

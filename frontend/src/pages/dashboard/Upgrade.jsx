@@ -1,7 +1,9 @@
 // frontend/src/pages/dashboard/Upgrade.jsx
+import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { pageTransition } from '../../utils/animations'
-import { CheckCircle, X, Zap, Star } from 'lucide-react'
+import { CheckCircle, X, Zap, Star, Loader2 } from 'lucide-react'
+import { api } from '../../services/api'
 
 const FEATURES = [
   { label: 'Resume Analyses', free: '1 only', premium: 'Unlimited' },
@@ -23,6 +25,40 @@ const buttonMotion = {
 }
 
 export default function Upgrade() {
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  const handleUpgrade = async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const res = await api.initiatePayment({ provider: 'stripe', plan: 'premium' })
+      if (!res.client_secret) {
+        throw new Error('No client_secret returned from server.')
+      }
+      // Redirect to Stripe Checkout using the client_secret
+      // The Stripe.js confirmPayment flow expects a return_url
+      const stripe = window.Stripe?.(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY)
+      if (!stripe) {
+        throw new Error('Stripe.js not loaded. Please refresh and try again.')
+      }
+      const { error: stripeError } = await stripe.confirmPayment({
+        clientSecret: res.client_secret,
+        confirmParams: {
+          return_url: `${window.location.origin}/dashboard?payment=success`,
+        },
+      })
+      // If we reach here, there was an error (successful payments redirect away)
+      if (stripeError) {
+        setError(stripeError.message || 'Payment failed. Please try again.')
+      }
+    } catch (e) {
+      setError(e.message || 'Could not initiate payment. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <motion.div variants={pageTransition} initial="hidden" animate="visible" exit="exit" style={{ width: '100%' }}>
     <div className="max-w-4xl mx-auto space-y-8">
@@ -89,9 +125,14 @@ export default function Upgrade() {
               </li>
             ))}
           </ul>
+          {error && (
+            <p className="text-red-400 text-sm text-center mb-3">{error}</p>
+          )}
           <motion.button {...buttonMotion} className="btn-primary w-full flex items-center justify-center gap-2 py-4"
-            onClick={() => alert('Payment integration coming soon! Connect Stripe or Razorpay.')}>
-            <Zap size={16} /> Upgrade Now – $5.00/mo
+            onClick={handleUpgrade}
+            disabled={loading}>
+            {loading ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
+            {loading ? 'Processing...' : 'Upgrade Now – $5.00/mo'}
           </motion.button>
           <p className="text-center text-xs text-[#44403c] mt-3">Cancel anytime · Secure payment via Stripe</p>
         </motion.div>

@@ -24,25 +24,47 @@ class InitiatePaymentRequest(BaseModel):
 @router.post("/initiate")
 async def initiate_payment(body: InitiatePaymentRequest, user=Depends(get_authenticated_user)):
     """
-    Placeholder: Initiate a payment session.
-    Replace with real Stripe/Razorpay SDK calls when ready.
+    Create a real Stripe PaymentIntent for Premium upgrade.
+    Returns the client_secret so the frontend can confirm payment via Stripe.js.
     """
-    payment_id = str(uuid.uuid4())
-    supabase.table("payment_records").insert({
-        "id": payment_id,
-        "user_id": user["user_id"],
-        "provider": body.provider,
-        "amount": 500,   # $5.00 in cents
-        "currency": "USD",
-        "status": "pending",
-        "plan_type": "premium",
-    }).execute()
+    if not settings.STRIPE_SECRET_KEY:
+        raise HTTPException(status_code=503, detail="Payment service is not configured.")
 
-    # TODO: Replace with actual Stripe PaymentIntent or Razorpay order creation
+    stripe.api_key = settings.STRIPE_SECRET_KEY
+
+    try:
+        intent = stripe.PaymentIntent.create(
+            amount=500,        # $5.00 in cents — matches /plans pricing
+            currency="usd",
+            metadata={
+                "user_id": user["user_id"],
+                "plan_type": "premium",
+            },
+            description="CareerLens Premium Monthly Subscription",
+        )
+    except stripe.error.StripeError as e:
+        logger.error(f"Stripe PaymentIntent creation failed for user {user['user_id']}: {e}")
+        raise HTTPException(status_code=502, detail="Payment service error. Please try again.")
+
+    # Persist payment record for audit trail
+    payment_id = intent.id
+    try:
+        supabase.table("payment_records").insert({
+            "id": payment_id,
+            "user_id": user["user_id"],
+            "provider": "stripe",
+            "amount": 500,
+            "currency": "USD",
+            "status": "pending",
+            "plan_type": "premium",
+        }).execute()
+    except Exception as e:
+        logger.warning(f"Could not persist payment record {payment_id}: {e}")
+
     return {
         "success": True,
         "payment_id": payment_id,
-        "message": "Payment initiation placeholder. Integrate Stripe/Razorpay SDK here.",
+        "client_secret": intent.client_secret,
     }
 
 

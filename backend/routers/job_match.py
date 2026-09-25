@@ -3,12 +3,13 @@
 # File: backend/routers/job_match.py
 # ============================================================
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel
 from typing import List, Optional
-from middleware.auth import get_authenticated_user
+from middleware.auth import get_authenticated_user, require_premium
 from services.gemini_service import call_groq, _extract_json
 import logging
+from rate_limit import limiter
 
 logger = logging.getLogger("careerlens.job_match")
 router = APIRouter()
@@ -74,7 +75,8 @@ def score_match(user_skills: List[str], role_skills: List[str]) -> dict:
 
 
 @router.post("/")
-async def match_jobs(body: JobMatchRequest, user=Depends(get_authenticated_user)):
+@limiter.limit("15/hour")  # AI-calling endpoint — prevent abuse
+async def match_jobs(request: Request, body: JobMatchRequest, user=Depends(get_authenticated_user), premium=Depends(require_premium)):
     if not body.resume_text.strip():
         raise HTTPException(status_code=400, detail="Resume text required.")
 

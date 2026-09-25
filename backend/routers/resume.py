@@ -3,7 +3,7 @@
 # File: backend/routers/resume.py
 # ============================================================
 
-from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form, Request
 from pydantic import BaseModel
 from middleware.auth import get_authenticated_user, get_user_profile
 from services.pdf_service import extract_text_from_pdf, extract_text_from_pdf_base64
@@ -22,6 +22,7 @@ from database import supabase
 from config import settings
 import uuid, logging, base64, re
 from urllib.parse import urlparse
+from rate_limit import limiter
 
 logger = logging.getLogger("careerlens.resume")
 router = APIRouter()
@@ -367,7 +368,9 @@ Return ONLY this JSON:
 
 
 @router.post("/analyze")
+@limiter.limit("15/hour")  # AI-calling endpoint — prevent abuse
 async def analyze_resume(
+    request: Request,
     resume: UploadFile = File(...),
     github_url: str = Form(...),
     job_role: str = Form(...),
@@ -633,7 +636,8 @@ class ATSCheckRequest(BaseModel):
 
 
 @router.post("/ats-check")
-async def ats_check(body: ATSCheckRequest, user=Depends(get_authenticated_user)):
+@limiter.limit("15/hour")  # AI-calling endpoint — prevent abuse
+async def ats_check(request: Request, body: ATSCheckRequest, user=Depends(get_authenticated_user)):
     if not body.resume_pdf or not body.job_description.strip():
         raise HTTPException(status_code=400, detail="Resume PDF and job description are required.")
 
