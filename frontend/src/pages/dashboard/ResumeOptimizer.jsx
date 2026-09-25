@@ -577,16 +577,18 @@ function resolveTargetRole(result = {}, currentJobTitle = '') {
 
 function inferSpecialization(role = '', skills = []) {
   const text = `${role} ${skills.join(' ')}`.toLowerCase()
-  if (/(machine learning|ml|ai|data science|model|pytorch|tensorflow|mlops)/.test(text)) return 'scalable AI systems'
-  if (/(data|analytics|pipeline|sql|pandas|etl)/.test(text)) return 'data pipelines'
-  if (/(frontend|react|ui|javascript|typescript)/.test(text)) return 'web applications'
-  if (/(backend|api|fastapi|node|django|flask|database)/.test(text)) return 'backend APIs'
+  if (/(machine learning|\bml\b|\bai\b|data science|\bmodel\b|pytorch|tensorflow|mlops)/.test(text)) return 'scalable AI systems'
+  if (/(data|analytics|pipeline|\bsql\b|pandas|\betl\b)/.test(text)) return 'data pipelines'
+  if (/(frontend|react|\bui\b|javascript|typescript)/.test(text)) return 'web applications'
+  if (/(backend|\bapi\b|fastapi|\bnode\b|django|flask|database)/.test(text)) return 'backend APIs'
   if (/(cloud|devops|docker|kubernetes|aws|azure|gcp)/.test(text)) return 'cloud deployment'
   return 'software systems'
 }
 
-function buildFallbackSummary(role = '') {
-  return 'Machine Learning Engineer specializing in scalable AI systems and data pipelines. Built scalable backend systems for high-volume workloads.'
+function buildFallbackSummary(role = '', specialization = '') {
+  const roleText = role || 'Software Engineer'
+  const specText = specialization || 'software engineering'
+  return `${roleText} with a background in ${specText}.`
 }
 
 function metricValue(metric = '') {
@@ -864,7 +866,7 @@ function buildProfessionalSummary(result = {}, sourceText = '', currentJobTitle 
   const achievement = extractAchievementDetails(result, sourceText)
 
   if (!achievement) {
-    return buildFallbackSummary(role)
+    return buildFallbackSummary(role, specialization)
   }
 
   const secondaryDomain = specialization === 'data pipelines' ? 'model deployment' : 'data pipelines'

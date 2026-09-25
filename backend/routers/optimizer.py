@@ -1816,7 +1816,28 @@ async def _generate_optimizer_attempt(
         json.dumps(messages, ensure_ascii=False, indent=2),
     )
     text = await call_groq(messages, json_mode=True)
-    result = _extract_json(text)
+    try:
+        result = _extract_json(text)
+    except Exception as parse_err:
+        logger.warning(
+            "First JSON extraction failed for user %s (%s). Retrying model with strict syntax instruction...",
+            user_id,
+            parse_err,
+        )
+        retry_messages = list(messages) + [
+            {"role": "assistant", "content": text},
+            {
+                "role": "user",
+                "content": (
+                    "Your previous response had a JSON formatting error. "
+                    "Return ONLY valid, perfectly formatted JSON conforming to RFC 8259. "
+                    "Ensure every key and string is double-quoted and all list/dict elements are separated by commas."
+                ),
+            },
+        ]
+        retry_text = await call_groq(retry_messages, json_mode=True, temperature=0.1)
+        result = _extract_json(retry_text)
+
     if not isinstance(result, dict):
         raise ValueError("Optimizer response was not a JSON object.")
 
@@ -2221,9 +2242,14 @@ async def optimize_resume(body: OptimizeRequest, user=Depends(get_authenticated_
         # resume. JD presence alone is NOT enough — the candidate must
         # actually have the skill. Skills in the JD but absent from the
         # resume are the GAPS, not license to fabricate.
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Optimization error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Optimization error for user {user['user_id']}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Resume optimization could not be completed due to a temporary AI formatting issue. Please try again.",
+        )
 
 
 @router.get("/history")
@@ -2388,9 +2414,11 @@ async def analyse_resume(
             "next_action":       analysis.get("next_action", ""),
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Analysis error for user {user['user_id']}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Analysis error for user {user['user_id']}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Resume analysis could not be completed. Please try again.")
 
 
 @router.get("/analyse/history")

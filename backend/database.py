@@ -88,36 +88,83 @@ async def get_current_user(token: str) -> dict:
     for a given account, that's a narrower edge case than what we were
     trading away (site-wide latency + flaky false "invalid token" errors).
     """
-    if not settings.SUPABASE_JWT_SECRET:
-        # Distinct from "bad token" — this is a server misconfiguration.
-        raise RuntimeError(
-            "SUPABASE_JWT_SECRET is not set. Local token verification "
-            "requires it (Supabase Dashboard -> Project Settings -> API -> JWT Secret)."
-        )
+    payload = None
+    keys_to_try = []
 
-    # Supabase's legacy JWT secret, as shown/copied from the dashboard, is a
-    # base64-encoded string — the actual HMAC signing key is the DECODED
-    # bytes, not the literal displayed characters. Passing the raw string in
-    # as the key causes every signature check to fail silently (no error,
-    # just permanent verification failure), which is exactly what we saw:
-    # a well-formed, correctly-copied secret that still rejected every token.
-    import base64 as _base64
-    try:
-        signing_key = _base64.b64decode(settings.SUPABASE_JWT_SECRET)
-    except Exception as e:
-        raise RuntimeError(f"SUPABASE_JWT_SECRET is not valid base64: {e}") from e
+    if settings.SUPABASE_JWT_SECRET:
+        import base64 as _base64
+        try:
+            keys_to_try.append(_base64.b64decode(settings.SUPABASE_JWT_SECRET))
+        except Exception:
+            pass
+        keys_to_try.append(settings.SUPABASE_JWT_SECRET.encode("utf-8"))
 
-    try:
-        payload = jose_jwt.decode(
-            token,
-            signing_key,
-            algorithms=["HS256"],
-            audience="authenticated",
-        )
-    except ExpiredSignatureError as e:
-        raise ValueError("Token has expired") from e
-    except (JWTError, JWTClaimsError) as e:
-        raise ValueError("Invalid token") from e
+    # Tier 1: Local token decode (fast, zero network latency)
+    for signing_key in keys_to_try:
+        try:
+            payload = jose_jwt.decode(
+                token,
+                signing_key,
+                algorithms=["HS256"],
+                audience="authenticated",
+            )
+            break
+        except ExpiredSignatureError as e:
+            raise ValueError("Token has expired") from e
+        except (JWTError, JWTClaimsError):
+            # Try without strict aud verification in case aud is a project URL or list
+            try:
+                payload = jose_jwt.decode(
+                    token,
+                    signing_key,
+                    algorithms=["HS256"],
+                    options={"verify_aud": False},
+                )
+                break
+            except ExpiredSignatureError as e:
+                raise ValueError("Token has expired") from e
+            except (JWTError, JWTClaimsError):
+                continue
+
+    # Tier 2: Fallback to Supabase live auth API if local validation failed
+    if payload is None:
+        if supabase:
+            try:
+                user_resp = supabase.auth.get_user(token)
+                user_obj = getattr(user_resp, "user", None)
+                if user_obj:
+                    user_id = getattr(user_obj, "id", None)
+                    email = getattr(user_obj, "email", None)
+                    app_metadata = getattr(user_obj, "app_metadata", {}) or {}
+                    user_metadata = getattr(user_obj, "user_metadata", {}) or {}
+                    providers: list[str] = []
+                    p = app_metadata.get("provider")
+                    if p and p not in providers:
+                        providers.append(p)
+                    for pr in app_metadata.get("providers") or []:
+                        if pr and pr not in providers:
+                            providers.append(pr)
+                    github_username = (
+                        user_metadata.get("user_name")
+                        or user_metadata.get("preferred_username")
+                        or user_metadata.get("username")
+                        or user_metadata.get("login")
+                    )
+                    if github_username and "github" not in providers:
+                        providers.append("github")
+                    return {
+                        "user_id": user_id,
+                        "email": email,
+                        "providers": providers,
+                        "github_username": github_username,
+                    }
+            except Exception as e:
+                err_msg = str(e).lower()
+                if "expired" in err_msg:
+                    raise ValueError("Token has expired") from e
+                logger.info("Supabase auth.get_user fallback also rejected token: %s", e)
+                raise ValueError("Invalid token") from e
+        raise ValueError("Invalid token")
 
     user_id = payload.get("sub")
     email = payload.get("email")

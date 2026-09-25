@@ -386,11 +386,26 @@ async def call_groq(
 
 
 def _extract_json(text: str) -> dict:
-    def _sanitize_json_text(value: str) -> str:
-        # Remove non-printable control chars and escape raw newlines inside strings.
+    if not isinstance(text, str) or not text.strip():
+        raise ValueError("Cannot extract JSON from empty model output.")
+
+    original_text = text
+    cleaned = re.sub(r"```(?:json)?|```", "", text).strip()
+
+    # Extract JSON object substring if surrounded by extra commentary
+    start = cleaned.find("{")
+    end = cleaned.rfind("}")
+    candidate = cleaned[start:end + 1] if (start != -1 and end != -1 and end > start) else cleaned
+
+    # Attempt 1: Standard parsing
+    try:
+        return json.loads(candidate)
+    except json.JSONDecodeError:
+        pass
+
+    def _sanitize_string_literals(value: str) -> str:
         value = value.replace("\u0000", "")
         value = re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F]", "", value)
-
         out = []
         in_str = False
         escape = False
@@ -416,8 +431,6 @@ def _extract_json(text: str) -> dict:
                 if ch == "\t":
                     out.append("\\t")
                     continue
-                if ord(ch) < 32:
-                    continue
                 out.append(ch)
             else:
                 if ch == '"':
@@ -425,24 +438,43 @@ def _extract_json(text: str) -> dict:
                 out.append(ch)
         return "".join(out)
 
-    original_text = text
-    text = re.sub(r"```json|```", "", text).strip()
-    text = _sanitize_json_text(text)
+    # Attempt 2: Sanitize control characters and unescaped newlines inside strings
+    sanitized = _sanitize_string_literals(candidate)
     try:
-        return json.loads(text)
-    except json.JSONDecodeError as e:
-        logger.error(
-            "JSON parse failed (%s). Raw model output:\n%s",
-            str(e),
-            original_text[:4000],
-        )
-        match = re.search(r"\{.*\}", text, re.DOTALL)
-        if match:
-            try:
-                return json.loads(_sanitize_json_text(match.group()))
-            except json.JSONDecodeError as e2:
-                logger.error("Fallback regex extraction also failed (%s).", str(e2))
-        raise ValueError(f"Could not parse JSON: {original_text[:300]}")
+        return json.loads(sanitized)
+    except json.JSONDecodeError:
+        pass
+
+    # Attempt 3: Repair trailing commas before closing braces/brackets
+    repaired = re.sub(r",\s*([}\]])", r"\1", sanitized)
+    try:
+        return json.loads(repaired)
+    except json.JSONDecodeError:
+        pass
+
+    # Attempt 4: Insert missing commas between lines (e.g. "val"\n  "key":)
+    repaired = re.sub(r'([}\]"\d]|true|false|null)\s*\n\s*(["{\[])', r"\1,\n\2", repaired)
+    repaired = re.sub(r",\s*([}\]])", r"\1", repaired)
+    try:
+        return json.loads(repaired)
+    except json.JSONDecodeError:
+        pass
+
+    # Attempt 5: Handle truncated JSON by closing open braces/brackets
+    open_braces = repaired.count("{") - repaired.count("}")
+    open_brackets = repaired.count("[") - repaired.count("]")
+    if open_braces > 0 or open_brackets > 0:
+        patch = repaired.rstrip().rstrip(",")
+        if patch.count('"') % 2 != 0:
+            patch += '"'
+        patch += ("]" * max(0, open_brackets)) + ("}" * max(0, open_braces))
+        try:
+            return json.loads(patch)
+        except json.JSONDecodeError:
+            pass
+
+    logger.error("JSON extraction and repair failed. Raw output:\n%s", original_text[:3000])
+    raise ValueError(f"Could not parse JSON from model output: {original_text[:160]}")
 
 
 REQUIRED_RESUME_FIELDS = {"score", "grade", "summary", "strengths", "weaknesses", "missing_skills", "ats_score"}
