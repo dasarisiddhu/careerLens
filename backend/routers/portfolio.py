@@ -1,18 +1,21 @@
 # backend/routers/portfolio.py
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request
 from middleware.auth import get_user_profile
 from services.gemini_service import generate_portfolio_html
 from services.pdf_service import extract_text_from_pdf
 from database import supabase
 from config import settings
 import logging, base64
+from rate_limit import limiter
 
 logger = logging.getLogger("careerlens.portfolio")
 
 router = APIRouter()
 
 @router.post("/generate")
+@limiter.limit("15/hour")  # AI-calling endpoint — prevent abuse
 async def generate_portfolio(
+    request: Request,
     resume: UploadFile = File(...),
     name: str = Form(""),
     github_username: str = Form(""),

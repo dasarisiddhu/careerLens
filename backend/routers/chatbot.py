@@ -3,13 +3,14 @@
 # File: backend/routers/chatbot.py
 # ============================================================
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel
 from middleware.auth import get_authenticated_user, get_user_profile
 from services.gemini_service import call_groq
 from database import supabase
 from config import settings
 import uuid, logging
+from rate_limit import limiter
 
 logger = logging.getLogger("careerlens.chatbot")
 router = APIRouter()
@@ -37,7 +38,8 @@ class MessageRequest(BaseModel):
 
 
 @router.post("/message")
-async def send_message(body: MessageRequest, profile=Depends(get_user_profile)):
+@limiter.limit("15/hour")  # AI-calling endpoint — prevent abuse
+async def send_message(request: Request, body: MessageRequest, profile=Depends(get_user_profile)):
     """Send a message to the Honest Career Coach and get a response."""
     if len(body.content) > 4000:
         raise HTTPException(status_code=400, detail="Message content must be 4000 characters or fewer.")

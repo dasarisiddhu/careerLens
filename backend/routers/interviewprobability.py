@@ -3,7 +3,7 @@
 # File: backend/routers/interview_probability.py
 # ============================================================
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel
 from typing import Optional, List
 from middleware.auth import get_authenticated_user, get_user_profile
@@ -12,6 +12,7 @@ from services.gemini_service import call_groq, _extract_json
 from services.github_service import get_github_data
 import logging, re
 from urllib.parse import urlparse
+from rate_limit import limiter
 
 logger = logging.getLogger("careerlens.interview_probability")
 router = APIRouter()
@@ -209,7 +210,9 @@ async def get_ai_analysis(resume_text, github_data, job_description, missing_ski
 # ============================================================
 
 @router.post("/")
+@limiter.limit("15/hour")  # AI-calling endpoint — prevent abuse
 async def predict_interview_probability(
+    request: Request,
     body: ProbabilityRequest,
     profile=Depends(get_user_profile),
     user=Depends(get_authenticated_user),

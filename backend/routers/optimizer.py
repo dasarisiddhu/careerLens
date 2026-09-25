@@ -7,12 +7,7 @@ from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import Response
 from pydantic import BaseModel
 from typing import Any, Optional
-try:
-    from middleware.auth import get_authenticated_user, require_premium
-except ImportError:
-    from middleware.auth import get_authenticated_user
-    async def require_premium():
-        return {"plan_type": "premium"}
+from middleware.auth import get_authenticated_user, require_premium
 from database import supabase
 from services.gemini_service import call_groq, _extract_json
 from services.professional_resume_pdf import build_professional_resume_pdf

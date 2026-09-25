@@ -4,6 +4,10 @@ import { motion } from 'framer-motion'
 import { pageTransition } from '../../utils/animations'
 import { CheckCircle, X, Zap, Star, Loader2 } from 'lucide-react'
 import { api } from '../../services/api'
+import { loadStripe } from '@stripe/stripe-js'
+import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js'
+
+const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '')
 
 const FEATURES = [
   { label: 'Resume Analyses', free: '1 only', premium: 'Unlimited' },
@@ -24,11 +28,66 @@ const buttonMotion = {
   transition: { duration: 0.15, ease: 'easeOut' },
 }
 
+function CheckoutForm({ onCancel }) {
+  const stripe = useStripe()
+  const elements = useElements()
+  const [submitting, setSubmitting] = useState(false)
+  const [errorMessage, setErrorMessage] = useState('')
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (!stripe || !elements) return
+
+    setSubmitting(true)
+    setErrorMessage('')
+
+    const { error } = await stripe.confirmPayment({
+      elements,
+      confirmParams: {
+        return_url: `${window.location.origin}/dashboard?payment=success`,
+      },
+    })
+
+    if (error) {
+      setErrorMessage(error.message || 'Payment failed. Please try again.')
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4 pt-2">
+      <PaymentElement id="payment-element" options={{ layout: 'tabs' }} />
+      {errorMessage && (
+        <p className="text-red-400 text-sm text-center">{errorMessage}</p>
+      )}
+      <button
+        type="submit"
+        disabled={!stripe || submitting}
+        className="btn-primary w-full flex items-center justify-center gap-2 py-3"
+      >
+        {submitting ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
+        {submitting ? 'Processing Payment...' : 'Pay $5.00 & Upgrade'}
+      </button>
+      {onCancel && (
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={submitting}
+          className="w-full text-center text-xs text-[#78716c] hover:text-white py-1 transition-colors"
+        >
+          Cancel
+        </button>
+      )}
+    </form>
+  )
+}
+
 export default function Upgrade() {
+  const [clientSecret, setClientSecret] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const handleUpgrade = async () => {
+  const handleStartCheckout = async () => {
     setLoading(true)
     setError('')
     try {
@@ -36,22 +95,7 @@ export default function Upgrade() {
       if (!res.client_secret) {
         throw new Error('No client_secret returned from server.')
       }
-      // Redirect to Stripe Checkout using the client_secret
-      // The Stripe.js confirmPayment flow expects a return_url
-      const stripe = window.Stripe?.(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY)
-      if (!stripe) {
-        throw new Error('Stripe.js not loaded. Please refresh and try again.')
-      }
-      const { error: stripeError } = await stripe.confirmPayment({
-        clientSecret: res.client_secret,
-        confirmParams: {
-          return_url: `${window.location.origin}/dashboard?payment=success`,
-        },
-      })
-      // If we reach here, there was an error (successful payments redirect away)
-      if (stripeError) {
-        setError(stripeError.message || 'Payment failed. Please try again.')
-      }
+      setClientSecret(res.client_secret)
     } catch (e) {
       setError(e.message || 'Could not initiate payment. Please try again.')
     } finally {
@@ -125,29 +169,44 @@ export default function Upgrade() {
               </li>
             ))}
           </ul>
-          {error && (
-            <p className="text-red-400 text-sm text-center mb-3">{error}</p>
+          {clientSecret ? (
+            <Elements
+              stripe={stripePromise}
+              options={{
+                clientSecret,
+                appearance: {
+                  theme: 'night',
+                  variables: {
+                    colorPrimary: '#ef4444',
+                    colorBackground: '#1a1e2e',
+                    colorText: '#ffffff',
+                    colorDanger: '#f87171',
+                  },
+                },
+              }}
+            >
+              <CheckoutForm onCancel={() => setClientSecret('')} />
+            </Elements>
+          ) : (
+            <>
+              {error && (
+                <p className="text-red-400 text-sm text-center mb-3">{error}</p>
+              )}
+              <motion.button
+                {...buttonMotion}
+                className="btn-primary w-full flex items-center justify-center gap-2 py-4"
+                onClick={handleStartCheckout}
+                disabled={loading}
+              >
+                {loading ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
+                {loading ? 'Preparing Checkout...' : 'Upgrade Now – $5.00/mo'}
+              </motion.button>
+              <p className="text-center text-xs text-[#44403c] mt-3">Cancel anytime · Secure payment via Stripe</p>
+            </>
           )}
-          <motion.button {...buttonMotion} className="btn-primary w-full flex items-center justify-center gap-2 py-4"
-            onClick={handleUpgrade}
-            disabled={loading}>
-            {loading ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
-            {loading ? 'Processing...' : 'Upgrade Now – $5.00/mo'}
-          </motion.button>
-          <p className="text-center text-xs text-[#44403c] mt-3">Cancel anytime · Secure payment via Stripe</p>
         </motion.div>
       </div>
     </div>
     </motion.div>
   )
 }
-
-
-
-
-
-
-
-
-
-
