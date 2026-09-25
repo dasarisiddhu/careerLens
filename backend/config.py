@@ -84,6 +84,7 @@ class Settings(BaseSettings):
     FREEMIUM_MAX_INTERVIEWS: int = 1
     FREEMIUM_MAX_CHATBOT_MSGS: int = 20
     FREEMIUM_MAX_PORTFOLIO_GENS: int = 4
+    FREEMIUM_MAX_INTERVIEW_PROBABILITY: int = 3
 
     # ----------------------------------------------------------
     # File Upload

@@ -13,6 +13,7 @@ from services.github_service import get_github_data
 import logging, re
 from urllib.parse import urlparse
 from rate_limit import limiter
+from config import settings
 
 logger = logging.getLogger("careerlens.interview_probability")
 router = APIRouter()
@@ -221,6 +222,8 @@ async def predict_interview_probability(
         raise HTTPException(status_code=400, detail="Resume text is required.")
     if not body.job_description.strip():
         raise HTTPException(status_code=400, detail="Job description is required.")
+    if profile["plan_type"] == "freemium" and profile["interview_probability_count"] >= settings.FREEMIUM_MAX_INTERVIEW_PROBABILITY:
+        raise HTTPException(status_code=403, detail="Interview probability check limit reached. Upgrade to Premium for unlimited access.")
     try:
         requested_github_url = (body.github_url or "").strip()
         normalized_requested_github_url = normalize_github_url(requested_github_url) if requested_github_url else None
@@ -305,6 +308,8 @@ async def predict_interview_probability(
             }).execute()
         except Exception as e:
             logger.warning(f"DB save failed: {e}")
+
+        supabase.rpc("increment_interview_probability_count", {"p_user_id": user["user_id"]}).execute()
 
         return {
             "success":               True,

@@ -30,6 +30,7 @@ CREATE TABLE public.users (
     mock_interview_count    INTEGER NOT NULL DEFAULT 0,
     chatbot_message_count   INTEGER NOT NULL DEFAULT 0,
     portfolio_gen_count     INTEGER NOT NULL DEFAULT 0,
+    interview_probability_count INTEGER NOT NULL DEFAULT 0,
     github_url      TEXT,
     linkedin_url    TEXT,
     desired_role    TEXT,
@@ -299,6 +300,15 @@ BEGIN
     UPDATE public.users
     SET portfolio_gen_count = portfolio_gen_count + 1
     WHERE user_id = p_user_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION public.increment_interview_probability_count(p_user_id UUID)
+RETURNS void AS $$
+BEGIN
+  UPDATE public.users
+  SET interview_probability_count = interview_probability_count + 1
+  WHERE user_id = p_user_id;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
