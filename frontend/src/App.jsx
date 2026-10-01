@@ -28,6 +28,7 @@ const ResumeOptimizer = lazy(() => import('./pages/dashboard/ResumeOptimizer'))
 const JobMatch = lazy(() => import('./pages/dashboard/JobMatch'))
 const Portfolio = lazy(() => import('./pages/dashboard/Portfolio'))
 const UIDevShowcase = lazy(() => import('./pages/dev/UIDevShowcase'))
+const MascotDemo = lazy(() => import('./mascot/MascotDemo'))
 
 const PageLoader = () => (
   <div style={{
@@ -109,6 +110,15 @@ export default function App() {
         element={
           <Suspense fallback={<PageLoader />}>
             <UIDevShowcase />
+          </Suspense>
+        }
+      />
+
+      <Route
+        path="/mascot-demo"
+        element={
+          <Suspense fallback={<PageLoader />}>
+            <MascotDemo />
           </Suspense>
         }
       />
