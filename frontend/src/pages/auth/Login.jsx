@@ -1,50 +1,10 @@
-import { useEffect, useState } from 'react'
+import React, { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '../../services/supabase'
-import { Zap, Eye, EyeOff, Loader2, Github, Chrome, Mail, Lock } from 'lucide-react'
-import { Button } from '../../components/ui/Button'
-import { Input } from '../../components/ui/Input'
-
-function Particles() {
-  const [particles, setParticles] = useState([])
-
-  useEffect(() => {
-    setParticles(
-      Array.from({ length: 20 }).map((_, index) => ({
-        id: index,
-        left: Math.random() * 100,
-        top: Math.random() * 100,
-        size: Math.random() * 3 + 1,
-        opacity: Math.random() * 0.28 + 0.08,
-        duration: Math.random() * 6 + 4,
-        delay: Math.random() * 2,
-        color: index % 2 === 0 ? 'rgba(255,107,0,0.24)' : 'rgba(255,167,38,0.18)',
-      })),
-    )
-  }, [])
-
-  return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden">
-      {particles.map((particle) => (
-        <div
-          key={particle.id}
-          style={{
-            position: 'absolute',
-            left: `${particle.left}%`,
-            top: `${particle.top}%`,
-            width: `${particle.size}px`,
-            height: `${particle.size}px`,
-            borderRadius: '50%',
-            background: particle.color,
-            boxShadow: `0 0 ${particle.size * 8}px ${particle.color}`,
-            animation: `float ${particle.duration}s ease-in-out ${particle.delay}s infinite alternate`,
-          }}
-        />
-      ))}
-    </div>
-  )
-}
+import { Eye, EyeOff, Loader2, Github, Chrome, Mail, Lock, AlertCircle, ArrowLeft } from 'lucide-react'
+import { Button, Input, GlassCard } from '../../components/ui'
+import { Mascot } from '../../mascot/Mascot'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -84,156 +44,158 @@ export default function Login() {
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.3 }}
-      className="relative flex min-h-screen items-center justify-center p-6 bg-[#0B0A10]"
-    >
-      <Particles />
+    <div className="relative min-h-screen flex items-center justify-center p-6 bg-base overflow-hidden">
+      {/* Background Soft Sky Bloom */}
+      <div
+        className="absolute top-1/4 -left-20 w-96 h-96 rounded-full pointer-events-none blur-3xl opacity-60"
+        style={{ background: 'radial-gradient(circle, rgba(219, 234, 254, 0.7) 0%, transparent 70%)' }}
+      />
+      <div
+        className="absolute bottom-1/4 -right-20 w-96 h-96 rounded-full pointer-events-none blur-3xl opacity-60"
+        style={{ background: 'radial-gradient(circle, rgba(224, 242, 254, 0.7) 0%, transparent 70%)' }}
+      />
 
+      {/* Centered Glass Card */}
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
+        initial={{ opacity: 0, y: 18 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.45, ease: [0.4, 0, 0.2, 1] }}
-        className="glass-glow relative w-full max-w-[460px] rounded-3xl p-8 sm:p-10"
-        style={{
-          boxShadow: '0 25px 60px rgba(0,0,0,0.5), 0 0 50px rgba(255,107,0,0.12)',
-        }}
+        transition={{ duration: 0.35, ease: [0.2, 0.8, 0.2, 1] }}
+        className="relative w-full max-w-[440px] z-10"
       >
-        <div
-          aria-hidden
-          className="absolute right-0 top-0 h-40 w-40 rounded-full blur-3xl"
-          style={{ background: 'radial-gradient(circle, rgba(255,107,0,0.16) 0%, transparent 72%)' }}
-        />
-
-        <div className="relative mb-8">
-          <div className="mb-4 flex items-center gap-3">
-            <div
-              className="flex h-11 w-11 items-center justify-center rounded-xl"
-              style={{
-                background: 'linear-gradient(135deg, #FF6B00, #CC4E00)',
-                boxShadow: '0 0 24px rgba(255,107,0,0.4)',
-              }}
-            >
-              <Zap size={20} className="text-white fill-white" />
-            </div>
-            <div>
-              <div className="gradient-text text-2xl font-bold font-display">CareerLens</div>
-              <p className="text-[13px] text-[#9499B3]">Your AI career copilot</p>
-            </div>
-          </div>
-
-          <h1 className="mb-2 text-2xl font-bold text-white font-display">Welcome back</h1>
-          <p className="text-sm text-[#9499B3]">Sign in to continue building your career system.</p>
+        {/* Mascot Peeking from Top-Right */}
+        <div className="absolute -top-16 -right-6 z-20 pointer-events-none hidden sm:block">
+          <Mascot size={110} showPodium={false} state="greeting" />
         </div>
 
-        <AnimatePresence>
-          {error && (
-            <motion.div
-              initial={{ opacity: 0, y: -8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              className="mb-4 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-300"
-            >
-              {error}
-            </motion.div>
-          )}
-        </AnimatePresence>
+        <GlassCard strong className="p-8 sm:p-10 rounded-[28px] shadow-glass-lg border-white/95">
+          {/* Header */}
+          <div className="mb-6">
+            <Link to="/" className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#64748B] hover:text-[#0B0F19] transition-colors mb-4">
+              <ArrowLeft size={14} />
+              <span>Back to home</span>
+            </Link>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-[#F5F5F7]">Email address</label>
-            <div className="relative">
-              <Mail size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[rgba(148,153,179,0.6)]" />
-              <Input
-                type="email"
-                required
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                placeholder="you@example.com"
-                className="pl-11"
-              />
+            <div className="flex items-center gap-2.5 mb-3">
+              <div className="w-8 h-8 rounded-xl bg-[#0B0F19] text-white flex items-center justify-center font-bold text-xs shadow-sm">
+                CL
+              </div>
+              <span className="text-base font-bold text-[#0B0F19] tracking-tight">CareerLens</span>
             </div>
+
+            <h1 className="text-2xl font-extrabold text-[#0B0F19] tracking-tight">
+              Welcome back
+            </h1>
+            <p className="text-xs text-[#64748B] mt-1">
+              Sign in to continue building your career system.
+            </p>
           </div>
 
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-[#F5F5F7]">Password</label>
-            <div className="relative">
-              <Lock size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[rgba(148,153,179,0.6)]" />
+          {/* Error Alert */}
+          <AnimatePresence>
+            {error && (
+              <motion.div
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                className="mb-4 p-3 rounded-xl bg-rose-50 border border-rose-200/80 text-xs text-[#E11D48] flex items-center gap-2"
+              >
+                <AlertCircle size={15} className="shrink-0" />
+                <span>{error}</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Form */}
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <Input
+              type="email"
+              required
+              label="Email Address"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              leadingIcon={Mail}
+            />
+
+            <div>
               <Input
                 type={showPass ? 'text' : 'password'}
                 required
+                label="Password"
                 value={password}
-                onChange={(event) => setPassword(event.target.value)}
+                onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="pl-11 pr-11"
+                leadingIcon={Lock}
+                trailingIcon={showPass ? EyeOff : Eye}
+                onTrailingIconClick={() => setShowPass(!showPass)}
               />
-              <button
-                type="button"
-                onClick={() => setShowPass((current) => !current)}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-[#8A8FA8] transition hover:text-white"
-              >
-                {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
+              <div className="text-right mt-1.5">
+                <Link
+                  to="/forgot-password"
+                  className="text-xs font-semibold text-[#2563EB] hover:underline"
+                >
+                  Forgot password?
+                </Link>
+              </div>
             </div>
+
+            <Button
+              type="submit"
+              variant="primary"
+              size="md"
+              disabled={loading || Boolean(oauthProvider)}
+              loading={loading}
+              className="w-full"
+            >
+              Sign In
+            </Button>
+          </form>
+
+          {/* Divider */}
+          <div className="my-6 flex items-center gap-3">
+            <div className="h-px flex-1 bg-slate-200" />
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-[#94A3B8]">
+              or continue with
+            </span>
+            <div className="h-px flex-1 bg-slate-200" />
           </div>
 
-          <div className="text-right">
-            <Link to="/forgot-password" className="text-sm text-primary-light transition hover:text-primary">
-              Forgot password?
+          {/* Social OAuth Buttons */}
+          <div className="grid grid-cols-2 gap-3">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              icon={Chrome}
+              onClick={() => handleOAuth('google')}
+              disabled={loading || Boolean(oauthProvider)}
+              loading={oauthProvider === 'google'}
+              className="w-full"
+            >
+              Google
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              icon={Github}
+              onClick={() => handleOAuth('github')}
+              disabled={loading || Boolean(oauthProvider)}
+              loading={oauthProvider === 'github'}
+              className="w-full"
+            >
+              GitHub
+            </Button>
+          </div>
+
+          <p className="mt-6 text-center text-xs text-[#64748B]">
+            Don't have an account?{' '}
+            <Link to="/signup" className="font-bold text-[#2563EB] hover:underline">
+              Sign up
             </Link>
-          </div>
-
-          <Button type="submit" variant="primary" disabled={loading || !!oauthProvider} className="w-full py-3 h-12 text-base">
-            {loading ? (
-              <>
-                <Loader2 size={17} className="animate-spin" />
-                Signing in...
-              </>
-            ) : (
-              'Sign In'
-            )}
-          </Button>
-        </form>
-
-        <div className="my-6 flex items-center gap-3">
-          <div className="h-px flex-1 bg-gradient-to-r from-transparent via-[rgba(255,107,0,0.25)] to-transparent" />
-          <span className="text-xs uppercase tracking-[0.18em] text-[#8A8FA8]">or continue with</span>
-          <div className="h-px flex-1 bg-gradient-to-r from-transparent via-[rgba(255,107,0,0.25)] to-transparent" />
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={() => handleOAuth('google')}
-            disabled={loading || !!oauthProvider}
-            className="w-full h-11"
-          >
-            {oauthProvider === 'google' ? <Loader2 size={16} className="animate-spin" /> : <Chrome size={16} />}
-            Google
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={() => handleOAuth('github')}
-            disabled={loading || !!oauthProvider}
-            className="w-full h-11"
-          >
-            {oauthProvider === 'github' ? <Loader2 size={16} className="animate-spin" /> : <Github size={16} />}
-            GitHub
-          </Button>
-        </div>
-
-        <p className="mt-6 text-center text-sm text-[#8A8FA8]">
-          Don&apos;t have an account?{' '}
-          <Link to="/signup" className="font-medium text-primary-light transition hover:text-primary">
-            Sign up
-          </Link>
-        </p>
+          </p>
+        </GlassCard>
       </motion.div>
-    </motion.div>
+    </div>
   )
 }

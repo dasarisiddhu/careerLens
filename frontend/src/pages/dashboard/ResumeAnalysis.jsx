@@ -1,15 +1,35 @@
-import { useState, useCallback, useEffect } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import React, { useState, useCallback, useEffect } from 'react'
+import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { useDropzone } from 'react-dropzone'
-import { motion } from 'framer-motion'
-import { pageTransition } from '../../utils/animations'
+import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '../../services/api'
 import { useAuth } from '../../context/AuthContext'
 import toast from 'react-hot-toast'
-import { Upload, Github, Briefcase, Loader2, FileText, CheckCircle, History, ArrowRight } from 'lucide-react'
+import {
+  Upload,
+  Github,
+  Briefcase,
+  Loader2,
+  FileText,
+  CheckCircle2,
+  History,
+  ArrowRight,
+  AlertCircle,
+  Sparkles,
+} from 'lucide-react'
+import { GlassCard, Button, Input, Badge } from '../../components/ui'
+import { Mascot } from '../../mascot/Mascot'
 
 const LAST_RESUME_ANALYSIS_KEY = 'careerlens:last_resume_analysis_id'
 const GITHUB_LOCK_KEY = 'careerlens:locked_github_url'
+
+const STATUS_ROTATION = [
+  'Reading your resume...',
+  'Checking keywords and structure...',
+  'Analyzing GitHub repositories & commits...',
+  'Evaluating job role alignment...',
+  'Preparing your personalized feedback...',
+]
 
 const normalizeGithubUrl = (rawUrl = '') => {
   const url = String(rawUrl || '').trim()
@@ -20,23 +40,10 @@ const normalizeGithubUrl = (rawUrl = '') => {
 
 const resolveGithubFromAuthUser = (authUser) => {
   if (!authUser) return ''
-
-  const providers = new Set()
   const identities = Array.isArray(authUser.identities) ? authUser.identities : []
-  for (const identity of identities) {
-    const provider = identity?.provider || identity?.identity_data?.provider
-    if (provider) providers.add(String(provider).toLowerCase())
-  }
-
-  const metaProvider = authUser?.app_metadata?.provider
-  if (metaProvider) providers.add(String(metaProvider).toLowerCase())
-  const metaProviders = Array.isArray(authUser?.app_metadata?.providers) ? authUser.app_metadata.providers : []
-  for (const provider of metaProviders) {
-    if (provider) providers.add(String(provider).toLowerCase())
-  }
-
   const userMeta = authUser?.user_metadata || {}
-  const identityMeta = identities.find((identity) => (identity?.provider || '').toLowerCase() === 'github')?.identity_data || {}
+  const identityMeta =
+    identities.find((identity) => (identity?.provider || '').toLowerCase() === 'github')?.identity_data || {}
   const githubUsername = (
     userMeta.user_name ||
     userMeta.preferred_username ||
@@ -50,7 +57,7 @@ const resolveGithubFromAuthUser = (authUser) => {
   ).trim()
 
   if (githubUsername) return `https://github.com/${githubUsername}`
-  return providers.has('github') ? normalizeGithubUrl(userMeta.profile || userMeta.url || '') : ''
+  return ''
 }
 
 export default function ResumeAnalysis() {
@@ -59,6 +66,7 @@ export default function ResumeAnalysis() {
   const [form, setForm] = useState({ github_url: '', job_role: '' })
   const [githubLocked, setGithubLocked] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [statusIdx, setStatusIdx] = useState(0)
   const [error, setError] = useState('')
   const navigate = useNavigate()
   const location = useLocation()
@@ -113,6 +121,15 @@ export default function ResumeAnalysis() {
     }
   }, [authUser])
 
+  // Rotate status message while analyzing
+  useEffect(() => {
+    if (!loading) return
+    const interval = setInterval(() => {
+      setStatusIdx((prev) => (prev + 1) % STATUS_ROTATION.length)
+    }, 2800)
+    return () => clearInterval(interval)
+  }, [loading])
+
   const onDrop = useCallback((accepted) => {
     if (accepted[0]) setFile(accepted[0])
   }, [])
@@ -122,8 +139,6 @@ export default function ResumeAnalysis() {
     accept: { 'application/pdf': ['.pdf'] },
     maxFiles: 1,
   })
-
-  const handle = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }))
 
   const handleSubmit = async (event) => {
     event.preventDefault()
@@ -160,96 +175,163 @@ export default function ResumeAnalysis() {
     }
   }
 
-  const dropzoneClass = file
-    ? 'border-primary/40 bg-primary/5 shadow-[0_0_20px_rgba(255,107,0,0.1)]'
-    : isDragActive
-      ? 'border-primary bg-primary/10 shadow-[0_0_30px_rgba(255,107,0,0.2)]'
-      : 'border-white/10 bg-white/[0.02] hover:border-primary/30 hover:bg-primary/[0.04]'
-
   return (
-    <motion.div variants={pageTransition} initial="hidden" animate="visible" exit="exit" style={{ width: '100%' }}>
-      <div className="mx-auto max-w-3xl space-y-6">
+    <div className="w-full max-w-4xl mx-auto space-y-8 pb-16">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="gradient-text mb-2 text-3xl font-black">Resume Analysis</h1>
-          <p className="text-[#8A8FA8]">Get AI-powered insight on your resume, GitHub profile, and target role fit.</p>
+          <Badge sparkle size="sm" className="mb-2">
+            AI Diagnosis
+          </Badge>
+          <h1 className="text-3xl font-extrabold text-[#0B0F19] tracking-tight">
+            Resume Analysis
+          </h1>
+          <p className="text-xs text-[#64748B] mt-1 max-w-xl">
+            Upload your resume PDF and optionally connect your GitHub profile to receive actionable diagnosis and role alignment.
+          </p>
         </div>
 
-        {error && <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-300">{error}</div>}
+        <Link to="/dashboard/optimizer">
+          <Button variant="secondary" size="sm" trailingIcon={ArrowRight}>
+            Try Resume Optimizer
+          </Button>
+        </Link>
+      </div>
 
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div
-            {...getRootProps()}
-            className={`glass-glow cursor-pointer rounded-[24px] border-2 border-dashed p-10 text-center transition-all ${dropzoneClass}`}
+      <AnimatePresence>
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-[#E11D48] flex items-center gap-2.5"
           >
-            <input {...getInputProps()} />
-            {file ? (
-              <div className="flex flex-col items-center gap-3">
-                <motion.div initial={{ scale: 0.7, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring', stiffness: 220, damping: 16 }}>
-                  <CheckCircle size={36} className="text-green-400" />
-                </motion.div>
-                <p className="text-base font-semibold text-white">{file.name}</p>
-                <p className="text-sm text-[#8A8FA8]">{(file.size / 1024).toFixed(0)} KB - click to replace</p>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center gap-3">
-                <Upload size={34} className="float text-primary" />
-                <p className="text-base font-semibold text-white">Drop your resume PDF here</p>
-                <p className="text-sm text-[#8A8FA8]">or click to browse · Max 5MB</p>
-              </div>
-            )}
-          </div>
+            <AlertCircle size={16} className="shrink-0" />
+            <span>{error}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-          {loading && (
-            <div className="h-2 overflow-hidden rounded-full bg-white/10">
-              <div className="shimmer h-full bg-primary/50" />
+      {/* Main Upload Card */}
+      <GlassCard className="p-8 sm:p-10 border-white/95 shadow-glass-lg">
+        {loading ? (
+          /* Analyzing State with Mascot in Thinking pose */
+          <div className="py-12 flex flex-col items-center justify-center text-center space-y-6">
+            <Mascot size={180} showPodium={false} state="thinking" />
+
+            <div className="space-y-2 max-w-md">
+              <h3 className="text-lg font-bold text-[#0B0F19]">
+                Analyzing your profile...
+              </h3>
+              <p
+                role="status"
+                aria-live="polite"
+                className="text-xs font-semibold text-[#2563EB] h-5 transition-all"
+              >
+                {STATUS_ROTATION[statusIdx]}
+              </p>
+              <p className="text-[11px] text-[#94A3B8]">
+                This thorough scan takes ~20–30 seconds.
+              </p>
             </div>
-          )}
 
-          {[
-            { key: 'github_url', label: 'GitHub Profile URL', icon: Github, placeholder: 'https://github.com/username', type: 'url' },
-            { key: 'job_role', label: 'Desired Job Role', icon: Briefcase, placeholder: 'e.g. Full Stack Engineer, ML Engineer', type: 'text' },
-          ].map(({ key, label, icon: Icon, placeholder, type }) => (
-            <div key={key} className="glass-glow p-4">
-              <label className="mb-2 flex items-center gap-2 text-sm font-semibold text-white">
-                <Icon size={14} className="text-primary" />
-                {label}
-              </label>
-              <input
-                type={type}
-                required
-                value={form[key]}
-                onChange={handle(key)}
-                placeholder={placeholder}
-                disabled={key === 'github_url' && githubLocked}
-                className={`input-field ${key === 'github_url' && githubLocked ? 'cursor-not-allowed opacity-70' : ''}`}
+            {/* Indeterminate Shimmer Progress Bar */}
+            <div className="w-full max-w-xs h-2 rounded-full bg-slate-100 overflow-hidden relative">
+              <motion.div
+                animate={{ x: ['-100%', '200%'] }}
+                transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
+                className="w-1/2 h-full bg-[#2563EB] rounded-full"
               />
-              {key === 'github_url' && githubLocked && (
-                <p className="mt-2 text-xs text-[#8A8FA8]">GitHub URL is locked to your linked profile for this account.</p>
+            </div>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* File Dropzone */}
+            <div
+              {...getRootProps()}
+              className={`cursor-pointer rounded-2xl border-2 border-dashed p-8 sm:p-10 text-center transition-all ${
+                file
+                  ? 'border-[#2563EB] bg-blue-50/40'
+                  : isDragActive
+                  ? 'border-[#2563EB] bg-blue-50/60 scale-[1.01]'
+                  : 'border-slate-200 bg-white/50 hover:border-slate-300 hover:bg-white/80'
+              }`}
+            >
+              <input {...getInputProps()} />
+
+              {file ? (
+                <div className="flex flex-col items-center gap-2.5">
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-[#16A34A] flex items-center justify-center border border-emerald-100">
+                    <CheckCircle2 size={24} />
+                  </div>
+                  <p className="text-sm font-bold text-[#0B0F19]">{file.name}</p>
+                  <p className="text-xs text-[#64748B]">
+                    {(file.size / 1024).toFixed(0)} KB · Click or drag to replace
+                  </p>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-2.5">
+                  <div className="w-12 h-12 rounded-2xl bg-blue-50 text-[#2563EB] flex items-center justify-center border border-blue-100">
+                    <Upload size={22} />
+                  </div>
+                  <p className="text-sm font-bold text-[#0B0F19]">
+                    Drop your resume PDF here
+                  </p>
+                  <p className="text-xs text-[#64748B]">
+                    Supported format: PDF · Max size: 5MB
+                  </p>
+                </div>
               )}
             </div>
-          ))}
 
-          <button type="submit" disabled={loading} className="btn-primary w-full py-4 text-base font-bold shadow-glow">
-            {loading ? (
-              <>
-                <Loader2 size={18} className="animate-spin" />
-                Analyzing with AI... this may take 30s
-              </>
-            ) : (
-              <>
-                <FileText size={18} />
-                Analyze My Resume
-              </>
-            )}
-          </button>
-        </form>
+            {/* Inputs Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Input
+                label="GitHub Profile URL (Optional)"
+                type="url"
+                value={form.github_url}
+                onChange={(e) => setForm((c) => ({ ...c, github_url: e.target.value }))}
+                placeholder="https://github.com/username"
+                leadingIcon={Github}
+                disabled={githubLocked}
+                hint={githubLocked ? 'Locked to linked GitHub profile' : 'Used for repository analysis'}
+              />
 
-        <button onClick={() => navigate('/dashboard/resume/history')} className="btn-ghost w-full">
-          <History size={16} />
-          View Past Analyses
-          <ArrowRight size={14} />
-        </button>
+              <Input
+                label="Desired Job Role"
+                type="text"
+                required
+                value={form.job_role}
+                onChange={(e) => setForm((c) => ({ ...c, job_role: e.target.value }))}
+                placeholder="e.g. Frontend Engineer, ML Engineer"
+                leadingIcon={Briefcase}
+              />
+            </div>
+
+            {/* Submit Button */}
+            <Button
+              type="submit"
+              variant="primary"
+              size="lg"
+              trailingIcon={FileText}
+              className="w-full"
+            >
+              Analyze My Resume
+            </Button>
+          </form>
+        )}
+      </GlassCard>
+
+      {/* History CTA */}
+      <div className="text-center pt-2">
+        <Link
+          to="/dashboard/resume/history"
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#64748B] hover:text-[#0B0F19] transition-colors"
+        >
+          <History size={14} />
+          <span>View Past Analyses History</span>
+        </Link>
       </div>
-    </motion.div>
+    </div>
   )
 }

@@ -1,11 +1,10 @@
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import {
   Star,
   LogOut,
   Menu,
   ChevronRight,
   ChevronDown,
-  Zap,
   X,
   LayoutDashboard,
   FileText,
@@ -49,39 +48,6 @@ const NAV_SECONDARY = [
 
 const NAV = [...NAV_PRIMARY, ...NAV_SECONDARY]
 
-function useMouseSpotlight() {
-  useEffect(() => {
-    const handler = (event) => {
-      document.documentElement.style.setProperty('--mouse-x', `${event.clientX}px`)
-      document.documentElement.style.setProperty('--mouse-y', `${event.clientY}px`)
-    }
-
-    window.addEventListener('mousemove', handler, { passive: true })
-    return () => window.removeEventListener('mousemove', handler)
-  }, [])
-}
-
-function MouseSpotlight() {
-  return (
-    <div
-      aria-hidden
-      style={{
-        position: 'fixed',
-        pointerEvents: 'none',
-        zIndex: 1,
-        width: '700px',
-        height: '700px',
-        borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(255,107,0,0.04) 0%, transparent 68%)',
-        transform: 'translate(-50%, -50%)',
-        left: 'var(--mouse-x, 50vw)',
-        top: 'var(--mouse-y, 50vh)',
-        transition: 'left 0.12s ease, top 0.12s ease',
-      }}
-    />
-  )
-}
-
 function scrollDashboardToTop() {
   const lenis = window.__careerLensLenis
   if (lenis?.scrollTo) {
@@ -101,12 +67,12 @@ function Sidebar({ mobile = false, onClose }) {
       end={end}
       onClick={onClose}
       className={({ isActive }) =>
-        `group relative flex items-center gap-3 overflow-hidden rounded-xl px-3 py-2 text-sm font-medium transition ${
+        `group relative flex items-center gap-3 overflow-hidden rounded-xl px-3 py-2.5 text-xs font-semibold transition-all duration-200 ${
           isActive
-            ? 'text-white'
+            ? 'text-[#0B0F19] font-bold'
             : hero
-            ? 'text-[#FF8A33] hover:text-white'
-            : 'text-[rgba(148,153,179,0.7)] hover:text-[#F5F5F7]'
+            ? 'text-[#2563EB] hover:text-[#1D4ED8] hover:bg-blue-50/50'
+            : 'text-[#64748B] hover:text-[#0B0F19] hover:bg-slate-100/70'
         }`
       }
     >
@@ -118,39 +84,33 @@ function Sidebar({ mobile = false, onClose }) {
               style={{
                 position: 'absolute',
                 inset: 0,
-                background: 'rgba(255,107,0,0.12)',
+                background: 'rgba(37, 99, 235, 0.08)',
                 borderRadius: 12,
-                border: '1px solid rgba(255,107,0,0.25)',
-                borderLeft: '2px solid #FF6B00',
-                boxShadow: 'inset 3px 0 12px rgba(255,107,0,0.15)',
+                border: '1px solid rgba(37, 99, 235, 0.2)',
+                borderLeft: '3px solid #2563EB',
+                boxShadow: 'inset 3px 0 10px rgba(37, 99, 235, 0.06)',
               }}
               transition={{ type: 'spring', bounce: 0.18, duration: 0.38 }}
             />
           )}
 
-          <div className="absolute inset-0 rounded-xl bg-transparent transition group-hover:bg-white/[0.03]" />
+          <div className="absolute inset-0 rounded-xl bg-transparent transition group-hover:bg-slate-100/50" />
           <Icon
             size={17}
             className={`relative shrink-0 transition-colors ${
               isActive
-                ? 'text-primary'
+                ? 'text-[#2563EB]'
                 : hero
-                ? 'text-primary'
-                : 'text-[#8A8FA8] group-hover:text-primary-light'
+                ? 'text-[#2563EB]'
+                : 'text-[#94A3B8] group-hover:text-[#475569]'
             }`}
           />
-          <span
-            className="relative flex-1 truncate"
-            style={{
-              fontFamily: 'Cabinet Grotesk, sans-serif',
-              fontWeight: hero ? 600 : 500,
-            }}
-          >
+          <span className="relative flex-1 truncate">
             {label}
           </span>
           {isActive && (
             <motion.div initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} className="relative">
-              <ChevronRight size={13} style={{ color: '#FF6B00' }} />
+              <ChevronRight size={13} className="text-[#2563EB]" />
             </motion.div>
           )}
         </>
@@ -161,73 +121,39 @@ function Sidebar({ mobile = false, onClose }) {
   return (
     <aside
       style={{
-        background: 'rgba(11, 10, 16, 0.96)',
-        backdropFilter: 'blur(24px)',
-        WebkitBackdropFilter: 'blur(24px)',
-        borderRight: '1px solid rgba(255, 107, 0, 0.12)',
+        background: 'rgba(255, 255, 255, 0.88)',
+        backdropFilter: 'blur(20px)',
+        WebkitBackdropFilter: 'blur(20px)',
+        borderRight: '1px solid rgba(226, 232, 240, 0.85)',
       }}
-      className="relative flex h-screen flex-col overflow-hidden"
+      className="relative flex h-screen flex-col overflow-hidden shadow-[2px_0_16px_rgba(0,0,0,0.02)]"
     >
-      <div
-        aria-hidden
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          height: '180px',
-          background: 'linear-gradient(180deg, rgba(255,107,0,0.08) 0%, transparent 100%)',
-          pointerEvents: 'none',
-        }}
-      />
-
-      <div className="relative flex h-full min-h-0 flex-col p-5">
-        <div className="mb-8 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <motion.div
-              whileHover={{ scale: 1.08, rotate: 5 }}
-              transition={{ type: 'spring', stiffness: 400, damping: 18 }}
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: 12,
-                background: 'linear-gradient(135deg, #FF6B00, #CC4E00)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: '0 0 20px rgba(255,107,0,0.45)',
-              }}
-            >
-              <Zap size={18} className="text-white" />
-            </motion.div>
-            <div className="flex items-center gap-2">
-              <span
-                className="gradient-text text-lg font-bold"
-                style={{ fontFamily: 'Clash Display, sans-serif', fontWeight: 700, letterSpacing: '-0.03em' }}
-              >
-                CareerLens
-              </span>
-              <span
-                className="animate-pulse"
-                style={{
-                  width: 6,
-                  height: 6,
-                  borderRadius: '50%',
-                  background: '#10b981',
-                  boxShadow: '0 0 8px rgba(16,185,129,0.8)',
-                  display: 'inline-block',
-                }}
-              />
+      <div className="relative flex h-full min-h-0 flex-col p-4 sm:p-5">
+        {/* Brand Header */}
+        <div className="mb-6 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-[#0B0F19] text-white flex items-center justify-center shadow-sm">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M3 9a2 2 0 0 1 2-2h1.5a2 2 0 0 0 1.6-.8L9.3 4.8A2 2 0 0 1 10.9 4h2.2a2 2 0 0 1 1.6.8l1.2 1.4a2 2 0 0 0 1.6.8H19a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z" />
+              </svg>
             </div>
+            <span className="text-base font-bold text-[#0B0F19] tracking-tight">
+              CareerLens
+            </span>
           </div>
 
           {mobile && (
-            <button onClick={onClose} className="rounded-xl p-2 text-[#8A8FA8] transition hover:bg-white/5 hover:text-white">
+            <button
+              onClick={onClose}
+              className="rounded-xl p-1.5 text-[#64748B] transition hover:bg-slate-100 hover:text-[#0B0F19]"
+            >
               <X size={18} />
             </button>
           )}
         </div>
 
+        {/* Navigation list */}
         <nav
           data-lenis-prevent
           className="sidebar-nav min-h-0 flex-1 space-y-[2px] overflow-y-auto pr-1"
@@ -239,10 +165,7 @@ function Sidebar({ mobile = false, onClose }) {
           }}
           onWheelCapture={(event) => event.stopPropagation()}
         >
-          <p
-            className="mb-2 pl-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[#8A8FA8]/45"
-            style={{ fontFamily: 'Clash Display, sans-serif', letterSpacing: '0.12em' }}
-          >
+          <p className="mb-2 pl-3 text-[10px] font-bold uppercase tracking-[0.14em] text-[#94A3B8]">
             Resume Intelligence
           </p>
 
@@ -250,13 +173,12 @@ function Sidebar({ mobile = false, onClose }) {
             {NAV_PRIMARY.map(renderNavItem)}
           </div>
 
-          <div className="my-3 mx-2 border-t border-white/[0.06]" />
+          <div className="my-3 mx-2 border-t border-slate-200/80" />
 
           <button
             type="button"
             onClick={() => setMoreToolsOpen((prev) => !prev)}
-            className="mb-2 flex w-full items-center justify-between pl-3 pr-2 text-[10px] font-bold uppercase tracking-[0.18em] text-[#8A8FA8]/45 transition hover:text-[#8A8FA8]"
-            style={{ fontFamily: 'Clash Display, sans-serif', letterSpacing: '0.12em' }}
+            className="mb-2 flex w-full items-center justify-between pl-3 pr-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[#94A3B8] transition hover:text-[#475569]"
           >
             <span>More Tools</span>
             <ChevronDown
@@ -272,46 +194,22 @@ function Sidebar({ mobile = false, onClose }) {
           )}
         </nav>
 
-        <div className="divider my-4" />
+        <div className="my-3 border-t border-slate-200/80" />
 
+        {/* Upgrade Card */}
         <NavLink to="/dashboard/upgrade" onClick={onClose}>
           <motion.div
-            whileHover={{ scale: 1.02, y: -1 }}
+            whileHover={{ scale: 1.01, y: -1 }}
             whileTap={{ scale: 0.98 }}
-            className="glass-glow rounded-2xl p-4"
-            style={{
-              background: 'linear-gradient(135deg, rgba(255,107,0,0.14) 0%, rgba(204,78,0,0.12) 100%)',
-              border: '1px solid rgba(255,107,0,0.28)',
-            }}
+            className="rounded-2xl p-3.5 bg-gradient-to-br from-blue-50/80 to-sky-50/60 border border-blue-200/70 shadow-sm transition-all"
           >
             <div className="flex items-center gap-3">
-              <div
-                style={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: 12,
-                  background: 'rgba(255,107,0,0.15)',
-                  border: '1px solid rgba(255,107,0,0.3)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Star size={16} style={{ color: '#FFA726' }} />
+              <div className="w-8 h-8 rounded-xl bg-blue-100 text-[#2563EB] flex items-center justify-center shrink-0 shadow-sm">
+                <Star size={16} />
               </div>
               <div>
-                <p
-                  className="text-sm font-semibold text-white"
-                  style={{ fontFamily: 'Clash Display, sans-serif', fontWeight: 700 }}
-                >
-                  Upgrade to Pro
-                </p>
-                <p
-                  className="text-[11px] text-[#9499B3]"
-                  style={{ fontFamily: 'Cabinet Grotesk, sans-serif', fontWeight: 400 }}
-                >
-                  Unlimited everything
-                </p>
+                <p className="text-xs font-bold text-[#0B0F19]">Upgrade to Pro</p>
+                <p className="text-[11px] text-[#64748B]">Unlimited AI analyses</p>
               </div>
             </div>
           </motion.div>
@@ -326,8 +224,6 @@ export default function DashboardLayout() {
   const { user, signOut } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
-
-  useMouseSpotlight()
 
   useEffect(() => {
     scrollDashboardToTop()
@@ -349,13 +245,25 @@ export default function DashboardLayout() {
   })
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: '#0B0A10' }}>
-      <MouseSpotlight />
-
-      <div className="hidden lg:block" style={{ width: 240, flexShrink: 0, zIndex: 2, position: 'sticky', top: 0, height: '100vh', alignSelf: 'flex-start', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', minHeight: '100vh', background: '#F4F7FC' }}>
+      {/* Desktop Sticky Sidebar */}
+      <div
+        className="hidden lg:block"
+        style={{
+          width: 240,
+          flexShrink: 0,
+          zIndex: 2,
+          position: 'sticky',
+          top: 0,
+          height: '100vh',
+          alignSelf: 'flex-start',
+          overflow: 'hidden',
+        }}
+      >
         <Sidebar />
       </div>
 
+      {/* Mobile Drawer */}
       <AnimatePresence>
         {open && (
           <>
@@ -363,7 +271,7 @@ export default function DashboardLayout() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-40 bg-black/70 backdrop-blur-[4px] lg:hidden"
+              className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-sm lg:hidden"
               onClick={() => setOpen(false)}
             />
             <motion.div
@@ -379,17 +287,19 @@ export default function DashboardLayout() {
         )}
       </AnimatePresence>
 
+      {/* Main Content Area */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, position: 'relative', zIndex: 2 }}>
-        <div
+        {/* Sticky Glass Topbar */}
+        <header
           style={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             padding: '0 24px',
             height: 64,
-            background: 'rgba(11,10,16,0.85)',
+            background: 'rgba(255, 255, 255, 0.85)',
             backdropFilter: 'blur(20px)',
-            borderBottom: '1px solid rgba(255,255,255,0.06)',
+            borderBottom: '1px solid rgba(226, 232, 240, 0.8)',
             position: 'sticky',
             top: 0,
             zIndex: 10,
@@ -397,92 +307,62 @@ export default function DashboardLayout() {
           }}
         >
           <div className="flex items-center gap-4">
-            <button onClick={() => setOpen(true)} className="rounded-xl p-2 text-[#8A8FA8] transition hover:bg-white/5 hover:text-white lg:hidden">
+            <button
+              onClick={() => setOpen(true)}
+              className="rounded-xl p-2 text-[#64748B] transition hover:bg-slate-100 hover:text-[#0B0F19] lg:hidden"
+            >
               <Menu size={20} />
             </button>
 
             <div className="hidden items-center gap-2 lg:flex">
-              <span className="text-xs text-[#8A8FA8]/50">CareerLens</span>
-              <ChevronRight size={12} className="text-[#8A8FA8]/30" />
-              <span
-                className="text-sm font-semibold text-[#F5F5F7]"
-                style={{ fontFamily: 'Cabinet Grotesk, sans-serif', fontWeight: 600 }}
-              >
+              <span className="text-xs font-medium text-[#94A3B8]">CareerLens</span>
+              <ChevronRight size={12} className="text-[#CBD5E1]" />
+              <span className="text-xs font-bold text-[#0B0F19]">
                 {currentPage?.label || 'Dashboard'}
               </span>
             </div>
 
-            <span
-              className="gradient-text text-lg font-bold lg:hidden"
-              style={{ fontFamily: 'Clash Display, sans-serif', fontWeight: 700, letterSpacing: '-0.03em' }}
-            >
+            <span className="text-base font-bold text-[#0B0F19] lg:hidden">
               CareerLens
             </span>
           </div>
 
           <div className="flex items-center gap-3">
-            <motion.button
-              whileHover={{ scale: 1.01 }}
-              whileTap={{ scale: 0.98 }}
+            <button
               onClick={handleOpenProfile}
-              className="glass flex items-center gap-3 rounded-xl px-3 py-2"
-              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}
+              className="flex items-center gap-2.5 rounded-pill bg-white px-3 py-1.5 border border-slate-200/80 shadow-sm hover:bg-slate-50 transition-colors"
             >
-              <div
-                style={{
-                  width: 30,
-                  height: 30,
-                  borderRadius: '50%',
-                  background: 'linear-gradient(135deg,#FF6B00,#CC4E00)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 11,
-                  fontWeight: 800,
-                  color: 'white',
-                  boxShadow: '0 0 12px rgba(255,107,0,0.4)',
-                  flexShrink: 0,
-                }}
-              >
+              <div className="w-6 h-6 rounded-full bg-[#0B0F19] text-white flex items-center justify-center text-[10px] font-bold">
                 {user?.email?.[0]?.toUpperCase() || 'U'}
               </div>
-              <span
-                className="hidden max-w-[170px] truncate text-xs text-[#8A8FA8] sm:block"
-                style={{ fontFamily: 'Cabinet Grotesk, sans-serif' }}
-              >
+              <span className="hidden sm:inline text-xs font-semibold text-[#0B0F19] max-w-[140px] truncate">
                 {user?.email}
               </span>
-            </motion.button>
+            </button>
 
-            <motion.button
-              whileHover={{ scale: 1.01 }}
-              whileTap={{ scale: 0.98 }}
+            <button
               onClick={handleSignOut}
-              className="btn-ghost"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-[#64748B] hover:text-[#0B0F19] hover:bg-slate-100 rounded-pill transition-colors"
             >
               <LogOut size={14} />
-              <span
-                className="hidden sm:inline"
-                style={{ fontFamily: 'Cabinet Grotesk, sans-serif', fontWeight: 500 }}
-              >
-                Sign out
-              </span>
-            </motion.button>
+              <span className="hidden sm:inline">Sign out</span>
+            </button>
           </div>
-        </div>
+        </header>
 
-        <main style={{ flex: 1, padding: '32px' }}>
+        {/* Page Outlet */}
+        <main style={{ flex: 1, padding: '24px sm:32px' }}>
           <motion.div
             key={location.pathname}
-            initial={{ opacity: 0, y: 16 }}
+            initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+            transition={{ duration: 0.22, ease: [0.2, 0.8, 0.2, 1] }}
           >
             <Outlet />
           </motion.div>
         </main>
 
-        {/* Persistent Nova Assistant Widget outside per-route transitions */}
+        {/* Persistent Mascot Companion Widget */}
         <CompanionWidget />
       </div>
     </div>
