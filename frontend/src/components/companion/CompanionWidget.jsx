@@ -10,7 +10,7 @@ const Nova3D = lazy(() => import('./Nova'))
 const QUICK_ACTIONS = [
   {
     label: 'Analyze Resume',
-    path: '/dashboard/resume',
+    path: '/dashboard/optimizer',
     icon: FileText,
   },
   {

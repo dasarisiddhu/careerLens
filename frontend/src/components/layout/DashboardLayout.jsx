@@ -4,6 +4,7 @@ import {
   LogOut,
   Menu,
   ChevronRight,
+  ChevronDown,
   Zap,
   X,
   LayoutDashboard,
@@ -26,23 +27,27 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '../../context/AuthContext'
 import CompanionWidget from '../companion/CompanionWidget'
 
-// Demo-ready nav — un-comment items to restore after Oct 5 panel.
-const NAV = [
+const NAV_PRIMARY = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/dashboard/optimizer', label: 'Resume Optimizer', icon: FileText },
+  { to: '/dashboard/optimizer', label: 'Resume Optimizer', icon: FileText, hero: true },
   { to: '/dashboard/job-match', label: 'Job Match', icon: Target },
   { to: '/dashboard/resume', label: 'GitHub Project Insights', icon: Flame },
-  // { to: '/dashboard/chatbot', label: 'Honest Career Coach', icon: Bot },
-  // { to: '/dashboard/interview', label: 'Mock Interview', icon: Mic },
-  // { to: '/dashboard/news/tech', label: 'Tech News', icon: Cpu },
-  // { to: '/dashboard/news/hiring', label: 'Hiring News', icon: Briefcase },
-  // { to: '/dashboard/career-switch', label: 'Career Switch', icon: Rocket },
-  // { to: '/dashboard/portfolio', label: 'Portfolio', icon: Globe },
-  // { to: '/dashboard/progress', label: 'Progress Tracker', icon: TrendingUp },
-  // { to: '/dashboard/recommendations', label: 'AI Recommendations', icon: Sparkles },
-  // { to: '/dashboard/community', label: 'Community', icon: Users },
-  // { to: '/dashboard/interview-predictor', label: 'Interview Predictor', icon: Brain },
 ]
+
+const NAV_SECONDARY = [
+  { to: '/dashboard/chatbot', label: 'Honest Career Coach', icon: Bot },
+  { to: '/dashboard/interview', label: 'Mock Interview', icon: Mic },
+  { to: '/dashboard/news/tech', label: 'Tech News', icon: Cpu },
+  { to: '/dashboard/news/hiring', label: 'Hiring News', icon: Briefcase },
+  { to: '/dashboard/career-switch', label: 'Career Switch', icon: Rocket },
+  { to: '/dashboard/portfolio', label: 'Portfolio', icon: Globe },
+  { to: '/dashboard/progress', label: 'Progress Tracker', icon: TrendingUp },
+  { to: '/dashboard/recommendations', label: 'AI Recommendations', icon: Sparkles },
+  { to: '/dashboard/community', label: 'Community', icon: Users },
+  { to: '/dashboard/interview-predictor', label: 'Interview Predictor', icon: Brain },
+]
+
+const NAV = [...NAV_PRIMARY, ...NAV_SECONDARY]
 
 function useMouseSpotlight() {
   useEffect(() => {
@@ -87,6 +92,72 @@ function scrollDashboardToTop() {
 }
 
 function Sidebar({ mobile = false, onClose }) {
+  const [moreToolsOpen, setMoreToolsOpen] = useState(true)
+
+  const renderNavItem = ({ to, label, icon: Icon, end, hero }) => (
+    <NavLink
+      key={to}
+      to={to}
+      end={end}
+      onClick={onClose}
+      className={({ isActive }) =>
+        `group relative flex items-center gap-3 overflow-hidden rounded-xl px-3 py-2 text-sm font-medium transition ${
+          isActive
+            ? 'text-white'
+            : hero
+            ? 'text-[#FF8A33] hover:text-white'
+            : 'text-[rgba(148,153,179,0.7)] hover:text-[#F5F5F7]'
+        }`
+      }
+    >
+      {({ isActive }) => (
+        <>
+          {isActive && (
+            <motion.div
+              layoutId="activeNav"
+              style={{
+                position: 'absolute',
+                inset: 0,
+                background: 'rgba(255,107,0,0.12)',
+                borderRadius: 12,
+                border: '1px solid rgba(255,107,0,0.25)',
+                borderLeft: '2px solid #FF6B00',
+                boxShadow: 'inset 3px 0 12px rgba(255,107,0,0.15)',
+              }}
+              transition={{ type: 'spring', bounce: 0.18, duration: 0.38 }}
+            />
+          )}
+
+          <div className="absolute inset-0 rounded-xl bg-transparent transition group-hover:bg-white/[0.03]" />
+          <Icon
+            size={17}
+            className={`relative shrink-0 transition-colors ${
+              isActive
+                ? 'text-primary'
+                : hero
+                ? 'text-primary'
+                : 'text-[#8A8FA8] group-hover:text-primary-light'
+            }`}
+          />
+          <span
+            className="relative flex-1 truncate"
+            style={{
+              fontFamily: 'Cabinet Grotesk, sans-serif',
+              fontWeight: hero ? 600 : 500,
+            }}
+          >
+            {label}
+          </span>
+          {isActive && (
+            <motion.div initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} className="relative">
+              <ChevronRight size={13} style={{ color: '#FF6B00' }} />
+            </motion.div>
+          )}
+        </>
+      )}
+    </NavLink>
+  )
+
   return (
     <aside
       style={{
@@ -157,13 +228,6 @@ function Sidebar({ mobile = false, onClose }) {
           )}
         </div>
 
-        <p
-          className="mb-2 pl-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[#8A8FA8]/45"
-          style={{ fontFamily: 'Clash Display, sans-serif', letterSpacing: '0.12em' }}
-        >
-          Navigation
-        </p>
-
         <nav
           data-lenis-prevent
           className="sidebar-nav min-h-0 flex-1 space-y-[2px] overflow-y-auto pr-1"
@@ -175,58 +239,37 @@ function Sidebar({ mobile = false, onClose }) {
           }}
           onWheelCapture={(event) => event.stopPropagation()}
         >
-          {NAV.map(({ to, label, icon: Icon, end }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={end}
-              onClick={onClose}
-              className={({ isActive }) =>
-                `group relative flex items-center gap-3 overflow-hidden rounded-xl px-3 py-2 text-sm font-medium transition ${
-                  isActive ? 'text-white' : 'text-[rgba(148,153,179,0.7)] hover:text-[#F5F5F7]'
-                }`
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  {isActive && (
-                    <motion.div
-                      layoutId="activeNav"
-                      style={{
-                        position: 'absolute',
-                        inset: 0,
-                        background: 'rgba(255,107,0,0.12)',
-                        borderRadius: 12,
-                        border: '1px solid rgba(255,107,0,0.25)',
-                        borderLeft: '2px solid #FF6B00',
-                        boxShadow: 'inset 3px 0 12px rgba(255,107,0,0.15)',
-                      }}
-                      transition={{ type: 'spring', bounce: 0.18, duration: 0.38 }}
-                    />
-                  )}
+          <p
+            className="mb-2 pl-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[#8A8FA8]/45"
+            style={{ fontFamily: 'Clash Display, sans-serif', letterSpacing: '0.12em' }}
+          >
+            Resume Intelligence
+          </p>
 
-                  <div className="absolute inset-0 rounded-xl bg-transparent transition group-hover:bg-white/[0.03]" />
-                  <Icon
-                    size={17}
-                    className={`relative shrink-0 transition-colors ${
-                      isActive ? 'text-primary' : 'text-[#8A8FA8] group-hover:text-primary-light'
-                    }`}
-                  />
-                  <span
-                    className="relative flex-1 truncate"
-                    style={{ fontFamily: 'Cabinet Grotesk, sans-serif', fontWeight: 500 }}
-                  >
-                    {label}
-                  </span>
-                  {isActive && (
-                    <motion.div initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} className="relative">
-                      <ChevronRight size={13} style={{ color: '#FF6B00' }} />
-                    </motion.div>
-                  )}
-                </>
-              )}
-            </NavLink>
-          ))}
+          <div className="space-y-[2px]">
+            {NAV_PRIMARY.map(renderNavItem)}
+          </div>
+
+          <div className="my-3 mx-2 border-t border-white/[0.06]" />
+
+          <button
+            type="button"
+            onClick={() => setMoreToolsOpen((prev) => !prev)}
+            className="mb-2 flex w-full items-center justify-between pl-3 pr-2 text-[10px] font-bold uppercase tracking-[0.18em] text-[#8A8FA8]/45 transition hover:text-[#8A8FA8]"
+            style={{ fontFamily: 'Clash Display, sans-serif', letterSpacing: '0.12em' }}
+          >
+            <span>More Tools</span>
+            <ChevronDown
+              size={12}
+              className={`transition-transform duration-200 ${moreToolsOpen ? 'rotate-180' : ''}`}
+            />
+          </button>
+
+          {moreToolsOpen && (
+            <div className="space-y-[2px]">
+              {NAV_SECONDARY.map(renderNavItem)}
+            </div>
+          )}
         </nav>
 
         <div className="divider my-4" />
