@@ -402,10 +402,10 @@ function SetupPhase({ onStart }) {
 
       <motion.div
         whileHover={{ y: -3 }}
-        className="glass-glow overflow-hidden rounded-[28px] border-t-2 border-t-[rgba(255,59,59,0.4)] p-8"
-        style={{ boxShadow: '0 25px 60px rgba(0,0,0,0.35), 0 0 40px rgba(255,59,59,0.06)' }}
+        className="glass-glow overflow-hidden rounded-[28px] border-t-2 border-t-primary/50 p-8"
+        style={{ boxShadow: '0 25px 60px rgba(0,0,0,0.35), 0 0 40px rgba(255,107,0,0.1)' }}
       >
-        <div className="absolute inset-x-0 top-0 h-24 bg-[radial-gradient(circle_at_top,rgba(255,59,59,0.12),transparent_70%)] pointer-events-none" />
+        <div className="absolute inset-x-0 top-0 h-24 bg-[radial-gradient(circle_at_top,rgba(255,107,0,0.15),transparent_70%)] pointer-events-none" />
 
         <div className="relative space-y-7">
 
@@ -427,8 +427,8 @@ function SetupPhase({ onStart }) {
                     onClick={() => setConfig((c) => ({ ...c, company: co.value }))}
                     className={`flex flex-col items-center gap-2 rounded-2xl border px-2 py-3 text-center transition-all ${
                       isActive
-                        ? 'border-[rgba(255,59,59,0.3)] bg-[rgba(255,59,59,0.1)] text-white shadow-[0_0_18px_rgba(255,59,59,0.12)]'
-                        : 'border-[rgba(255,255,255,0.07)] bg-[rgba(255,255,255,0.02)] text-[rgba(138,143,168,0.85)] hover:border-[rgba(255,59,59,0.18)] hover:bg-[rgba(255,255,255,0.04)] hover:text-white'
+                        ? 'border-primary/40 bg-primary/10 text-white shadow-[0_0_18px_rgba(255,107,0,0.2)]'
+                        : 'border-white/[0.07] bg-white/[0.02] text-slate-300 hover:border-primary/30 hover:bg-primary/[0.04] hover:text-white'
                     }`}
                   >
                     <CompanyLogo company={co} size={34} />
@@ -450,8 +450,8 @@ function SetupPhase({ onStart }) {
                     onClick={() => setConfig((c) => ({ ...c, company: co.value }))}
                     className={`flex flex-col items-center gap-2 rounded-2xl border px-2 py-3 text-center transition-all ${
                       isActive
-                        ? 'border-[rgba(255,59,59,0.3)] bg-[rgba(255,59,59,0.1)] text-white shadow-[0_0_18px_rgba(255,59,59,0.12)]'
-                        : 'border-[rgba(255,255,255,0.07)] bg-[rgba(255,255,255,0.02)] text-[rgba(138,143,168,0.85)] hover:border-[rgba(255,59,59,0.18)] hover:bg-[rgba(255,255,255,0.04)] hover:text-white'
+                        ? 'border-primary/40 bg-primary/10 text-white shadow-[0_0_18px_rgba(255,107,0,0.18)]'
+                        : 'border-[rgba(255,255,255,0.07)] bg-[rgba(255,255,255,0.02)] text-[rgba(138,143,168,0.85)] hover:border-primary/25 hover:bg-[rgba(255,255,255,0.04)] hover:text-white'
                     }`}
                   >
                     <CompanyLogo company={co} size={34} />
@@ -473,8 +473,8 @@ function SetupPhase({ onStart }) {
                     onClick={() => setConfig((c) => ({ ...c, company: co.value }))}
                     className={`flex flex-col items-center gap-2 rounded-2xl border px-2 py-3 text-center transition-all ${
                       isActive
-                        ? 'border-[rgba(255,59,59,0.3)] bg-[rgba(255,59,59,0.1)] text-white shadow-[0_0_18px_rgba(255,59,59,0.12)]'
-                        : 'border-[rgba(255,255,255,0.07)] bg-[rgba(255,255,255,0.02)] text-[rgba(138,143,168,0.85)] hover:border-[rgba(255,59,59,0.18)] hover:bg-[rgba(255,255,255,0.04)] hover:text-white'
+                        ? 'border-primary/40 bg-primary/10 text-white shadow-[0_0_18px_rgba(255,107,0,0.18)]'
+                        : 'border-[rgba(255,255,255,0.07)] bg-[rgba(255,255,255,0.02)] text-[rgba(138,143,168,0.85)] hover:border-primary/25 hover:bg-[rgba(255,255,255,0.04)] hover:text-white'
                     }`}
                   >
                     <CompanyLogo company={co} size={34} />
@@ -486,9 +486,9 @@ function SetupPhase({ onStart }) {
 
             {/* Company focus pill */}
             {selectedCompany.value !== 'general' && (
-              <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-[rgba(255,59,59,0.2)] bg-[rgba(255,59,59,0.08)] px-3 py-1.5">
-                <Sparkles size={12} className="text-[#FF7070]" />
-                <span className="text-xs text-[#FF7070]">
+              <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/10 px-3 py-1.5">
+                <Sparkles size={12} className="text-accent" />
+                <span className="text-xs text-accent">
                   {selectedCompany.label} focuses on: <strong>{selectedCompany.tag}</strong>
                 </span>
               </div>
@@ -534,17 +534,17 @@ function SetupPhase({ onStart }) {
                         disabled={disabled}
                         className={`rounded-2xl border p-4 text-left transition-all ${
                           isActive
-                            ? 'border-[rgba(255,59,59,0.24)] bg-[rgba(255,59,59,0.1)] text-white shadow-[inset_0_0_0_1px_rgba(255,59,59,0.08)]'
-                            : 'border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.02)] text-[rgba(138,143,168,0.9)] hover:border-[rgba(255,59,59,0.18)] hover:bg-[rgba(255,255,255,0.04)] hover:text-white'
+                            ? 'border-primary/40 bg-primary/10 text-white shadow-[inset_0_0_0_1px_rgba(255,107,0,0.15)]'
+                            : 'border-white/[0.08] bg-white/[0.02] text-slate-300 hover:border-primary/30 hover:bg-primary/[0.04] hover:text-white'
                         } ${disabled ? 'cursor-not-allowed opacity-50' : ''}`}
                       >
                         <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
                           <span
                             className="flex h-10 w-10 items-center justify-center rounded-xl border"
                             style={{
-                              background:   isActive ? 'linear-gradient(135deg,#FF3B3B,#8B0000)' : 'rgba(255,255,255,0.04)',
-                              borderColor:  isActive ? 'rgba(255,59,59,0.24)' : 'rgba(255,255,255,0.08)',
-                              boxShadow:    isActive ? '0 0 18px rgba(255,59,59,0.22)' : 'none',
+                              background:   isActive ? 'linear-gradient(135deg,#FF6B00,#CC4E00)' : 'rgba(255,255,255,0.04)',
+                              borderColor:  isActive ? 'rgba(255,107,0,0.3)' : 'rgba(255,255,255,0.08)',
+                              boxShadow:    isActive ? '0 0 18px rgba(255,107,0,0.3)' : 'none',
                             }}
                           >
                             <Icon size={18} />
@@ -570,8 +570,8 @@ function SetupPhase({ onStart }) {
                 <span
                   className="flex h-12 w-12 items-center justify-center rounded-2xl"
                   style={{
-                    background: 'linear-gradient(135deg,#FF3B3B,#8B0000)',
-                    boxShadow: '0 0 22px rgba(255,59,59,0.28)',
+                    background: 'linear-gradient(135deg,#FF6B00,#CC4E00)',
+                    boxShadow: '0 0 22px rgba(255,107,0,0.28)',
                   }}
                 >
                   <Sparkles size={20} className="text-white" />
@@ -916,14 +916,14 @@ function InterviewPhase({ questions, sessionId, mode, jobRole, company, onComple
         <div className="space-y-2">
           {/* Company badge */}
           {companyMeta.value !== 'general' && (
-            <div className="inline-flex items-center gap-2 rounded-full border border-[rgba(255,59,59,0.2)] bg-[rgba(255,59,59,0.08)] px-3 py-1">
+            <div className="inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/10 px-3 py-1">
               <CompanyLogo company={companyMeta} size={16} />
-              <span className="text-xs font-medium text-[#FF7070]">
+              <span className="text-xs font-medium text-accent">
                 {companyMeta.label} Interview
               </span>
             </div>
           )}
-          <span className="badge badge-red">Live Interview</span>
+          <span className="badge badge-primary">Live Interview</span>
           <div>
             <h1 className="gradient-text text-3xl font-black tracking-tight">{jobRole}</h1>
             <p className="mt-1 text-sm capitalize text-[rgba(138,143,168,0.78)]">{mode} mode session</p>
@@ -943,7 +943,7 @@ function InterviewPhase({ questions, sessionId, mode, jobRole, company, onComple
       {/* ── Progress bar ── */}
       <div className="overflow-hidden rounded-full bg-[rgba(255,255,255,0.04)]">
         <motion.div
-          className="h-2 rounded-full bg-[linear-gradient(90deg,#FF3B3B,#e11d48,#fb7185)]"
+          className="h-2 rounded-full bg-[linear-gradient(90deg,#FF6B00,#FFA726,#FF8533)]"
           animate={{ width: `${progress}%` }}
           transition={{ duration: 0.45, ease: [0.4, 0, 0.2, 1] }}
         />
@@ -958,9 +958,9 @@ function InterviewPhase({ questions, sessionId, mode, jobRole, company, onComple
           exit={{ opacity: 0, x: -24 }}
           transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
           className="glass-glow overflow-hidden rounded-[28px] p-7"
-          style={{ borderLeft: '3px solid #FF3B3B' }}
+          style={{ borderLeft: '3px solid #FF6B00' }}
         >
-          <div className="absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(255,59,59,0.45),transparent)]" />
+          <div className="absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(255,107,0,0.45),transparent)]" />
           <div className="space-y-5">
             <div className="flex flex-wrap items-center gap-3">
               <span className="badge badge-red">Question {currentQ + 1}</span>
@@ -1023,15 +1023,15 @@ function InterviewPhase({ questions, sessionId, mode, jobRole, company, onComple
             )}
 
             {question?.expected_points?.length > 0 && (
-              <div className="rounded-[22px] border border-[rgba(255,59,59,0.15)] bg-[rgba(255,59,59,0.06)] p-4">
-                <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-[#FF7070]">
+              <div className="rounded-[22px] border border-primary/20 bg-primary/5 p-4">
+                <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-accent">
                   Consider covering
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {question.expected_points.map((point) => (
                     <span
                       key={point}
-                      className="rounded-full border border-[rgba(255,59,59,0.2)] bg-[rgba(255,59,59,0.08)] px-3 py-1 text-xs text-[#FF7070]"
+                      className="rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-xs text-accent"
                     >
                       {point}
                     </span>
@@ -1085,7 +1085,7 @@ function InterviewPhase({ questions, sessionId, mode, jobRole, company, onComple
               disabled={!voiceSupported}
               className={`inline-flex items-center justify-center gap-2 rounded-xl border px-5 py-3 text-sm font-medium transition-all ${
                 listening
-                  ? 'border-[rgba(255,59,59,0.32)] bg-[rgba(255,59,59,0.12)] text-white shadow-[0_0_20px_rgba(255,59,59,0.16)]'
+                  ? 'border-primary/50 bg-primary/20 text-white shadow-[0_0_20px_rgba(255,107,0,0.3)]'
                   : 'btn-ghost'
               } ${!voiceSupported ? 'cursor-not-allowed opacity-50' : ''}`}
             >
@@ -1154,15 +1154,15 @@ function ResultPhase({ evaluation, jobRole, company, onRetry }) {
       <motion.div
         whileHover={{ y: -3 }}
         className="glass-glow overflow-hidden rounded-[30px] p-7"
-        style={{ borderTop: '2px solid rgba(255,59,59,0.4)' }}
+        style={{ borderTop: '2px solid rgba(255,107,0,0.4)' }}
       >
-        <div className="absolute inset-x-0 top-0 h-28 bg-[radial-gradient(circle_at_top,rgba(255,59,59,0.14),transparent_72%)] pointer-events-none" />
+        <div className="absolute inset-x-0 top-0 h-28 bg-[radial-gradient(circle_at_top,rgba(255,107,0,0.14),transparent_72%)] pointer-events-none" />
         <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <span className={recommendation.className}>{recommendation.label}</span>
               {companyMeta.value !== 'general' && (
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-[rgba(255,59,59,0.2)] bg-[rgba(255,59,59,0.08)] px-3 py-1 text-xs text-[#FF7070]">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-xs text-accent">
                   <CompanyLogo company={companyMeta} size={14} />
                   {companyMeta.label} Interview
                 </span>
@@ -1182,8 +1182,8 @@ function ResultPhase({ evaluation, jobRole, company, onRetry }) {
               <span
                 className="flex h-14 w-14 items-center justify-center rounded-2xl"
                 style={{
-                  background: 'linear-gradient(135deg,#FF3B3B,#8B0000)',
-                  boxShadow: '0 0 24px rgba(255,59,59,0.24)',
+                  background: 'linear-gradient(135deg,#FF6B00,#CC4E00)',
+                  boxShadow: '0 0 24px rgba(255,107,0,0.24)',
                 }}
               >
                 <Trophy size={24} className="text-white" />
@@ -1205,7 +1205,7 @@ function ResultPhase({ evaluation, jobRole, company, onRetry }) {
       >
         <motion.div variants={staggerItem} className="glass-glow rounded-[28px] p-6">
           <div className="mb-6 flex items-center gap-2 text-white">
-            <BarChart2 size={18} className="text-[#FF3B3B]" />
+            <BarChart2 size={18} className="text-primary" />
             <h2 className="text-lg font-semibold">Performance Scores</h2>
           </div>
           <div className="grid gap-6 md:grid-cols-[1.1fr_0.9fr]">
@@ -1228,7 +1228,7 @@ function ResultPhase({ evaluation, jobRole, company, onRetry }) {
 
         <motion.div variants={staggerItem} className="glass-glow rounded-[28px] p-6">
           <div className="mb-4 flex items-center gap-2 text-white">
-            <MessageSquare size={18} className="text-[#FF3B3B]" />
+            <MessageSquare size={18} className="text-primary" />
             <h2 className="text-lg font-semibold">Summary</h2>
           </div>
           <p className="text-sm leading-7 text-[rgba(245,245,247,0.8)]">{evaluation.summary}</p>
@@ -1262,10 +1262,10 @@ function ResultPhase({ evaluation, jobRole, company, onRetry }) {
         <motion.div
           variants={staggerItem}
           whileHover={{ y: -3 }}
-          className="rounded-[26px] border border-[rgba(255,59,59,0.2)] bg-[rgba(255,59,59,0.08)] p-6"
+          className="rounded-[26px] border border-amber-500/20 bg-amber-500/5 p-6"
         >
           <div className="mb-4 flex items-center gap-2 text-white">
-            <Zap size={18} className="text-[#FF3B3B]" />
+            <Zap size={18} className="text-accent" />
             <h3 className="text-lg font-semibold">Areas To Improve</h3>
           </div>
           <div className="space-y-3">
@@ -1286,7 +1286,7 @@ function ResultPhase({ evaluation, jobRole, company, onRetry }) {
           className="glass-glow rounded-[28px] p-6"
         >
           <div className="mb-5 flex items-center gap-2 text-white">
-            <Sparkles size={18} className="text-[#FF3B3B]" />
+            <Sparkles size={18} className="text-primary" />
             <h2 className="text-lg font-semibold">Question By Question Feedback</h2>
           </div>
           <div className="space-y-4">
@@ -1294,12 +1294,12 @@ function ResultPhase({ evaluation, jobRole, company, onRetry }) {
               <motion.div key={`${item.question}-${index}`} variants={staggerItem} className="glass-glow rounded-[22px] p-5">
                 <div className="mb-3 flex items-start justify-between gap-4">
                   <div className="space-y-2">
-                    <span className="badge badge-red">Question {index + 1}</span>
+                    <span className="badge badge-primary">Question {index + 1}</span>
                     <p className="text-sm font-semibold leading-7 text-white">{item.question}</p>
                   </div>
                   <span
                     className={`text-sm font-bold ${
-                      item.score >= 7 ? 'text-[#10b981]' : item.score >= 5 ? 'text-[#fb7185]' : 'text-[#FF3B3B]'
+                      item.score >= 7 ? 'text-[#10b981]' : item.score >= 5 ? 'text-accent' : 'text-primary'
                     }`}
                   >
                     {item.score}/10
@@ -1307,7 +1307,7 @@ function ResultPhase({ evaluation, jobRole, company, onRetry }) {
                 </div>
                 <p className="text-sm leading-7 text-[rgba(138,143,168,0.84)]">{item.feedback}</p>
                 {item.ideal_answer_hint && (
-                  <p className="mt-3 text-sm leading-7 text-[#FF7070]">{item.ideal_answer_hint}</p>
+                  <p className="mt-3 text-sm leading-7 text-accent">{item.ideal_answer_hint}</p>
                 )}
               </motion.div>
             ))}
@@ -1318,7 +1318,7 @@ function ResultPhase({ evaluation, jobRole, company, onRetry }) {
       {evaluation.recommended_resources?.length > 0 && (
         <motion.div whileHover={{ y: -3 }} className="glass-glow rounded-[28px] p-6">
           <div className="mb-2 flex items-center gap-2 text-white">
-            <Star size={18} className="text-[#FF3B3B]" />
+            <Star size={18} className="text-accent" />
             <h2 className="text-lg font-semibold">Resources To Close Your Gaps</h2>
           </div>
           <p className="mb-4 text-xs text-[rgba(138,143,168,0.65)]">
@@ -1340,16 +1340,16 @@ function ResultPhase({ evaluation, jobRole, company, onRetry }) {
                   type="button"
                   onClick={handleOpen}
                   disabled={!url}
-                  className="flex items-center gap-3 rounded-[20px] border border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.02)] p-4 text-left transition-all hover:border-[rgba(255,59,59,0.25)] hover:bg-[rgba(255,59,59,0.07)] group disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="flex items-center gap-3 rounded-[20px] border border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.02)] p-4 text-left transition-all hover:border-primary/30 hover:bg-primary/5 group disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <span
                     className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
-                    style={{ background: 'linear-gradient(135deg,#FF3B3B,#8B0000)', boxShadow: '0 0 14px rgba(255,59,59,0.3)' }}
+                    style={{ background: 'linear-gradient(135deg,#FF6B00,#CC4E00)', boxShadow: '0 0 14px rgba(255,107,0,0.3)' }}
                   >
                     <Star size={14} className="text-white" />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-white group-hover:text-[#FF7070] transition-colors">{title}</p>
+                    <p className="truncate text-sm font-medium text-white group-hover:text-accent transition-colors">{title}</p>
                     {url && (
                       <p className="truncate text-[11px] text-[rgba(138,143,168,0.5)] mt-0.5">
                         {url.replace(/^https?:\/\/(www\.)?/, '').split('/')[0]}
@@ -1436,7 +1436,7 @@ export default function MockInterview() {
   return (
     <motion.div variants={pageTransition} initial="hidden" animate="visible" exit="exit" style={{ width: '100%' }}>
       {error && (
-        <div className="mb-5 rounded-2xl border border-[rgba(255,59,59,0.2)] bg-[rgba(255,59,59,0.08)] px-4 py-3 text-sm text-[#FF7070]">
+        <div className="mb-5 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
           {error}
         </div>
       )}

@@ -241,8 +241,8 @@ function RoadmapResult({ result, form, onReset }) {
 
             {/* Phase Header */}
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-9 h-9 rounded-xl border border-red-500/20 bg-[#151924]
-                              flex items-center justify-center text-sm font-bold text-white shrink-0">
+              <div className="w-9 h-9 rounded-xl border border-primary/25 bg-[#151924]
+                              flex items-center justify-center text-sm font-bold text-accent shrink-0 shadow-[0_0_12px_rgba(255,107,0,0.2)]">
                 {i + 1}
               </div>
               <div>

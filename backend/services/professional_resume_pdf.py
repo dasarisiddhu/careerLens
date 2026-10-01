@@ -396,19 +396,183 @@ def _render_github_projects(builder: ResumePdfBuilder, projects: list[dict[str, 
             builder.bullet(bullet, size=9)
 
 
-def _visible_text_for_content(name: str, email: str, phone: str, content: dict) -> str:
+EDUCATION_TERMS = {
+    "university", "institute", "college", "school", "academy", "polytechnic",
+    "bachelor", "master", "degree", "b.tech", "m.tech", "btech", "mtech",
+    "b.s.", "m.s.", "b.e.", "m.e.", "bca", "mca", "ph.d", "phd", "doctorate",
+    "campus", "department",
+}
+
+
+def is_education_text(text: str) -> bool:
+    if not text:
+        return False
+    lower = text.lower()
+    return any(re.search(r"\b" + re.escape(term) + r"\b", lower) for term in EDUCATION_TERMS)
+
+
+def _extract_source_contact_and_certs(source_text: str) -> dict[str, Any]:
+    email = ""
+    phone = ""
+    linkedin = ""
+    github = ""
+    location = ""
+    certifications = []
+
+    if not source_text:
+        return {
+            "email": email,
+            "phone": phone,
+            "linkedin": linkedin,
+            "github": github,
+            "location": location,
+            "certifications": certifications,
+        }
+
+    email_match = re.search(r"[\w.-]+@[\w.-]+\.\w+", source_text)
+    if email_match:
+        email = email_match.group(0)
+
+    # Robust phone matching: supports country codes (+91, +1, +44), spaces, hyphens, parentheses
+    phone_pat = re.compile(
+        r"(?:(?:Phone|Tel|Mobile|Mob|Cell)\s*[:#-]?\s*)?"
+        r"((?:\+?\d{1,3}[\s.-]?)?\(?\d{2,5}\)?[\s.-]?\d{3,5}[\s.-]?\d{3,5}(?:[\s.-]?\d{1,4})?)",
+        re.IGNORECASE,
+    )
+    for m in phone_pat.finditer(source_text):
+        cand = (m.group(1) or m.group(0)).strip()
+        digits = re.sub(r"\D", "", cand)
+        if 10 <= len(digits) <= 15:
+            if not re.match(r"^\d{4}\s*[-–]\s*\d{4}$", cand):
+                phone = cand
+                break
+
+    linkedin_match = re.search(r"(?:https?:\/\/)?(?:www\.)?linkedin\.com\/in\/[\w-]+", source_text, re.IGNORECASE)
+    if linkedin_match:
+        linkedin = linkedin_match.group(0)
+
+    github_match = re.search(r"(?:https?:\/\/)?(?:www\.)?github\.com\/[\w-]+", source_text, re.IGNORECASE)
+    if github_match:
+        github = github_match.group(0)
+
+    # Location must be searched ONLY in header lines and NEVER match education institution/degree
+    loc_pat = re.compile(r"\b([A-Z][a-zA-Z\s]+,\s*(?:[A-Z]{2}|[A-Za-z]+))\b")
+    lines = [l.strip() for l in source_text.splitlines() if l.strip()]
+    header_lines = []
+    heading_re = re.compile(
+        r"^(summary|professional\s+summary|experience|work\s+experience|education|projects|skills|certifications|achievements)\b",
+        re.IGNORECASE,
+    )
+    for l in lines:
+        if heading_re.match(l) or (len(l) <= 40 and l == l.upper() and any(c.isalpha() for c in l)):
+            break
+        header_lines.append(l)
+        if len(header_lines) >= 8:
+            break
+
+    for line in header_lines:
+        if is_education_text(line):
+            continue
+        for m in loc_pat.finditer(line):
+            cand = m.group(1).strip()
+            if not is_education_text(cand) and "@" not in cand and not re.search(r"github|linkedin", cand, re.IGNORECASE):
+                location = cand
+                break
+        if location:
+            break
+
+    in_certs = False
+    for line in source_text.splitlines():
+        trimmed = line.strip()
+        if not trimmed:
+            continue
+        lower = trimmed.lower()
+        if re.match(r"^(?:certifications?|certificates?|licenses?)\b", lower):
+            in_certs = True
+            parts = re.split(r"[:|-]", trimmed, maxsplit=1)
+            if len(parts) > 1 and parts[1].strip():
+                for c in re.split(r"[,|;/•]", parts[1]):
+                    c_clean = c.strip().strip("-*•")
+                    if c_clean and len(c_clean) > 2:
+                        certifications.append(c_clean)
+            continue
+        elif in_certs:
+            if re.match(r"^(?:experience|education|projects|summary|skills|languages|awards|work)\b", lower):
+                in_certs = False
+            else:
+                c_clean = trimmed.lstrip("-*•").strip()
+                if c_clean and len(c_clean) > 2:
+                    certifications.append(c_clean)
+
+    return {
+        "email": email,
+        "phone": phone,
+        "linkedin": linkedin,
+        "github": github,
+        "location": location,
+        "certifications": certifications,
+    }
+
+
+def _visible_text_for_content(
+    name: str,
+    email: str,
+    phone: str,
+    content: dict,
+    *,
+    linkedin: str = "",
+    github: str = "",
+    location: str = "",
+    certifications: list[str] | None = None,
+) -> str:
     parts = [
         name,
         email,
         phone,
+        location,
+        linkedin,
+        github,
         content.get("headline"),
         content.get("summary"),
         " ".join(content.get("skills") or []),
         " ".join(content.get("educationLines") or []),
+        " ".join(certifications or []),
         " ".join(content.get("improvedBullets") or []),
         " ".join(content.get("newBullets") or []),
         " ".join(content.get("bullets") or []),
     ]
+    exp_entries = (
+        content.get("experience_entries")
+        or content.get("experienceEntries")
+        or (content.get("reconstructed_resume") or {}).get("experience")
+        or []
+    )
+    for entry in exp_entries:
+        if isinstance(entry, dict):
+            parts.extend([
+                entry.get("title", ""),
+                entry.get("organization", ""),
+                entry.get("dates", ""),
+                entry.get("location", ""),
+            ])
+            parts.extend(entry.get("bullets") or [])
+
+    proj_entries = (
+        content.get("project_entries")
+        or content.get("projectEntries")
+        or (content.get("reconstructed_resume") or {}).get("projects")
+        or []
+    )
+    for entry in proj_entries:
+        if isinstance(entry, dict):
+            parts.extend([
+                entry.get("name", ""),
+                entry.get("organization", ""),
+                entry.get("technologies", ""),
+                entry.get("dates", ""),
+            ])
+            parts.extend(entry.get("bullets") or [])
+
     for group in _skill_groups(content):
         parts.append(group.get("category", ""))
         parts.append(" ".join(group.get("skills") or []))
@@ -444,13 +608,31 @@ def build_professional_resume_pdf(
     name: str,
     email: str = "",
     phone: str = "",
+    linkedin: str = "",
+    github: str = "",
+    location: str = "",
     content: Any,
     source_resume_text: str = "",
 ) -> GeneratedResumePdf:
     content_data = _content_dict(content)
+    parsed = _extract_source_contact_and_certs(source_resume_text)
+
     cleaned_name = _clean_pdf_text(name) or "Your Name"
-    cleaned_email = _clean_pdf_text(email)
-    cleaned_phone = _clean_pdf_text(phone)
+    cleaned_email = _clean_pdf_text(email or parsed.get("email"))
+    cleaned_phone = _clean_pdf_text(phone or parsed.get("phone"))
+    cleaned_linkedin = _clean_pdf_text(linkedin or parsed.get("linkedin"))
+    cleaned_github = _clean_pdf_text(github or parsed.get("github"))
+    raw_location = location or parsed.get("location") or ""
+    cleaned_location = "" if is_education_text(raw_location) else _clean_pdf_text(raw_location)
+
+    raw_certs = (
+        content_data.get("certificationLines")
+        or content_data.get("certifications")
+        or parsed.get("certifications")
+        or []
+    )
+    certifications = _clean_list(raw_certs, limit=8)
+
     headline = _clean_pdf_text(content_data.get("headline"))
     summary = _clean_pdf_text(content_data.get("summary")) or "No summary generated."
     skill_groups = _skill_groups(content_data)
@@ -459,6 +641,18 @@ def build_professional_resume_pdf(
     improved_bullets = _clean_list(content_data.get("improvedBullets"), limit=10)
     new_bullets = _clean_list(content_data.get("newBullets"), limit=8)
     fallback_bullets = _clean_list(content_data.get("bullets"), limit=10)
+    experience_entries = (
+        content_data.get("experience_entries")
+        or content_data.get("experienceEntries")
+        or (content_data.get("reconstructed_resume") or {}).get("experience")
+        or []
+    )
+    project_entries = (
+        content_data.get("project_entries")
+        or content_data.get("projectEntries")
+        or (content_data.get("reconstructed_resume") or {}).get("projects")
+        or []
+    )
     github_projects = [
         project for project in (content_data.get("githubProjects") or [])
         if isinstance(project, dict)
@@ -467,7 +661,11 @@ def build_professional_resume_pdf(
     builder = ResumePdfBuilder()
     try:
         builder.line(cleaned_name, font="hebo", size=21, color=(0.07, 0.07, 0.07), after=2)
-        contact = " | ".join(value for value in [cleaned_email, cleaned_phone] if value)
+        contact_items = [
+            val for val in [cleaned_email, cleaned_phone, cleaned_location, cleaned_linkedin, cleaned_github]
+            if val and not is_education_text(val)
+        ]
+        contact = " | ".join(contact_items)
         if headline:
             builder.line(headline, font="hebo", size=10.5, color=BLUE_COLOR, after=2)
         if contact:
@@ -488,13 +686,42 @@ def build_professional_resume_pdf(
             else:
                 builder.wrapped(", ".join(fallback_skills), size=9, line_gap=1, after=2)
 
-        if improved_bullets or fallback_bullets:
+        if experience_entries:
+            builder.heading("Experience")
+            for entry in experience_entries:
+                if not isinstance(entry, dict):
+                    continue
+                title = _clean_pdf_text(entry.get("title") or "")
+                org = _clean_pdf_text(entry.get("organization") or "")
+                dates = _clean_pdf_text(entry.get("dates") or "")
+                loc = _clean_pdf_text(entry.get("location") or "")
+                header_parts = [p for p in [title, org, dates, loc] if p]
+                if header_parts:
+                    builder.line(" | ".join(header_parts), font="hebo", size=9.8, color=NAVY_COLOR, after=2)
+                for bullet in _clean_list(entry.get("bullets"), limit=8):
+                    builder.bullet(bullet)
+                builder.gap(2)
+        elif improved_bullets or fallback_bullets:
             builder.heading("Experience")
             builder.line("Relevant Experience", font="hebo", size=10, color=NAVY_COLOR, after=3)
             for bullet in (improved_bullets or fallback_bullets):
                 builder.bullet(bullet)
 
-        if new_bullets:
+        if project_entries:
+            builder.heading("Projects")
+            for entry in project_entries:
+                if not isinstance(entry, dict):
+                    continue
+                name = _clean_pdf_text(entry.get("name") or entry.get("title") or entry.get("organization") or "")
+                tech = _clean_pdf_text(entry.get("technologies") or "")
+                dates = _clean_pdf_text(entry.get("dates") or "")
+                header_parts = [p for p in [name, tech, dates] if p]
+                if header_parts:
+                    builder.line(" | ".join(header_parts), font="hebo", size=9.8, color=NAVY_COLOR, after=2)
+                for bullet in _clean_list(entry.get("bullets"), limit=6):
+                    builder.bullet(bullet)
+                builder.gap(2)
+        elif new_bullets:
             builder.heading("Projects")
             builder.line("Projects & Additional Impact", font="hebo", size=10, color=NAVY_COLOR, after=3)
             for bullet in new_bullets:
@@ -507,12 +734,21 @@ def build_professional_resume_pdf(
             for line in education_lines:
                 builder.wrapped(line, size=9.2, line_gap=1, after=1)
 
+        if certifications:
+            builder.heading("Certifications")
+            for cert in certifications:
+                builder.bullet(cert)
+
         pdf_bytes = builder.finish()
         visible_text = "\n".join(builder.visible_lines) or _visible_text_for_content(
             cleaned_name,
             cleaned_email,
             cleaned_phone,
             content_data,
+            linkedin=cleaned_linkedin,
+            github=cleaned_github,
+            location=cleaned_location,
+            certifications=certifications,
         )
     finally:
         builder.close()

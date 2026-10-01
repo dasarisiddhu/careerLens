@@ -244,7 +244,7 @@ export default function Profile() {
   if (loading) {
     return (
       <motion.div variants={pageTransition} initial="hidden" animate="visible" exit="exit" style={{ width: '100%' }}>
-        <div className="flex justify-center py-16"><Loader2 size={28} className="animate-spin text-amber-400" /></div>
+        <div className="flex justify-center py-16"><Loader2 size={28} className="animate-spin text-primary" /></div>
       </motion.div>
     )
   }
@@ -273,7 +273,7 @@ export default function Profile() {
 
       {/* Avatar */}
       <div className="glass p-6 rounded-2xl flex items-center gap-5">
-        <div className="w-16 h-16 rounded-2xl border border-red-500/20 bg-[#151924] flex items-center justify-center text-2xl font-bold">
+        <div className="w-16 h-16 rounded-2xl border border-primary/25 bg-[#151924] text-accent flex items-center justify-center text-2xl font-bold shadow-[0_0_16px_rgba(255,107,0,0.15)]">
           {profile.name?.[0]?.toUpperCase() || '?'}
         </div>
         <div>

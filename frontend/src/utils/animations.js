@@ -81,9 +81,9 @@ export function Particles({ count = 20 }) {
           borderRadius: '50%',
           background:
             i % 3 === 0
-              ? `rgba(255,59,59,${Math.random() * 0.35 + 0.1})`
+              ? `rgba(255,107,0,${Math.random() * 0.35 + 0.1})`
               : i % 3 === 1
-                ? `rgba(255,140,66,${Math.random() * 0.25 + 0.08})`
+                ? `rgba(255,167,38,${Math.random() * 0.25 + 0.08})`
                 : `rgba(255,255,255,${Math.random() * 0.08 + 0.02})`,
           animation: `float ${Math.random() * 5 + 3}s ease-in-out ${Math.random() * 2}s infinite alternate`,
         },

@@ -103,8 +103,8 @@ export const api = {
   getGithubProfile: (username) => request('GET', `/api/github/profile?username=${username}`),
 
   // Optimizer
-    // Optimizer
   optimizeResume: (body) => request('POST', '/api/optimizer/', body),
+  analyseResume: (body) => request('POST', '/api/optimizer/analyse', body),
   downloadProfessionalResumePdf: (body) => request('POST', '/api/optimizer/professional-resume-pdf', body, true),
 
   // Job Match

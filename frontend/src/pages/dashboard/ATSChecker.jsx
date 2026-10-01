@@ -271,7 +271,7 @@ export default function ATSChecker() {
       <div className="max-w-5xl mx-auto space-y-6">
       <div>
         <h1 className="gradient-text text-3xl font-bold flex items-center gap-3">
-          <Target size={28} className="text-[#FF3B3B]" /> ATS Checker
+          <Target size={28} className="text-primary" /> ATS Checker
         </h1>
         <p className="text-[#78716c] mt-1">
           Upload your resume PDF + paste a job description → get a brutally honest ATS match score
@@ -296,7 +296,7 @@ export default function ATSChecker() {
         {/* PDF Upload */}
         <div className="space-y-3">
           <label className="text-sm font-semibold text-[#d6d3d1] flex items-center gap-2">
-            <FileText size={15} className="text-[#FF3B3B]" /> Your Resume (PDF)
+            <FileText size={15} className="text-primary" /> Your Resume (PDF)
           </label>
           <div
             onClick={() => fileRef.current?.click()}
@@ -305,9 +305,9 @@ export default function ATSChecker() {
             onDrop={handleDrop}
             className={`relative flex flex-col items-center justify-center h-40 rounded-2xl border-2 border-dashed
               cursor-pointer transition-all duration-200
-              ${dragging ? 'border-[#FF3B3B] bg-red-500/10 shadow-[0_0_30px_rgba(255,59,59,0.1)]' : resumeFile
+              ${dragging ? 'border-primary bg-primary/10 shadow-[0_0_30px_rgba(255,107,0,0.2)]' : resumeFile
                 ? 'border-green-500/50 bg-green-500/5'
-                : 'border-white/10 bg-white/[0.02] hover:border-[rgba(255,59,59,0.28)] hover:bg-red-500/5'}`}>
+                : 'border-white/10 bg-white/[0.02] hover:border-primary/30 hover:bg-primary/5'}`}>
             {resumeFile ? (
               <div className="text-center px-4">
                 <div className="w-12 h-12 rounded-2xl bg-green-500/20 flex items-center justify-center mx-auto mb-2">
@@ -517,12 +517,12 @@ export default function ATSChecker() {
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
         className="glass-glow p-6 rounded-2xl border border-red-500/20 bg-red-500/5">
         <h3 className="font-bold text-white mb-4 flex items-center gap-2">
-          <AlertTriangle size={16} className="text-[#FF7070]" /> What You Must Fix (Brutally Honest)
+          <AlertTriangle size={16} className="text-primary-light" /> What You Must Fix (Brutally Honest)
         </h3>
         <ul className="space-y-3">
           {result.suggestions?.map((s, i) => (
             <li key={i} className="flex items-start gap-3 p-3 rounded-xl bg-black/20">
-              <span className="text-[#FF3B3B] font-bold shrink-0 mt-0.5">{i + 1}.</span>
+              <span className="text-primary font-bold shrink-0 mt-0.5">{i + 1}.</span>
               <p className="text-sm text-[#e7e5e4]">{s}</p>
             </li>
           ))}

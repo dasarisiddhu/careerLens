@@ -108,14 +108,14 @@ export default function Upgrade() {
     <div className="max-w-4xl mx-auto space-y-8">
       {/* Hero */}
       <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }}
-        className="relative overflow-hidden glass rounded-2xl p-10 text-center">
-        <div className="absolute inset-0 bg-red-500/5" />
+        className="relative overflow-hidden glass rounded-2xl p-10 text-center border border-primary/20">
+        <div className="absolute inset-0 bg-gradient-to-b from-primary/10 to-transparent pointer-events-none" />
         <div className="relative">
-          <div className="w-16 h-16 rounded-2xl border border-red-500/20 bg-[#151924] flex items-center justify-center mx-auto mb-4">
-            <Star size={28} className="text-[#FF7070]" />
+          <div className="w-16 h-16 rounded-2xl border border-primary/30 bg-[#151924] flex items-center justify-center mx-auto mb-4 shadow-[0_0_20px_rgba(255,107,0,0.25)]">
+            <Star size={28} className="text-accent" />
           </div>
           <h1 className="text-4xl font-bold text-white mb-3">Upgrade to Premium</h1>
-          <p className="text-[#78716c] max-w-md mx-auto">Unlock unlimited AI analysis, interviews, and exclusive career tools to accelerate your job search.</p>
+          <p className="text-[#a8a29e] max-w-md mx-auto">Unlock unlimited AI analysis, interviews, and exclusive career tools to accelerate your job search.</p>
         </div>
       </motion.div>
 
@@ -123,7 +123,7 @@ export default function Upgrade() {
       <div className="grid md:grid-cols-2 gap-6">
         {/* Free */}
         <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1 }}
-          className="glass p-6 rounded-2xl">
+          className="glass p-6 rounded-2xl border border-white/5">
           <div className="mb-6">
             <h2 className="text-xl font-bold text-white mb-1">Free</h2>
             <div className="flex items-baseline gap-1">
@@ -135,9 +135,9 @@ export default function Upgrade() {
             {FEATURES.map((f, i) => (
               <li key={i} className="flex items-center gap-3 text-sm">
                 {f.free === false
-                  ? <X size={16} className="text-red-400 shrink-0" />
+                  ? <X size={16} className="text-stone-500 shrink-0" />
                   : <CheckCircle size={16} className="text-green-400 shrink-0" />}
-                <span className={f.free === false ? 'text-[#44403c]' : 'text-[#d6d3d1]'}>
+                <span className={f.free === false ? 'text-[#57534e]' : 'text-[#d6d3d1]'}>
                   {f.label}{typeof f.free === 'string' ? ` – ${f.free}` : ''}
                 </span>
               </li>
@@ -148,12 +148,12 @@ export default function Upgrade() {
 
         {/* Premium */}
         <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.15 }}
-          className="relative glass p-6 rounded-2xl border border-red-500/30 neon-glow">
+          className="relative glass p-6 rounded-2xl border border-primary/40 shadow-[0_0_30px_rgba(255,107,0,0.18)]">
           <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-            <span className="border border-red-500/30 bg-[#151924] text-white text-xs font-bold px-4 py-1 rounded-full">MOST POPULAR</span>
+            <span className="border border-primary/40 bg-[#13121C] text-accent text-xs font-bold px-4 py-1 rounded-full shadow-[0_0_12px_rgba(255,107,0,0.3)]">MOST POPULAR</span>
           </div>
           <div className="mb-6">
-            <h2 className="text-xl font-bold text-white mb-1 flex items-center gap-2"><Star size={18} className="text-[#FF7070]" /> Premium</h2>
+            <h2 className="text-xl font-bold text-white mb-1 flex items-center gap-2"><Star size={18} className="text-accent" /> Premium</h2>
             <div className="flex items-baseline gap-1">
               <span className="text-4xl font-bold text-white">$5.00</span>
               <span className="text-[#78716c]">/month</span>
@@ -162,7 +162,7 @@ export default function Upgrade() {
           <ul className="space-y-3 mb-8">
             {FEATURES.map((f, i) => (
               <li key={i} className="flex items-center gap-3 text-sm">
-                <CheckCircle size={16} className="text-green-400 shrink-0" />
+                <CheckCircle size={16} className="text-accent shrink-0" />
                 <span className="text-[#e7e5e4]">
                   {f.label}{f.premium === true ? '' : ` – ${f.premium}`}
                 </span>
@@ -177,8 +177,8 @@ export default function Upgrade() {
                 appearance: {
                   theme: 'night',
                   variables: {
-                    colorPrimary: '#ef4444',
-                    colorBackground: '#1a1e2e',
+                    colorPrimary: '#FF6B00',
+                    colorBackground: '#13121C',
                     colorText: '#ffffff',
                     colorDanger: '#f87171',
                   },
@@ -201,7 +201,7 @@ export default function Upgrade() {
                 {loading ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
                 {loading ? 'Preparing Checkout...' : 'Upgrade Now – $5.00/mo'}
               </motion.button>
-              <p className="text-center text-xs text-[#44403c] mt-3">Cancel anytime · Secure payment via Stripe</p>
+              <p className="text-center text-xs text-[#78716c] mt-3">Cancel anytime · Secure payment via Stripe</p>
             </>
           )}
         </motion.div>

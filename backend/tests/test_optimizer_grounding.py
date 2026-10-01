@@ -13,13 +13,14 @@ async def _fake_authenticated_user():
 
 
 auth_module.get_authenticated_user = _fake_authenticated_user
+auth_module.require_premium = lambda *args, **kwargs: {}
 database_module = types.ModuleType("database")
 database_module.supabase = None
 sys.modules.setdefault("middleware", middleware_pkg)
 sys.modules.setdefault("middleware.auth", auth_module)
 sys.modules.setdefault("database", database_module)
 
-from routers.optimizer import _stamp_ats_scores, _validate_against_source
+from routers.optimizer import _stamp_ats_scores, _validate_against_source, _apply_optimizer_safety_filters
 
 
 class OptimizerGroundingTests(unittest.TestCase):
@@ -61,6 +62,62 @@ class OptimizerGroundingTests(unittest.TestCase):
         self.assertIn("~100 parking slots", validated["new_bullets"][0]["text"])
         self.assertIn("~500 vehicle records", validated["new_bullets"][0]["text"])
         self.assertTrue(validated["grounding_warnings"])
+
+    def test_fallback_when_optimized_skills_empty(self):
+        result = {
+            "optimized_skills": {},
+            "skills_to_highlight": [],
+            "added_keywords": [],
+            "improved_bullets": [],
+            "new_bullets": [],
+        }
+        resume_text = (
+            "Priya Sharma\n"
+            "Skills: Python, FastAPI, Docker, PostgreSQL\n"
+            "Experience:\n"
+            "- Developed backend REST services in FastAPI and PostgreSQL.\n"
+        )
+        jd = "FastAPI backend developer"
+
+        validated = _validate_against_source(result, resume_text, jd)
+
+        self.assertTrue(validated["skills_optimization_failed"])
+        self.assertIn("Python", validated["optimized_skills"])
+        self.assertIn("FastAPI", validated["optimized_skills"])
+        self.assertIn("PostgreSQL", validated["optimized_skills"])
+
+    def test_fabricated_action_claim_in_new_bullets_flagged(self):
+        result = {
+            "optimized_summary": "Software engineer building backend services.",
+            "optimized_skills": ["Python", "Flask"],
+            "improved_bullets": [
+                {
+                    "original": "Built web app with Flask.",
+                    "improved": "Engineered Flask services with SQLite database.",
+                }
+            ],
+            "new_bullets": [
+                {
+                    "text": "Integrated MLflow for model monitoring to detect data drift and trigger automated retraining pipelines."
+                }
+            ],
+            "added_keywords": ["MLflow"],
+        }
+        resume_text = (
+            "Alex Chen\n"
+            "Skills: Python, Flask, SQLite\n"
+            "Experience:\n"
+            "- Built web app with Flask and SQLite database.\n"
+        )
+        jd = "Machine Learning Engineer with MLflow drift detection and retraining."
+
+        validated = _apply_optimizer_safety_filters(result, resume_text, jd, "ML Engineer", "user-alex")
+
+        self.assertTrue(validated["is_suspicious"])
+        self.assertTrue(validated["domain_mismatch"])
+        self.assertTrue(validated["insufficient_data"])
+        self.assertIn("MLflow", validated["flag_reason"])
+        self.assertEqual(validated["new_bullets"], [])
 
     def test_stamps_ats_regression_flag(self):
         result = {

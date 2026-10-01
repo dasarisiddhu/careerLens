@@ -28,6 +28,7 @@ async def _fake_authenticated_user():
 
 
 auth_module.get_authenticated_user = _fake_authenticated_user
+auth_module.require_premium = lambda *args, **kwargs: {}
 database_module = types.ModuleType("database")
 database_module.supabase = _FakeSupabase()
 sys.modules.setdefault("middleware", middleware_pkg)

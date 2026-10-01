@@ -161,10 +161,10 @@ export default function ResumeAnalysis() {
   }
 
   const dropzoneClass = file
-    ? 'border-[rgba(255,59,59,0.4)] bg-[rgba(255,59,59,0.05)]'
+    ? 'border-primary/40 bg-primary/5 shadow-[0_0_20px_rgba(255,107,0,0.1)]'
     : isDragActive
-      ? 'border-[#FF3B3B] bg-[rgba(255,59,59,0.06)] shadow-[0_0_30px_rgba(255,59,59,0.1)]'
-      : 'border-[rgba(255,255,255,0.1)] bg-[rgba(255,255,255,0.02)] hover:border-[rgba(255,59,59,0.28)] hover:bg-[rgba(255,59,59,0.04)]'
+      ? 'border-primary bg-primary/10 shadow-[0_0_30px_rgba(255,107,0,0.2)]'
+      : 'border-white/10 bg-white/[0.02] hover:border-primary/30 hover:bg-primary/[0.04]'
 
   return (
     <motion.div variants={pageTransition} initial="hidden" animate="visible" exit="exit" style={{ width: '100%' }}>
@@ -192,7 +192,7 @@ export default function ResumeAnalysis() {
               </div>
             ) : (
               <div className="flex flex-col items-center gap-3">
-                <Upload size={34} className="float text-[#FF7070]" />
+                <Upload size={34} className="float text-primary" />
                 <p className="text-base font-semibold text-white">Drop your resume PDF here</p>
                 <p className="text-sm text-[#8A8FA8]">or click to browse · Max 5MB</p>
               </div>
@@ -201,7 +201,7 @@ export default function ResumeAnalysis() {
 
           {loading && (
             <div className="h-2 overflow-hidden rounded-full bg-white/10">
-              <div className="shimmer h-full bg-[rgba(255,59,59,0.45)]" />
+              <div className="shimmer h-full bg-primary/50" />
             </div>
           )}
 
@@ -211,7 +211,7 @@ export default function ResumeAnalysis() {
           ].map(({ key, label, icon: Icon, placeholder, type }) => (
             <div key={key} className="glass-glow p-4">
               <label className="mb-2 flex items-center gap-2 text-sm font-semibold text-white">
-                <Icon size={14} className="text-[#FF7070]" />
+                <Icon size={14} className="text-primary" />
                 {label}
               </label>
               <input
@@ -229,7 +229,7 @@ export default function ResumeAnalysis() {
             </div>
           ))}
 
-          <button type="submit" disabled={loading} className="btn-primary w-full py-4 text-base font-bold">
+          <button type="submit" disabled={loading} className="btn-primary w-full py-4 text-base font-bold shadow-glow">
             {loading ? (
               <>
                 <Loader2 size={18} className="animate-spin" />

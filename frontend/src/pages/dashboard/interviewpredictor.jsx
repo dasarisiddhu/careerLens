@@ -71,7 +71,7 @@ function CircularMeter({ value }) {
   const radius = 88
   const circumference = 2 * Math.PI * radius
   const offset = circumference - (current / 100) * circumference
-  const color = value >= 70 ? '#10b981' : value >= 50 ? '#fb7185' : '#FF3B3B'
+  const color = value >= 70 ? '#10b981' : value >= 50 ? '#FFA726' : '#FF6B00'
   const badgeClass = value >= 70 ? 'badge badge-green' : value >= 50 ? 'badge badge-red' : 'badge badge-red'
   const badgeText = value >= 70 ? 'Strong Candidate' : value >= 50 ? 'Competitive' : 'Needs Work'
 
@@ -402,24 +402,24 @@ export default function InterviewPredictor() {
             </div>
 
             {result.verdict && (
-              <div className="glass-glow mb-6 rounded-2xl border-l-[3px] border-l-[#FF3B3B] p-4">
+              <div className="glass-glow mb-6 rounded-2xl border-l-[3px] border-l-primary p-4">
                 <p className="text-sm font-medium italic leading-7 text-[#F5F5F7]">"{result.verdict}"</p>
               </div>
             )}
 
             <div className="grid gap-4 md:grid-cols-3">
-              <ScoreCard label="Skill Match" value={result.skill_match} icon={Target} color="#FF3B3B" barClass="bg-[#FF3B3B]" />
-              <ScoreCard label="ATS Score" value={result.ats_score} icon={FileText} color="#e11d48" barClass="bg-[#e11d48]" />
+              <ScoreCard label="Skill Match" value={result.skill_match} icon={Target} color="#FF6B00" barClass="bg-primary" />
+              <ScoreCard label="ATS Score" value={result.ats_score} icon={FileText} color="#FFA726" barClass="bg-accent" />
               <ScoreCard label="Portfolio Score" value={result.portfolio_score} icon={Github} color="#10b981" barClass="bg-[#10b981]" />
             </div>
           </div>
 
           {result.biggest_weakness && (
-            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl border border-red-500/20 bg-red-500/8 p-5">
+            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl border border-primary/20 bg-primary/5 p-5">
               <div className="flex items-start gap-3">
-                <AlertTriangle size={17} className="mt-0.5 shrink-0 text-[#FF7070]" />
+                <AlertTriangle size={17} className="mt-0.5 shrink-0 text-primary-light" />
                 <div>
-                  <p className="text-sm font-bold text-[#FF7070]">Biggest Weakness</p>
+                  <p className="text-sm font-bold text-primary-light">Biggest Weakness</p>
                   <p className="mt-1 text-sm leading-7 text-[#F5F5F7]">{result.biggest_weakness}</p>
                 </div>
               </div>
@@ -446,7 +446,7 @@ export default function InterviewPredictor() {
           )}
 
           {result.missing_skills?.length > 0 && (
-            <Section icon={XCircle} title="Missing Skills" iconColor="#FF3B3B">
+            <Section icon={XCircle} title="Missing Skills" iconColor="#FF6B00">
               <div className="flex flex-wrap gap-2">
                 {result.missing_skills.map((skill, index) => (
                   <span key={index} className="badge badge-red">
@@ -458,14 +458,14 @@ export default function InterviewPredictor() {
           )}
 
           {result.recommended_projects?.length > 0 && (
-            <Section icon={Code2} title="Build These Projects" iconColor="#e11d48">
+            <Section icon={Code2} title="Build These Projects" iconColor="#FF6B00">
               <div className="space-y-3">
                 {result.recommended_projects.map((project, index) => (
                   <div key={index} className="glass rounded-2xl p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <p className="text-sm font-semibold text-white">{project.title}</p>
                       {project.estimated_time && (
-                        <span className="badge badge-red">
+                        <span className="badge badge-primary">
                           <Clock size={11} />
                           {project.estimated_time}
                         </span>
@@ -479,11 +479,11 @@ export default function InterviewPredictor() {
           )}
 
           {result.resume_improvements?.length > 0 && (
-            <Section icon={FileText} title="Resume Improvements" iconColor="#FF3B3B">
+            <Section icon={FileText} title="Resume Improvements" iconColor="#FF6B00">
               <ul className="space-y-3">
                 {result.resume_improvements.map((tip, index) => (
                   <li key={index} className="flex items-start gap-3 text-sm text-[#F5F5F7]">
-                    <ChevronRight size={14} className="mt-0.5 shrink-0 text-[#FF7070]" />
+                    <ChevronRight size={14} className="mt-0.5 shrink-0 text-primary-light" />
                     {tip}
                   </li>
                 ))}
@@ -508,10 +508,10 @@ export default function InterviewPredictor() {
             <motion.div
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
-              className="glass-glow rounded-2xl border-l-[3px] border-l-[#FF3B3B] p-5"
+              className="glass-glow rounded-2xl border-l-[3px] border-l-primary p-5"
             >
               <div className="flex items-center gap-4">
-                <Clock size={22} className="shrink-0 text-[#FF7070]" />
+                <Clock size={22} className="shrink-0 text-primary" />
                 <div>
                   <p className="text-sm font-bold text-white">Realistic Timeline to Be Job-Ready</p>
                   <p className="mt-1 text-sm text-[#8A8FA8]">{result.realistic_timeline}</p>
@@ -553,10 +553,10 @@ export default function InterviewPredictor() {
             onClick={() => fileRef.current?.click()}
             className={`cursor-pointer rounded-[24px] border-2 border-dashed p-10 text-center transition ${
               dragging
-                ? 'border-[#FF3B3B] bg-[rgba(255,59,59,0.06)] shadow-[0_0_30px_rgba(255,59,59,0.1)]'
+                ? 'border-primary bg-primary/10 shadow-[0_0_30px_rgba(255,107,0,0.2)]'
                 : resumeFile
                   ? 'border-green-500/40 bg-green-500/5'
-                  : 'border-[rgba(255,255,255,0.1)] bg-[rgba(255,255,255,0.02)] hover:border-[rgba(255,59,59,0.25)] hover:bg-[rgba(255,59,59,0.04)]'
+                  : 'border-[rgba(255,255,255,0.1)] bg-[rgba(255,255,255,0.02)] hover:border-primary/30 hover:bg-primary/5'
             }`}
           >
             <input ref={fileRef} type="file" accept=".pdf" className="hidden" onChange={(event) => handleFile(event.target.files[0])} />

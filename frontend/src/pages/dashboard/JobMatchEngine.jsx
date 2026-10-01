@@ -7,8 +7,8 @@ import {
 } from 'lucide-react'
 
 function MatchBar({ score }) {
-  const color = score >= 70 ? 'bg-green-500' : score >= 50 ? 'bg-[#FF8C42]' : score >= 35 ? 'bg-[#FF3B3B]' : 'bg-[#8B0000]'
-  const text = score >= 70 ? 'text-green-400' : score >= 50 ? 'text-[#FF8C42]' : score >= 35 ? 'text-[#FF7070]' : 'text-[#8B0000]'
+  const color = score >= 70 ? 'bg-green-500' : score >= 50 ? 'bg-accent' : score >= 35 ? 'bg-primary' : 'bg-primary-dark'
+  const text = score >= 70 ? 'text-green-400' : score >= 50 ? 'text-accent-light' : score >= 35 ? 'text-primary-light' : 'text-primary'
 
   return (
     <div className="flex items-center gap-3">
@@ -112,7 +112,7 @@ export default function JobMatchEngine({ resumeText: initialResumeText = '' }) {
     <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }} className="max-w-4xl w-full mx-auto space-y-6">
       <div className="max-w-2xl mx-auto text-center">
         <h1 className="gradient-text text-3xl font-bold flex items-center justify-center gap-2">
-          <Briefcase size={22} className="text-[#FF3B3B]" /> Jobs You Can Realistically Get
+          <Briefcase size={22} className="text-primary" /> Jobs You Can Realistically Get
         </h1>
         <p className="text-[#8A8FA8] text-sm mt-2">Matched against real roles based on your current skills</p>
       </div>
@@ -127,10 +127,10 @@ export default function JobMatchEngine({ resumeText: initialResumeText = '' }) {
               onDragLeave={() => setDragging(false)}
               onClick={() => fileRef.current?.click()}
               className={`border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-all
-                ${dragging ? 'border-[#FF3B3B] bg-red-500/10 shadow-[0_0_30px_rgba(255,59,59,0.1)]' : 'border-white/10 bg-white/[0.02] hover:border-[rgba(255,59,59,0.28)] hover:bg-red-500/5'}`}
+                ${dragging ? 'border-primary bg-primary/10 shadow-[0_0_30px_rgba(255,107,0,0.2)]' : 'border-white/10 bg-white/[0.02] hover:border-primary/30 hover:bg-primary/5'}`}
             >
               <input ref={fileRef} type="file" accept=".pdf" className="hidden" onChange={(e) => handleFile(e.target.files[0])} />
-              <Upload size={24} className="float text-[#FF7070] mx-auto mb-2" />
+              <Upload size={24} className="float text-primary mx-auto mb-2" />
               <p className="text-[#F5F5F7] text-sm">Drop PDF or click to upload</p>
             </div>
           ) : (
@@ -226,7 +226,7 @@ export default function JobMatchEngine({ resumeText: initialResumeText = '' }) {
                 <motion.div key={i} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.05 }}
                   className={`glass-glow rounded-xl border transition-all cursor-pointer
-                  ${expanded === i ? 'border-[rgba(255,59,59,0.3)]' : 'border-white/5 hover:border-[rgba(255,59,59,0.22)]'}`}
+                  ${expanded === i ? 'border-primary/40' : 'border-white/5 hover:border-primary/25'}`}
                   onClick={() => setExpanded(expanded === i ? null : i)}>
                   <div className="p-4">
                     <div className="flex items-center justify-between gap-3 mb-2">

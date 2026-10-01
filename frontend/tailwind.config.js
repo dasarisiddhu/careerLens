@@ -6,16 +6,20 @@ export default {
     extend: {
       colors: {
         primary: {
-          DEFAULT: '#e11d48',
-          dark:    '#be123c',
-          light:   '#fb7185',
+          DEFAULT: '#FF6B00',
+          dark:    '#CC4E00',
+          light:   '#FF8533',
         },
-        accent:  '#f97316',
+        accent: {
+          DEFAULT: '#FFA726',
+          dark:    '#F57C00',
+          light:   '#FFB74D',
+        },
         surface: {
-          DEFAULT: '#14141c',
-          dark:    '#0f0f14',
-          card:    '#1a1a24',
-          elevated:'#1e1e2a',
+          DEFAULT: '#0B0A10',
+          dark:    '#07060A',
+          card:    '#13121C',
+          elevated:'#1A1826',
         },
       },
       fontFamily: {
@@ -46,12 +50,15 @@ export default {
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
         'hero-gradient':
-          'linear-gradient(135deg, #0a0a0f 0%, #1a0710 50%, #0a0a0f 100%)',
+          'linear-gradient(135deg, #07060A 0%, #1A0D06 50%, #07060A 100%)',
       },
       boxShadow: {
-        'glow-red':    '0 0 20px rgba(225, 29, 72, 0.3)',
-        'glow-red-lg': '0 0 40px rgba(225, 29, 72, 0.45)',
-        'card':        '0 4px 24px rgba(0, 0, 0, 0.4)',
+        'glow':        '0 0 25px rgba(255, 107, 0, 0.4)',
+        'glow-lg':     '0 0 50px rgba(255, 107, 0, 0.55)',
+        'glow-amber':  '0 0 30px rgba(255, 167, 38, 0.45)',
+        'glow-red':    '0 0 25px rgba(255, 107, 0, 0.4)',
+        'glow-red-lg': '0 0 50px rgba(255, 107, 0, 0.55)',
+        'card':        '0 4px 24px rgba(0, 0, 0, 0.5)',
       },
     },
   },

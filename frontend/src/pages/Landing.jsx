@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
-import { motion } from 'framer-motion'
-import { Link } from 'react-router-dom'
+import React, { useState, useEffect, lazy, Suspense } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   Zap,
   Target,
@@ -13,495 +13,640 @@ import {
   Users,
   BarChart3,
   Brain,
-  ChevronDown,
+  ShieldCheck,
+  Play,
+  X,
+  Compass,
+  Sparkles,
 } from 'lucide-react'
-import { staggerContainer } from '../utils/animations'
+import { Button } from '../components/ui/Button'
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/ui/Card'
+import { Badge } from '../components/ui/Badge'
+import { NovaStaticFallback, NovaErrorBoundary } from '../components/companion/NovaFallback'
 
-const NAV_LINKS = ['Features', 'How It Works', 'Pricing', 'Success Stories']
+// Lazy load 3D Nova for the hero centerpiece
+const Nova3D = lazy(() => import('../components/companion/Nova'))
+
+const NAV_LINKS = [
+  { label: 'Features', href: '#features' },
+  { label: 'How It Works', href: '#how-it-works' },
+  { label: 'Pricing', href: '#pricing' },
+  { label: 'Success Stories', href: '#testimonials' },
+]
+
+const STAT_PILLS = [
+  {
+    title: 'Resume Analysis',
+    value: '98/100',
+    icon: ShieldCheck,
+    color: 'from-amber-500/20 to-primary/20 border-primary/40 text-primary-light',
+    badgeBg: 'bg-primary/20 text-primary-light',
+  },
+  {
+    title: 'Skill Gap',
+    value: '3 areas',
+    icon: Target,
+    color: 'from-orange-500/20 to-amber-500/20 border-accent/40 text-accent-light',
+    badgeBg: 'bg-accent/20 text-accent-light',
+  },
+  {
+    title: 'Job Match',
+    value: '92%',
+    icon: Sparkles,
+    color: 'from-primary/20 to-orange-400/20 border-primary-light/40 text-amber-300',
+    badgeBg: 'bg-amber-400/20 text-amber-300',
+  },
+]
 
 const FEATURES = [
-  { icon: FileText, title: 'AI Resume Analysis', desc: 'Brutally honest scoring and specific improvements instead of generic advice.' },
-  { icon: Target, title: 'Interview Probability', desc: 'See your odds before you apply so you can focus effort where it matters.' },
-  { icon: BarChart3, title: 'ATS Checker', desc: 'Catch the wording and keyword issues that keep resumes invisible.' },
-  { icon: Zap, title: 'Resume Optimizer', desc: 'Rewrite bullets for a real job description and export a cleaner version fast.' },
-  { icon: Brain, title: 'Mock Interviews', desc: 'Practice with AI questions tailored to your role and current level.' },
-  { icon: Github, title: 'GitHub Portfolio Analysis', desc: 'Get feedback that reflects your actual projects, not just your resume.' },
-  { icon: TrendingUp, title: 'Career Roadmap', desc: 'Turn missing skills into a concrete plan with realistic next steps.' },
-  { icon: Users, title: 'Community Feed', desc: 'Share progress, find collaborators, and discover career opportunities.' },
+  {
+    icon: FileText,
+    title: 'AI Resume Analysis',
+    desc: 'Brutally honest scoring and line-by-line improvements instead of vague generalities.',
+  },
+  {
+    icon: Target,
+    title: 'Interview Probability',
+    desc: 'Know your odds before you apply so you can invest effort where it actually pays off.',
+  },
+  {
+    icon: BarChart3,
+    title: 'ATS Scanner & Checker',
+    desc: 'Catch hidden formatting and keyword gaps that cause resumes to get silently rejected.',
+  },
+  {
+    icon: Zap,
+    title: 'Smart Resume Optimizer',
+    desc: 'Rewrite bullet points tailored to target job descriptions with quantified impact.',
+  },
+  {
+    icon: Brain,
+    title: 'AI Mock Interviews',
+    desc: 'Practice interactive role-specific technical and behavioral interviews anytime.',
+  },
+  {
+    icon: Github,
+    title: 'GitHub & Portfolio Insights',
+    desc: 'Evaluate real public projects, commit quality, and codebase structure automatically.',
+  },
+  {
+    icon: TrendingUp,
+    title: 'Career Roadmap Engine',
+    desc: 'Bridge missing skills into an actionable month-by-month sprint plan.',
+  },
+  {
+    icon: Users,
+    title: 'Peer Community',
+    desc: 'Connect with driven engineers, compare milestone scores, and share interview experiences.',
+  },
 ]
 
 const STEPS = [
-  { step: '01', title: 'Upload your resume', desc: 'Start with your current resume in a few seconds.', icon: FileText },
-  { step: '02', title: 'Add your GitHub and target role', desc: 'CareerLens reads what you have actually built.', icon: Github },
-  { step: '03', title: 'See your interview probability', desc: 'Get a blunt percentage, not vague encouragement.', icon: Target },
-  { step: '04', title: 'Follow the action plan', desc: 'Use the roadmap, optimizer, and mock interview loop to improve.', icon: TrendingUp },
+  {
+    step: '01',
+    title: 'Upload your resume',
+    desc: 'Drop in your PDF resume for instant ATS breakdown and structural parsing.',
+    icon: FileText,
+  },
+  {
+    step: '02',
+    title: 'Connect GitHub & target role',
+    desc: 'CareerLens evaluates what you have actually built, not just what you claim.',
+    icon: Github,
+  },
+  {
+    step: '03',
+    title: 'See your interview probability',
+    desc: 'Get a blunt, data-backed percentage score before submitting your application.',
+    icon: Target,
+  },
+  {
+    step: '04',
+    title: 'Follow the guided roadmap',
+    desc: 'Use the optimizer, skill roadmaps, and mock interview drills to bridge every gap.',
+    icon: TrendingUp,
+  },
 ]
 
 const PRICING = [
   {
     name: 'Free',
-    price: '₹0',
+    price: '$0',
     period: 'forever',
-    features: ['Resume Analysis (3/month)', 'Basic ATS Score', 'Interview Probability (1/month)', 'Honest Career Coach (10 messages)', 'Community Feed'],
+    features: [
+      'Resume Analysis (3/month)',
+      'Basic ATS Score',
+      'Interview Probability (3 checks)',
+      'Honest Career Coach (20 messages)',
+      'Community Feed Access',
+    ],
     cta: 'Get Started Free',
-    ctaStyle: 'btn-ghost w-full',
+    variant: 'ghost',
     popular: false,
   },
   {
-    name: 'Pro',
-    price: '₹299',
+    name: 'Premium',
+    price: '$5.00',
     period: '/month',
-    features: ['Unlimited Resume Analysis', 'Resume Optimizer', 'Unlimited Interview Probability', 'Mock Interviews (unlimited)', 'Job Match Engine', 'Portfolio Generator', 'Progress Tracker', 'Priority AI responses'],
-    cta: 'Start Pro - ₹299/mo',
-    ctaStyle: 'btn-primary w-full',
+    features: [
+      'Unlimited Resume Analysis',
+      'Unlimited Interview Probability',
+      'Full ATS Keyword Scanner',
+      'Interactive Mock Interviews',
+      'Portfolio & Cover Letter Gen',
+      'Job Match Engine',
+      'Priority AI Mentor Response',
+    ],
+    cta: 'Upgrade to Premium',
+    variant: 'glow',
     popular: true,
-  },
-  {
-    name: 'Lifetime',
-    price: '₹1,999',
-    period: 'one-time',
-    features: ['Everything in Pro', 'Lifetime access', 'All future features', 'Early access to new tools', 'Community badge'],
-    cta: 'Get Lifetime Access',
-    ctaStyle: 'btn-ghost w-full',
-    popular: false,
   },
 ]
 
 const TESTIMONIALS = [
-  { name: 'Rahul S.', role: 'Now at Amazon (ML Intern)', avatar: 'RS', color: 'linear-gradient(135deg,#FF3B3B,#8B0000)', quote: 'My interview probability moved from 35% to 72% in three weeks. I stopped guessing and finally knew what to fix.' },
-  { name: 'Ananya K.', role: 'Frontend Dev at Startup', avatar: 'AK', color: 'linear-gradient(135deg,#FF8C42,#FF3B3B)', quote: 'The ATS checker showed me why my resume was being filtered out. I fixed those gaps and started getting calls immediately.' },
-  { name: 'Siddharth M.', role: 'Data Analyst Intern', avatar: 'SM', color: 'linear-gradient(135deg,#1a1f2b,#ef4444)', quote: 'Seeing a low score was tough, but it gave me a real plan. Six weeks later, I was shortlisted at three companies.' },
+  {
+    name: 'Rahul S.',
+    role: 'Now at Amazon (ML Intern)',
+    avatar: 'RS',
+    quote:
+      'My interview probability moved from 35% to 72% in three weeks. Nova and CareerLens showed me the exact gaps in my GitHub repos.',
+  },
+  {
+    name: 'Ananya K.',
+    role: 'Frontend Dev at Unicorn Startup',
+    avatar: 'AK',
+    quote:
+      'The ATS checker showed me why my resume was being silently filtered out. I revised my bullets and received recruiter calls within a week.',
+  },
+  {
+    name: 'Siddharth M.',
+    role: 'Full Stack Engineer',
+    avatar: 'SM',
+    quote:
+      'Seeing an honest, unvarnished score gave me a real action plan. Practiced the mock interview questions and landed my target offer.',
+  },
 ]
-
-const PROBLEMS = [
-  'Sending 50+ applications with zero callbacks',
-  'Not knowing which missing skills actually matter',
-  'Resume filtered before any human reads it',
-  'Wasting time preparing for the wrong roles',
-  "Getting generic advice that doesn't apply to you",
-]
-
-const SOLUTIONS = [
-  'Know your exact interview probability before applying',
-  'See which skills to learn for the target role',
-  'Use ATS scoring to improve visibility',
-  'Practice role-specific interview questions',
-  'Follow a roadmap tied to your real profile',
-]
-
-function Particles() {
-  const [particles, setParticles] = useState([])
-
-  useEffect(() => {
-    const items = Array.from({ length: 20 }).map((_, index) => ({
-      id: index,
-      left: Math.random() * 100,
-      top: Math.random() * 100,
-      size: Math.random() * 3 + 1,
-      opacity: Math.random() * 0.28 + 0.08,
-      duration: Math.random() * 6 + 4,
-      delay: Math.random() * 2,
-      color: index % 2 === 0 ? 'rgba(255,59,59,0.28)' : 'rgba(200,30,30,0.2)',
-    }))
-    setParticles(items)
-  }, [])
-
-  return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden">
-      {particles.map((particle) => (
-        <div
-          key={particle.id}
-          style={{
-            position: 'absolute',
-            left: `${particle.left}%`,
-            top: `${particle.top}%`,
-            width: `${particle.size}px`,
-            height: `${particle.size}px`,
-            borderRadius: '50%',
-            background: particle.color,
-            boxShadow: `0 0 ${particle.size * 7}px ${particle.color}`,
-            animation: `float ${particle.duration}s ease-in-out ${particle.delay}s infinite alternate`,
-          }}
-        />
-      ))}
-    </div>
-  )
-}
-
-function Stat({ value, label }) {
-  return (
-    <div className="text-center">
-      <p className="gradient-text text-4xl font-black">{value}</p>
-      <p className="mt-2 text-sm text-[#8A8FA8]">{label}</p>
-    </div>
-  )
-}
 
 export default function Landing() {
-  const [scrolled, setScrolled] = useState(false)
-
-  useEffect(() => {
-    const handleScroll = () => setScrolled(window.scrollY > 20)
-    window.addEventListener('scroll', handleScroll)
-    return () => window.removeEventListener('scroll', handleScroll)
-  }, [])
+  const [demoModalOpen, setDemoModalOpen] = useState(false)
+  const navigate = useNavigate()
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
-      className="relative min-h-screen overflow-x-hidden text-white"
-    >
-      <Particles />
+    <div className="relative min-h-screen bg-[#0B0A10] text-[#F5F5F7] overflow-x-hidden selection:bg-primary/30 selection:text-white">
+      {/* Background glow ambiance */}
+      <div
+        className="pointer-events-none fixed inset-0 z-0 opacity-40"
+        style={{
+          backgroundImage:
+            'radial-gradient(circle at 50% 0%, rgba(255,107,0,0.18) 0%, transparent 60%), radial-gradient(circle at 85% 35%, rgba(255,167,38,0.08) 0%, transparent 50%)',
+        }}
+      />
 
-      <nav
-        className={`fixed left-0 right-0 top-0 z-50 transition-all duration-300 ${
-          scrolled ? 'border-b border-white/5' : ''
-        }`}
-        style={scrolled ? { background: 'rgba(14,16,22,0.8)', backdropFilter: 'blur(20px)' } : undefined}
-      >
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-3">
-            <div
-              className="flex h-9 w-9 items-center justify-center rounded-xl"
-              style={{
-                background: 'linear-gradient(135deg,#FF3B3B,#CC1A1A)',
-                boxShadow: '0 0 20px rgba(255,59,59,0.35)',
-              }}
-            >
-              <Zap size={17} className="text-white" />
+      {/* ============================================================
+          TOP NAVIGATION BAR
+      ============================================================ */}
+      <header className="sticky top-0 z-50 w-full border-b border-white/[0.06] bg-[#0B0A10]/80 backdrop-blur-xl">
+        <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-6 lg:px-12">
+          {/* Logo */}
+          <Link to="/" className="flex items-center gap-3 group">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-tr from-primary to-accent shadow-[0_0_20px_rgba(255,107,0,0.45)] group-hover:scale-105 transition-transform duration-300">
+              <Zap size={20} className="text-white fill-white" />
             </div>
-            <span className="gradient-text text-xl font-black">CareerLens</span>
-          </div>
+            <span className="font-display text-2xl font-bold tracking-tight text-white">
+              Career<span className="gradient-text">Lens</span>
+            </span>
+          </Link>
 
-          <div className="hidden items-center gap-8 md:flex">
+          {/* Desktop Nav Links */}
+          <nav className="hidden md:flex items-center gap-8">
             {NAV_LINKS.map((link) => (
               <a
-                key={link}
-                href={`#${link.toLowerCase().replace(/ /g, '-')}`}
-                className="text-sm text-[#8A8FA8] transition hover:text-white"
+                key={link.label}
+                href={link.href}
+                className="text-sm font-medium text-slate-300 transition-colors hover:text-white hover:text-primary"
               >
-                {link}
+                {link.label}
               </a>
             ))}
-          </div>
+          </nav>
 
-          <div className="flex items-center gap-3">
-            <Link to="/login" className="px-4 py-2 text-sm text-[#8A8FA8] transition hover:text-white">
-              Login
+          {/* Actions */}
+          <div className="flex items-center gap-4">
+            <Link to="/login">
+              <Button variant="ghost" size="md" className="rounded-full px-5">
+                Login
+              </Button>
             </Link>
-            <Link to="/signup" className="btn-primary text-sm">
-              Get Started
-              <ArrowRight size={14} />
+            <Link to="/signup">
+              <Button variant="primary" size="md" className="rounded-full px-6 shadow-glow">
+                Get Started
+              </Button>
             </Link>
           </div>
         </div>
-      </nav>
+      </header>
 
-      <section className="relative overflow-hidden px-6 pb-24 pt-32">
-        <div
-          aria-hidden
-          className="absolute left-1/2 top-0 h-[340px] w-[760px] -translate-x-1/2 rounded-full blur-[80px]"
-          style={{ background: 'radial-gradient(circle, rgba(255,59,59,0.16) 0%, transparent 70%)' }}
-        />
-
-        <div className="relative z-[1] mx-auto grid max-w-6xl items-center gap-14 md:grid-cols-2">
-          <div>
-            <div className="badge badge-red mb-6">
-              <Zap size={12} />
-              AI-Powered Career Intelligence
-            </div>
-            <h1 className="mb-6 text-[46px] font-black leading-[1.02] text-white md:text-[72px]">
-              Stop Applying Blindly.
-              <span className="gradient-text block">Know Your Chances.</span>
-            </h1>
-            <p className="mb-8 max-w-xl text-lg leading-8 text-[#8A8FA8]">
-              CareerLens tells you your interview probability for any role, then gives you the exact actions
-              to improve it before you spend weeks guessing.
-            </p>
-            <div className="hero-cta flex flex-wrap items-center gap-4">
-              <Link to="/signup" className="btn-primary px-8 py-4 text-base font-bold">
-                Analyze My Resume Free
-                <ArrowRight size={16} />
-              </Link>
-              <a href="#how-it-works" className="btn-ghost px-6 py-3 text-sm">
-                See how it works
-                <ChevronDown size={14} />
-              </a>
-            </div>
-            <p className="mt-4 text-xs text-[#8A8FA8]/70">No credit card needed. Free plan available. 2,400+ resumes analyzed.</p>
-          </div>
-
-          <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 }}>
-            <div className="glass-glow rounded-[28px] p-6" style={{ animation: 'border-glow-red 3s infinite' }}>
-              <div className="mb-5 flex items-start justify-between">
-                <div>
-                  <p className="text-sm text-[#8A8FA8]">Interview Probability</p>
-                  <p className="mt-1 text-sm font-medium text-white">ML Engineer @ Google</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-5xl font-black text-[#FF3B3B]">62%</p>
-                  <p className="text-xs text-[#8A8FA8]">Competitive</p>
-                </div>
-              </div>
-
-              {[
-                { label: 'Skill Match', val: 74 },
-                { label: 'ATS Score', val: 58 },
-                { label: 'Portfolio', val: 55 },
-              ].map((item, index) => (
-                <div key={item.label} className="mb-4 last:mb-0">
-                  <div className="mb-2 flex items-center justify-between text-xs">
-                    <span className="text-[#8A8FA8]">{item.label}</span>
-                    <span className="font-semibold text-white">{item.val}%</span>
-                  </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-white/5">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${item.val}%` }}
-                      transition={{ delay: 0.25 + index * 0.12, duration: 0.8 }}
-                      className="h-full rounded-full bg-[#FF3B3B]"
-                    />
-                  </div>
-                </div>
-              ))}
-
-              <div className="mt-5 border-t border-white/5 pt-4 text-xs font-semibold text-[#FF7070]">
-                Missing: Docker, Redis, System Design
-              </div>
-            </div>
-          </motion.div>
-        </div>
-      </section>
-
-      <section className="border-y border-[rgba(255,59,59,0.1)] bg-[rgba(255,59,59,0.04)] px-6 py-16">
-        <div className="mx-auto grid max-w-4xl grid-cols-2 gap-8 md:grid-cols-4">
-          <Stat value="2,400+" label="Resumes Analyzed" />
-          <Stat value="580+" label="Interview Calls Reported" />
-          <Stat value="+31%" label="Avg Score Improvement" />
-          <Stat value="4.8/5" label="User Rating" />
-        </div>
-      </section>
-
-      <section className="px-6 py-24">
-        <div className="mx-auto max-w-5xl">
-          <div className="mb-16 text-center">
-            <h2 className="text-4xl font-black text-white">The Job Search is Broken</h2>
-            <p className="mt-3 text-lg text-[#8A8FA8]">Most candidates fail because they are navigating without signal.</p>
-          </div>
-          <div className="grid gap-6 md:grid-cols-2">
-            <div className="glass-glow rounded-3xl p-6">
-              <h3 className="mb-4 text-lg font-bold text-white">Without CareerLens</h3>
-              <div className="space-y-3">
-                {PROBLEMS.map((problem) => (
-                  <p key={problem} className="text-sm text-[#8A8FA8]">
-                    {problem}
-                  </p>
-                ))}
-              </div>
-            </div>
-            <div className="glass-glow rounded-3xl p-6">
-              <h3 className="mb-4 text-lg font-bold text-white">With CareerLens</h3>
-              <div className="space-y-3">
-                {SOLUTIONS.map((solution) => (
-                  <p key={solution} className="text-sm text-[#8A8FA8]">
-                    {solution}
-                  </p>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section id="features" className="bg-white/[0.01] px-6 py-24">
-        <div className="mx-auto max-w-6xl">
-          <div className="mb-16 text-center">
-            <h2 className="text-4xl font-black text-white">Everything You Need to Get Hired</h2>
-            <p className="mt-3 text-lg text-[#8A8FA8]">Eight focused tools built for a single outcome: more interviews.</p>
-          </div>
-
+      {/* ============================================================
+          HERO SECTION (Image 1 Option 1 + Nova Mascot Centerpiece)
+      ============================================================ */}
+      <section className="relative z-10 mx-auto max-w-7xl px-6 pt-12 pb-24 lg:px-12 lg:pt-16">
+        <div className="grid grid-cols-1 items-center gap-12 lg:grid-cols-12">
+          {/* Left Column: Benefit-driven headline & CTA */}
           <motion.div
-            variants={staggerContainer}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true }}
-            className="grid gap-4 md:grid-cols-2 lg:grid-cols-4"
+            initial={{ opacity: 0, x: -30 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+            className="lg:col-span-6 flex flex-col items-start"
           >
-            {FEATURES.map((feature) => (
-              <motion.div
-                key={feature.title}
-                whileHover={{ y: -3, scale: 1.01 }}
-                className="glass-glow feature-card rounded-3xl p-5"
+            {/* Pill Tag */}
+            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5 backdrop-blur-md">
+              <Sparkles size={14} className="text-primary" />
+              <span className="text-xs font-semibold uppercase tracking-wider text-primary-light font-display">
+                AI Powered Career Guidance
+              </span>
+            </div>
+
+            {/* Headline */}
+            <h1 className="font-display text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight leading-[1.08] text-white mb-6">
+              Turn Your <br />
+              Resume into <br />
+              <span className="gradient-text">Real Opportunities</span>
+            </h1>
+
+            {/* Subtitle */}
+            <p className="max-w-xl text-base sm:text-lg text-slate-300 leading-relaxed mb-8">
+              Get AI-powered feedback, personalized roadmaps, and job-ready guidance — all in one
+              place.
+            </p>
+
+            {/* CTAs */}
+            <div className="flex flex-wrap items-center gap-4 mb-10">
+              <Link to="/signup">
+                <Button
+                  variant="primary"
+                  size="lg"
+                  className="rounded-full px-8 py-4 text-base font-bold shadow-[0_0_30px_rgba(255,107,0,0.5)] hover:shadow-[0_0_45px_rgba(255,107,0,0.7)] group"
+                >
+                  Analyze My Resume
+                  <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
+                </Button>
+              </Link>
+
+              <Button
+                variant="ghost"
+                size="lg"
+                onClick={() => setDemoModalOpen(true)}
+                className="rounded-full px-7 py-4 text-base font-medium border border-white/10 hover:border-primary/40 bg-white/[0.03]"
               >
-                <div className="relative mb-4 w-fit">
-                  <span className="absolute -inset-2 rounded-full bg-[rgba(255,59,59,0.18)] blur-[10px]" />
-                  <div className="relative rounded-2xl border border-[rgba(255,59,59,0.2)] bg-[rgba(255,59,59,0.12)] p-3">
-                    <feature.icon size={20} className="text-[#FF3B3B]" />
+                <Play size={16} className="text-primary fill-primary mr-1" />
+                Watch Demo
+              </Button>
+            </div>
+
+            {/* Social Proof */}
+            <div className="flex items-center gap-4 pt-2 border-t border-white/[0.08] w-full max-w-md">
+              <div className="flex -space-x-2 overflow-hidden">
+                {['RS', 'AK', 'SM', 'DP', 'NK'].map((initials, i) => (
+                  <div
+                    key={i}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border-2 border-[#0B0A10] bg-gradient-to-tr from-surface-elevated to-primary/40 text-xs font-bold text-white shadow"
+                  >
+                    {initials}
                   </div>
-                </div>
-                <h3 className="mb-2 text-sm font-bold text-white">{feature.title}</h3>
-                <p className="text-xs leading-relaxed text-[#8A8FA8]">{feature.desc}</p>
-              </motion.div>
-            ))}
+                ))}
+              </div>
+              <p className="text-xs text-slate-400 font-medium">
+                Trusted by <span className="font-bold text-white">10,000+</span> students & engineers
+              </p>
+            </div>
+          </motion.div>
+
+          {/* Right Column: Nova 3D Centerpiece + Floating Stat Pills */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.8, delay: 0.15, ease: [0.16, 1, 0.3, 1] }}
+            className="lg:col-span-6 relative flex items-center justify-center"
+          >
+            {/* Center Background Orbit Glow */}
+            <div
+              className="absolute h-[380px] w-[380px] sm:h-[460px] sm:w-[460px] rounded-full border border-primary/20 bg-gradient-to-b from-primary/10 via-transparent to-transparent pointer-events-none"
+              style={{
+                boxShadow: '0 0 80px rgba(255,107,0,0.18), inset 0 0 60px rgba(255,107,0,0.08)',
+              }}
+            />
+
+            {/* 3D Nova Hero Character */}
+            <div className="relative z-10 w-full flex items-center justify-center">
+              <NovaErrorBoundary size="hero" expression="idle">
+                <Suspense fallback={<NovaStaticFallback size="hero" expression="idle" />}>
+                  <Nova3D size="hero" expression="idle" />
+                </Suspense>
+              </NovaErrorBoundary>
+            </div>
+
+            {/* Floating Stat Pills (Stacked on the right, matching Image 1 Option 1) */}
+            <div className="absolute right-0 sm:right-4 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-3 pointer-events-auto">
+              {STAT_PILLS.map((pill, idx) => {
+                const Icon = pill.icon
+                return (
+                  <motion.div
+                    key={pill.title}
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.3 + idx * 0.15, duration: 0.5 }}
+                    whileHover={{ scale: 1.04, x: -4 }}
+                    className="flex items-center gap-3 rounded-2xl border border-white/10 bg-[#13121C]/85 px-4 py-3 shadow-[0_10px_30px_rgba(0,0,0,0.65),0_0_20px_rgba(255,107,0,0.12)] backdrop-blur-xl"
+                  >
+                    <div
+                      className={`flex h-10 w-10 items-center justify-center rounded-xl border ${pill.color} bg-gradient-to-br shadow-inner`}
+                    >
+                      <Icon size={18} />
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider font-display">
+                        {pill.title}
+                      </p>
+                      <p className="text-base font-bold text-white tracking-tight">{pill.value}</p>
+                    </div>
+                  </motion.div>
+                )
+              })}
+            </div>
           </motion.div>
         </div>
       </section>
 
-      <section id="how-it-works" className="px-6 py-24">
-        <div className="mx-auto max-w-5xl">
-          <div className="mb-16 text-center">
-            <h2 className="text-4xl font-black text-white">How It Works</h2>
-            <p className="mt-3 text-[#8A8FA8]">From upload to action plan in under two minutes.</p>
+      {/* ============================================================
+          FEATURES GRID (Using Phase 0 Card Primitives)
+      ============================================================ */}
+      <section id="features" className="relative z-10 border-t border-white/[0.06] bg-[#0E0D14]/60 py-24 px-6 lg:px-12">
+        <div className="mx-auto max-w-7xl">
+          <div className="text-center max-w-2xl mx-auto mb-16">
+            <Badge variant="default" className="mb-4">
+              Comprehensive Toolkit
+            </Badge>
+            <h2 className="font-display text-3xl sm:text-4xl font-extrabold text-white tracking-tight mb-4">
+              Everything You Need to Get Hired
+            </h2>
+            <p className="text-slate-400 text-sm sm:text-base leading-relaxed">
+              Designed from real industry feedback to eliminate blind spots in your resume, GitHub,
+              and interview prep.
+            </p>
           </div>
 
-          <div className="grid gap-6 md:grid-cols-4">
-            {STEPS.map((step, index) => (
-              <motion.div
-                key={step.step}
-                initial={{ opacity: 0, y: 16 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: index * 0.08 }}
-                className="text-center"
-              >
-                <div className="relative mx-auto mb-4 h-16 w-16">
-                  <div className="flex h-16 w-16 items-center justify-center rounded-full border border-[rgba(255,59,59,0.25)] bg-[rgba(255,59,59,0.12)] shadow-[0_0_20px_rgba(255,59,59,0.2)]">
-                    <step.icon size={22} className="text-[#FF3B3B]" />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {FEATURES.map((feature, i) => {
+              const Icon = feature.icon
+              return (
+                <Card
+                  key={feature.title}
+                  variant="glass"
+                  className="group hover:-translate-y-1 transition-all duration-300"
+                >
+                  <CardHeader className="p-6">
+                    <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl border border-primary/30 bg-primary/10 text-primary shadow-[0_0_20px_rgba(255,107,0,0.15)] group-hover:scale-110 group-hover:bg-primary group-hover:text-white transition-all duration-300">
+                      <Icon size={22} />
+                    </div>
+                    <CardTitle className="text-lg mb-2 group-hover:text-primary-light transition-colors">
+                      {feature.title}
+                    </CardTitle>
+                    <CardDescription className="text-xs leading-relaxed text-slate-400">
+                      {feature.desc}
+                    </CardDescription>
+                  </CardHeader>
+                </Card>
+              )
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* ============================================================
+          HOW IT WORKS
+      ============================================================ */}
+      <section id="how-it-works" className="relative z-10 py-24 px-6 lg:px-12">
+        <div className="mx-auto max-w-7xl">
+          <div className="text-center max-w-2xl mx-auto mb-16">
+            <Badge variant="accent" className="mb-4">
+              Step-by-Step Flow
+            </Badge>
+            <h2 className="font-display text-3xl sm:text-4xl font-extrabold text-white tracking-tight mb-4">
+              How CareerLens Works
+            </h2>
+            <p className="text-slate-400 text-sm sm:text-base leading-relaxed">
+              From an unoptimized resume to confident interview readiness in 4 simple steps.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {STEPS.map((s, index) => {
+              const Icon = s.icon
+              return (
+                <div
+                  key={s.step}
+                  className="relative rounded-2xl border border-white/[0.08] bg-surface-card/60 p-6 backdrop-blur-xl"
+                >
+                  <div className="flex items-center justify-between mb-6">
+                    <span className="font-display text-3xl font-extrabold text-primary/40">
+                      {s.step}
+                    </span>
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/[0.05] border border-white/10 text-primary">
+                      <Icon size={18} />
+                    </div>
                   </div>
-                  <span className="absolute -right-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full bg-[#11131A] text-xs font-bold text-[#FF3B3B] ring-1 ring-[rgba(255,59,59,0.25)]">
-                    {step.step}
-                  </span>
+                  <h3 className="font-display text-base font-bold text-white mb-2">{s.title}</h3>
+                  <p className="text-xs text-slate-400 leading-relaxed">{s.desc}</p>
                 </div>
-                <h3 className="mb-2 text-sm font-bold text-white">{step.title}</h3>
-                <p className="text-xs text-[#8A8FA8]">{step.desc}</p>
-              </motion.div>
+              )
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* ============================================================
+          PRICING SECTION (Using Phase 0 Card Primitives)
+      ============================================================ */}
+      <section id="pricing" className="relative z-10 border-t border-white/[0.06] bg-[#0E0D14]/70 py-24 px-6 lg:px-12">
+        <div className="mx-auto max-w-5xl">
+          <div className="text-center max-w-2xl mx-auto mb-16">
+            <Badge variant="default" className="mb-4">
+              Simple Pricing
+            </Badge>
+            <h2 className="font-display text-3xl sm:text-4xl font-extrabold text-white tracking-tight mb-4">
+              Invest in Your Career
+            </h2>
+            <p className="text-slate-400 text-sm sm:text-base leading-relaxed">
+              Start free with no credit card required. Upgrade when you are ready to accelerate.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-3xl mx-auto">
+            {PRICING.map((plan) => (
+              <Card
+                key={plan.name}
+                variant={plan.popular ? 'elevated-glow' : 'glass'}
+                className="relative flex flex-col justify-between p-8"
+              >
+                {plan.popular && (
+                  <div className="absolute top-0 right-0 rounded-bl-xl bg-gradient-to-l from-primary to-accent px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-white shadow-md">
+                    Most Popular
+                  </div>
+                )}
+                <div>
+                  <h3 className="font-display text-2xl font-bold text-white mb-2">{plan.name}</h3>
+                  <div className="flex items-baseline gap-2 mb-6">
+                    <span className="font-display text-4xl font-extrabold text-white">{plan.price}</span>
+                    <span className="text-sm text-slate-400 font-medium">{plan.period}</span>
+                  </div>
+
+                  <ul className="space-y-3 mb-8">
+                    {plan.features.map((feat) => (
+                      <li key={feat} className="flex items-center gap-2.5 text-xs text-slate-300">
+                        <CheckCircle size={15} className="text-primary shrink-0" />
+                        <span>{feat}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <Link to={plan.popular ? '/dashboard/upgrade' : '/signup'} className="w-full">
+                  <Button
+                    variant={plan.variant}
+                    size="lg"
+                    className="w-full rounded-xl font-bold"
+                  >
+                    {plan.cta}
+                  </Button>
+                </Link>
+              </Card>
             ))}
           </div>
         </div>
       </section>
 
-      <section id="success-stories" className="bg-white/[0.01] px-6 py-24">
-        <div className="mx-auto max-w-5xl">
-          <div className="mb-16 text-center">
-            <h2 className="text-4xl font-black text-white">Real Results</h2>
-            <p className="mt-3 text-[#8A8FA8]">Students and graduates who turned career guesswork into momentum.</p>
+      {/* ============================================================
+          TESTIMONIALS
+      ============================================================ */}
+      <section id="testimonials" className="relative z-10 py-24 px-6 lg:px-12">
+        <div className="mx-auto max-w-7xl">
+          <div className="text-center max-w-2xl mx-auto mb-16">
+            <Badge variant="accent" className="mb-4">
+              Student Results
+            </Badge>
+            <h2 className="font-display text-3xl sm:text-4xl font-extrabold text-white tracking-tight mb-4">
+              Real Offers. Real Feedback.
+            </h2>
+            <p className="text-slate-400 text-sm sm:text-base leading-relaxed">
+              See how developers turned low initial match scores into top-tier tech offers.
+            </p>
           </div>
-          <div className="grid gap-6 md:grid-cols-3">
-            {TESTIMONIALS.map((testimonial, index) => (
-              <motion.div
-                key={testimonial.name}
-                initial={{ opacity: 0, y: 16 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: index * 0.08 }}
-                whileHover={{ y: -3 }}
-                className="glass-glow rounded-3xl p-6"
-              >
-                <div className="mb-4 flex gap-1">
-                  {Array.from({ length: 5 }).map((_, starIndex) => (
-                    <Star key={starIndex} size={14} className="fill-[#FF3B3B] text-[#FF3B3B]" />
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {TESTIMONIALS.map((t) => (
+              <Card key={t.name} variant="glass" className="p-6 flex flex-col justify-between">
+                <div className="flex items-center gap-1 text-primary mb-4">
+                  {[...Array(5)].map((_, idx) => (
+                    <Star key={idx} size={14} className="fill-primary" />
                   ))}
                 </div>
-                <p className="mb-5 text-sm leading-7 text-[#F5F5F7]">"{testimonial.quote}"</p>
-                <div className="flex items-center gap-3 border-t border-white/5 pt-4">
-                  <div
-                    className="flex h-10 w-10 items-center justify-center rounded-2xl text-xs font-bold text-white"
-                    style={{ background: testimonial.color }}
-                  >
-                    {testimonial.avatar}
+                <p className="text-xs sm:text-sm text-slate-200 leading-relaxed mb-6 italic">
+                  "{t.quote}"
+                </p>
+                <div className="flex items-center gap-3 pt-4 border-t border-white/[0.08]">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-tr from-primary to-accent font-bold text-xs text-white">
+                    {t.avatar}
                   </div>
                   <div>
-                    <p className="text-sm font-semibold text-white">{testimonial.name}</p>
-                    <p className="text-xs text-[#8A8FA8]">{testimonial.role}</p>
+                    <p className="font-display text-sm font-bold text-white">{t.name}</p>
+                    <p className="text-[11px] text-slate-400">{t.role}</p>
                   </div>
                 </div>
-              </motion.div>
+              </Card>
             ))}
           </div>
         </div>
       </section>
 
-      <section id="pricing" className="px-6 py-24">
-        <div className="mx-auto max-w-5xl">
-          <div className="mb-16 text-center">
-            <h2 className="text-4xl font-black text-white">Simple Pricing</h2>
-            <p className="mt-3 text-[#8A8FA8]">Start free. Upgrade when you want the full loop.</p>
-          </div>
-          <div className="grid gap-6 md:grid-cols-3">
-            {PRICING.map((plan) => (
-              <motion.div
-                key={plan.name}
-                whileHover={{ y: -3, scale: 1.01 }}
-                className="glass-glow relative rounded-3xl p-6"
-                style={plan.popular ? { animation: 'border-glow-red 3s infinite' } : undefined}
-              >
-                {plan.popular && <div className="badge badge-red absolute -top-3 left-1/2 -translate-x-1/2">Most Popular</div>}
-                <p className="text-sm font-medium text-[#8A8FA8]">{plan.name}</p>
-                <div className="mt-2 flex items-end gap-1">
-                  <span className="gradient-text text-4xl font-black">{plan.price}</span>
-                  <span className="pb-1 text-sm text-[#8A8FA8]">{plan.period}</span>
-                </div>
-                <ul className="my-6 space-y-3">
-                  {plan.features.map((feature) => (
-                    <li key={feature} className="flex items-start gap-2 text-sm text-[#F5F5F7]">
-                      <CheckCircle size={15} className="mt-0.5 shrink-0 text-[#FF7070]" />
-                      {feature}
-                    </li>
-                  ))}
-                </ul>
-                <Link to="/signup" className={`${plan.ctaStyle} block py-3 text-center text-sm font-bold`}>
-                  {plan.cta}
-                </Link>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="px-6 py-24 text-center">
-        <div className="glass-glow mx-auto max-w-2xl rounded-[32px] p-10">
-          <div
-            className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl"
-            style={{
-              background: 'linear-gradient(135deg,#FF3B3B,#CC1A1A)',
-              boxShadow: '0 0 20px rgba(255,59,59,0.35)',
-            }}
-          >
-            <Zap size={28} className="text-white" />
-          </div>
-          <h2 className="mb-4 text-4xl font-black text-white">Your next interview is closer than you think.</h2>
-          <p className="mb-8 text-lg text-[#8A8FA8]">Find out where you stand today. It only takes two minutes.</p>
-          <Link to="/signup" className="btn-primary px-10 py-4 text-base font-bold">
-            Analyze My Resume - It's Free
-            <ArrowRight size={16} />
+      {/* ============================================================
+          BOTTOM CTA BANNER
+      ============================================================ */}
+      <section className="relative z-10 py-20 px-6 lg:px-12">
+        <div className="mx-auto max-w-5xl rounded-3xl border border-primary/30 bg-gradient-to-b from-[#181724] to-[#0B0A10] p-10 sm:p-14 text-center shadow-[0_20px_60px_rgba(0,0,0,0.8),0_0_40px_rgba(255,107,0,0.18)]">
+          <Badge variant="default" className="mb-4">
+            Instant Access
+          </Badge>
+          <h2 className="font-display text-3xl sm:text-5xl font-extrabold text-white tracking-tight mb-4">
+            Stop Guessing. <span className="gradient-text">Start Getting Interviews.</span>
+          </h2>
+          <p className="max-w-xl mx-auto text-slate-300 text-sm sm:text-base leading-relaxed mb-8">
+            Upload your resume now to see your match score, fix hidden ATS filters, and follow a
+            concrete improvement plan.
+          </p>
+          <Link to="/signup">
+            <Button
+              variant="glow"
+              size="lg"
+              className="rounded-full px-10 py-4 text-base font-bold shadow-[0_0_35px_rgba(255,107,0,0.6)]"
+            >
+              Analyze Your Resume Now →
+            </Button>
           </Link>
         </div>
       </section>
 
-      <footer className="border-t border-white/5 px-6 py-10">
-        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 md:flex-row">
-          <div className="flex items-center gap-3">
-            <div
-              className="flex h-8 w-8 items-center justify-center rounded-xl"
-              style={{ background: 'linear-gradient(135deg,#FF3B3B,#CC1A1A)' }}
-            >
-              <Zap size={14} className="text-white" />
-            </div>
-            <span className="font-bold text-white">CareerLens</span>
+      {/* ============================================================
+          FOOTER
+      ============================================================ */}
+      <footer className="relative z-10 border-t border-white/[0.06] bg-[#07060A] py-12 px-6 lg:px-12 text-slate-500 text-xs">
+        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-6 sm:flex-row">
+          <div className="flex items-center gap-2">
+            <Zap size={16} className="text-primary fill-primary" />
+            <span className="font-display text-sm font-bold text-white">CareerLens</span>
+            <span>— Dark 3D AI Career Guidance</span>
           </div>
-          <p className="text-sm text-[#8A8FA8]">© 2025 CareerLens. Built to get you hired.</p>
-          <div className="flex gap-6 text-sm text-[#8A8FA8]">
-            <Link to="/login" className="transition hover:text-white">
-              Login
-            </Link>
-            <Link to="/signup" className="transition hover:text-white">
-              Sign Up
-            </Link>
-          </div>
+          <p>© {new Date().getFullYear()} CareerLens. All rights reserved.</p>
         </div>
       </footer>
-    </motion.div>
+
+      {/* ============================================================
+          DEMO MODAL
+      ============================================================ */}
+      <AnimatePresence>
+        {demoModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.92 }}
+              className="relative w-full max-w-2xl rounded-2xl border border-primary/30 bg-[#13121C] p-6 shadow-2xl"
+            >
+              <div className="flex items-center justify-between pb-4 border-b border-white/10 mb-4">
+                <h3 className="font-display text-lg font-bold text-white">CareerLens Walkthrough Demo</h3>
+                <button
+                  onClick={() => setDemoModalOpen(false)}
+                  className="rounded-lg p-1.5 text-slate-400 hover:text-white hover:bg-white/10"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="aspect-video w-full rounded-xl bg-black/60 border border-white/[0.08] flex flex-col items-center justify-center p-6 text-center">
+                <Play size={44} className="text-primary fill-primary mb-3" />
+                <p className="text-sm font-semibold text-white mb-1">CareerLens Interactive Demo</p>
+                <p className="text-xs text-slate-400 max-w-md">
+                  Experience full end-to-end ATS score breakdown, interview probability prediction,
+                  and resume bullet rewrites directly inside the dashboard.
+                </p>
+                <Link to="/signup" className="mt-5">
+                  <Button variant="primary" size="sm" className="rounded-full">
+                    Try Dashboard Free
+                  </Button>
+                </Link>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
   )
 }

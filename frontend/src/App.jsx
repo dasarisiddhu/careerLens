@@ -60,7 +60,7 @@ function PrivateRoute({ children }) {
   const { user, loading } = useAuth()
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-transparent">
-      <div className="w-8 h-8 border-2 border-[#FF3B3B] border-t-transparent rounded-full animate-spin shadow-[0_0_20px_rgba(255,59,59,0.35)]" />
+      <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin shadow-[0_0_20px_rgba(255,107,0,0.4)]" />
     </div>
   )
   return user ? children : <Navigate to="/login" replace />

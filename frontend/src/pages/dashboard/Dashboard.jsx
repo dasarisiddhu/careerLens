@@ -22,15 +22,15 @@ import { useCountUp, staggerContainer, staggerItem, pageTransition } from '../..
 
 const CARD_COLORS = {
   analyses: {
-    border: '#FF3B3B',
-    glow: 'rgba(255,59,59,0.28)',
-    iconBg: 'linear-gradient(135deg,#FF3B3B,#CC1A1A)',
+    border: '#FF6B00',
+    glow: 'rgba(255,107,0,0.28)',
+    iconBg: 'linear-gradient(135deg,#FF6B00,#CC4E00)',
     iconColor: '#fff',
   },
   interviews: {
-    border: '#e11d48',
-    glow: 'rgba(225,29,72,0.25)',
-    iconBg: 'linear-gradient(135deg,#e11d48,#be123c)',
+    border: '#FFA726',
+    glow: 'rgba(255,167,38,0.25)',
+    iconBg: 'linear-gradient(135deg,#FFA726,#F57C00)',
     iconColor: '#fff',
   },
   messages: {
@@ -40,20 +40,20 @@ const CARD_COLORS = {
     iconColor: '#fff',
   },
   plan: {
-    border: '#fb7185',
-    glow: 'rgba(251,113,133,0.28)',
-    iconBg: 'linear-gradient(135deg,#fb7185,#e11d48)',
+    border: '#FF8533',
+    glow: 'rgba(255,133,51,0.28)',
+    iconBg: 'linear-gradient(135deg,#FF8533,#FF6B00)',
     iconColor: '#fff',
   },
 }
 
 const ACTION_STYLES = {
-  resume: 'linear-gradient(135deg,#FF3B3B,#CC1A1A)',
-  optimizer: 'linear-gradient(135deg,#e11d48,#FF3B3B)',
-  predictor: 'linear-gradient(135deg,#FF3B3B,#8B0000)',
-  interview: 'linear-gradient(135deg,#10b981,#e11d48)',
-  ats: 'linear-gradient(135deg,#8B0000,#FF3B3B)',
-  community: 'linear-gradient(135deg,#e11d48,#fb7185)',
+  resume: 'linear-gradient(135deg,#FF6B00,#CC4E00)',
+  optimizer: 'linear-gradient(135deg,#FF8533,#FF6B00)',
+  predictor: 'linear-gradient(135deg,#FF6B00,#B24400)',
+  interview: 'linear-gradient(135deg,#10b981,#059669)',
+  ats: 'linear-gradient(135deg,#FFA726,#FF6B00)',
+  community: 'linear-gradient(135deg,#FF8533,#FFA726)',
 }
 
 function StatCard({ label, value, icon: Icon, tone }) {
@@ -146,7 +146,7 @@ function ActionCard({ to, icon: Icon, title, desc, tone }) {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            boxShadow: '0 0 24px rgba(255,59,59,0.2)',
+            boxShadow: '0 0 24px rgba(255,107,0,0.25)',
             flexShrink: 0,
           }}
         >
@@ -277,7 +277,7 @@ export default function Dashboard() {
               left: 0,
               right: 0,
               height: 2,
-              background: 'linear-gradient(90deg, transparent, #FF3B3B, #FF7070, transparent)',
+              background: 'linear-gradient(90deg, transparent, #FF6B00, #FFA726, transparent)',
             }}
           />
           <div
@@ -288,7 +288,7 @@ export default function Dashboard() {
               top: -40,
               width: 500,
               height: 300,
-              background: 'radial-gradient(circle, rgba(255,59,59,0.1) 0%, transparent 70%)',
+              background: 'radial-gradient(circle, rgba(255,107,0,0.12) 0%, transparent 70%)',
               filter: 'blur(60px)',
               pointerEvents: 'none',
             }}
@@ -437,15 +437,15 @@ export default function Dashboard() {
               icon={FileText}
               title="Multi-Profile Analysis"
               description="Resume, GitHub, and job intent get read together so the advice feels grounded."
-              iconBg="linear-gradient(135deg,#FF3B3B,#CC1A1A)"
-              iconGlow="rgba(255,59,59,0.26)"
+              iconBg="linear-gradient(135deg,#FF6B00,#CC4E00)"
+              iconGlow="rgba(255,107,0,0.3)"
             />
             <FeatureCard
               icon={TrendingUp}
               title="Skill Gap Detection"
               description="See what is missing, how much it matters, and what to learn next."
-              iconBg="linear-gradient(135deg,#e11d48,#FF3B3B)"
-              iconGlow="rgba(225,29,72,0.22)"
+              iconBg="linear-gradient(135deg,#FFA726,#FF6B00)"
+              iconGlow="rgba(255,167,38,0.25)"
             />
             <FeatureCard
               icon={Mic}
@@ -458,8 +458,8 @@ export default function Dashboard() {
               icon={Brain}
               title="Personalized Roadmap"
               description="Turn vague improvement ideas into a concrete plan you can actually execute."
-              iconBg="linear-gradient(135deg,#fb7185,#e11d48)"
-              iconGlow="rgba(251,113,133,0.24)"
+              iconBg="linear-gradient(135deg,#FF8533,#FFA726)"
+              iconGlow="rgba(255,133,51,0.25)"
             />
           </motion.div>
         </div>
@@ -504,18 +504,18 @@ export default function Dashboard() {
                     width: 44,
                     height: 44,
                     borderRadius: 14,
-                    background: 'rgba(255,59,59,0.1)',
-                    border: '1px solid rgba(255,59,59,0.22)',
+                    background: 'rgba(255,107,0,0.1)',
+                    border: '1px solid rgba(255,107,0,0.25)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    boxShadow: '0 0 20px rgba(255,59,59,0.16)',
+                    boxShadow: '0 0 20px rgba(255,107,0,0.2)',
                     marginBottom: 18,
                   }}
                 >
-                  <Icon size={18} className="text-[#FF7070]" />
+                  <Icon size={18} className="text-primary-light" />
                 </div>
-                <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-[#FF3B3B]">Step {step}</p>
+                <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-primary">Step {step}</p>
                 <h3 className="mb-2 text-base font-bold text-white">{title}</h3>
                 <p className="text-sm leading-6 text-[#8A8FA8]">{desc}</p>
               </motion.div>

@@ -99,14 +99,14 @@ export default function GoalTracker({ currentProbability = 0, targetProbability 
   const projectedScore    = Math.min(currentProbability + projectedIncrease, target)
 
   const currentColor   = currentProbability >= 70 ? '#22c55e' : currentProbability >= 50 ? '#f59e0b' : '#ef4444'
-  const projectedColor = projectedScore >= 70 ? '#22c55e' : projectedScore >= 50 ? '#f59e0b' : '#f97316'
+  const projectedColor = projectedScore >= 70 ? '#22c55e' : projectedScore >= 50 ? '#FFA726' : '#FF6B00'
 
   return (
     <motion.div variants={pageTransition} initial="hidden" animate="visible" exit="exit" style={{ width: '100%' }}>
     <div className="glass rounded-2xl overflow-hidden">
       {/* Header */}
       <div className="p-5 border-b border-white/5 flex items-center gap-2">
-        <Target size={18} className="text-amber-400" />
+        <Target size={18} className="text-primary" />
         <h2 className="font-bold text-white">Reach Your Target Interview Probability</h2>
       </div>
 
@@ -169,13 +169,13 @@ export default function GoalTracker({ currentProbability = 0, targetProbability 
                 <motion.button {...buttonMotion} onClick={() => toggle(task.id)} className="shrink-0">
                   {task.done
                     ? <CheckCircle size={18} className="text-green-400" />
-                    : <Circle size={18} className="text-[#44403c] hover:text-amber-400 transition-colors" />}
+                    : <Circle size={18} className="text-[#44403c] hover:text-primary transition-colors" />}
                 </motion.button>
                 <span className={`flex-1 text-sm ${task.done ? 'line-through text-[#44403c]' : 'text-[#d6d3d1]'}`}>
                   {task.text}
                 </span>
                 <div className="flex items-center gap-2 shrink-0">
-                  <span className="text-xs text-amber-400 font-semibold">+{task.points}pts</span>
+                  <span className="text-xs text-accent font-semibold">+{task.points}pts</span>
                   <motion.button {...buttonMotion} onClick={() => removeTask(task.id)} className="text-[#292524] hover:text-red-400 transition-colors">
                     <Trash2 size={12} />
                   </motion.button>

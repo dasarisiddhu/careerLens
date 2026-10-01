@@ -67,11 +67,11 @@ const getInitials = (name) => {
 }
 
 const avatarPalette = [
-  'linear-gradient(135deg,#FF3B3B,#8B0000)',
-  'linear-gradient(135deg,#FF8C42,#FF3B3B)',
+  'linear-gradient(135deg,#FF6B00,#CC4E00)',
+  'linear-gradient(135deg,#FFA726,#FF6B00)',
   'linear-gradient(135deg,#10b981,#0f9f6e)',
-  'linear-gradient(135deg,#1a1f2b,#ef4444)',
-  'linear-gradient(135deg,#FF3B3B,#CC1A1A)',
+  'linear-gradient(135deg,#1a1824,#FF6B00)',
+  'linear-gradient(135deg,#FF8533,#FFA726)',
 ]
 
 const getAvatarColor = (name) => avatarPalette[(name?.charCodeAt(0) || 0) % avatarPalette.length]
@@ -122,7 +122,7 @@ function CreatePostModal({ onClose, onCreated }) {
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.94, opacity: 0 }}
         className="glass-glow w-full max-w-xl rounded-3xl p-6"
-        style={{ borderTop: '2px solid rgba(255,59,59,0.45)' }}
+        style={{ borderTop: '2px solid rgba(255,107,0,0.45)' }}
       >
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-xl font-bold text-white">Create Post</h2>
@@ -498,10 +498,10 @@ function PostCard({ post, likedPosts, currentUser, onLike, onDelete }) {
           animate={isLiked ? { scale: [1, 1.4, 1] } : { scale: 1 }}
           transition={{ type: 'spring', stiffness: 300, damping: 12 }}
           className={`flex items-center gap-1.5 text-sm transition ${
-            isLiked ? 'text-[#FF3B3B]' : 'text-[#8A8FA8] hover:text-[#FF3B3B]'
+            isLiked ? 'text-primary' : 'text-[#8A8FA8] hover:text-primary'
           }`}
         >
-          <Heart size={16} className={isLiked ? 'fill-[#FF3B3B]' : ''} />
+          <Heart size={16} className={isLiked ? 'fill-primary text-primary' : ''} />
           <span>{post.likes_count || 0}</span>
         </motion.button>
 
@@ -590,7 +590,7 @@ export default function Community() {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h1 className="gradient-text flex items-center gap-3 text-3xl font-black">
-              <Users size={28} className="text-[#FF3B3B]" />
+              <Users size={28} className="text-primary" />
               Community
             </h1>
             <p className="mt-2 text-sm text-[#8A8FA8]">Share projects, find jobs, seek funding, and post what you are building.</p>

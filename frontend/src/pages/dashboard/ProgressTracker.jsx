@@ -116,8 +116,8 @@ const CustomTooltip = ({ active, payload, label }) => {
 
 const EmptyState = () => (
   <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
-    <div className="w-20 h-20 rounded-2xl bg-rose-600/10 flex items-center justify-center">
-      <BarChart2 size={36} className="text-rose-400" />
+    <div className="w-20 h-20 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center">
+      <BarChart2 size={36} className="text-primary" />
     </div>
     <h2 className="text-xl font-bold text-white">No Progress Data Yet</h2>
     <p className="text-[#78716c] max-w-sm text-sm leading-relaxed">
@@ -239,28 +239,28 @@ export default function ProgressTracker() {
                 label="Latest Score"
                 value={latest?.resume_score}
                 delta={getDelta(latest?.resume_score, prev?.resume_score)}
-                color="text-rose-400"
+                color="text-primary"
                 icon="📊"
               />
               <ScoreCard
                 label="Latest ATS"
                 value={latest?.ats_score}
                 delta={getDelta(latest?.ats_score, prev?.ats_score)}
-                color="text-rose-400"
+                color="text-primary"
                 icon="🎯"
               />
               <ScoreCard
                 label="Best Score"
                 value={bestScore}
                 delta={null}
-                color="text-rose-400"
+                color="text-primary"
                 icon="🏆"
               />
               <ScoreCard
                 label="Analyses Done"
                 value={totalAnalyses}
                 delta={null}
-                color="text-rose-500"
+                color="text-accent"
                 icon="📈"
               />
             </motion.div>
@@ -322,26 +322,26 @@ export default function ProgressTracker() {
                   />
                   <ReferenceLine
                     y={70}
-                    stroke="rgba(225,29,72,0.35)"
+                    stroke="rgba(255,107,0,0.35)"
                     strokeDasharray="4 4"
-                    label={{ value: 'Good', fill: '#be123c', fontSize: 11 }}
+                    label={{ value: 'Good', fill: '#FFA726', fontSize: 11 }}
                   />
                   <Line
                     type="monotone"
                     dataKey="Resume Score"
-                    stroke="#e11d48"
+                    stroke="#FF6B00"
                     strokeWidth={2.5}
-                    dot={{ fill: '#e11d48', strokeWidth: 0, r: 4 }}
-                    activeDot={{ r: 6, fill: '#fb7185' }}
+                    dot={{ fill: '#FF6B00', strokeWidth: 0, r: 4 }}
+                    activeDot={{ r: 6, fill: '#FFA726' }}
                   />
                   <Line
                     type="monotone"
                     dataKey="ATS Score"
-                    stroke="#be123c"
+                    stroke="#FFA726"
                     strokeWidth={2.5}
                     strokeDasharray="5 5"
-                    dot={{ fill: '#be123c', strokeWidth: 0, r: 4 }}
-                    activeDot={{ r: 6, fill: '#e11d48' }}
+                    dot={{ fill: '#FFA726', strokeWidth: 0, r: 4 }}
+                    activeDot={{ r: 6, fill: '#FF6B00' }}
                   />
                 </LineChart>
               </ResponsiveContainer>
@@ -355,7 +355,7 @@ export default function ProgressTracker() {
               className="glass p-6 rounded-2xl"
             >
               <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                <Calendar size={18} className="text-rose-500" /> Analysis History
+                <Calendar size={18} className="text-primary" /> Analysis History
               </h2>
               <div className="space-y-3">
                 {[...sorted].reverse().map((entry, i) => {

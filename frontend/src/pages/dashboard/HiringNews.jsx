@@ -37,11 +37,11 @@ export default function HiringNews() {
     <motion.div variants={pageTransition} initial="hidden" animate="visible" exit="exit" style={{ width: '100%' }}>
       <div className="max-w-4xl mx-auto space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-white flex items-center gap-3"><Briefcase size={28} className="text-amber-400" /> Hiring News</h1>
+        <h1 className="text-3xl font-bold text-white flex items-center gap-3"><Briefcase size={28} className="text-primary" /> Hiring News</h1>
         <p className="text-[#78716c]">Companies hiring, startup jobs, and market trends</p>
       </div>
       {loading
-        ? <div className="flex justify-center py-16"><Loader2 size={32} className="animate-spin text-amber-400" /></div>
+        ? <div className="flex justify-center py-16"><Loader2 size={32} className="animate-spin text-primary" /></div>
         : <motion.div
             variants={staggerContainer}
             initial="hidden"
@@ -56,13 +56,13 @@ export default function HiringNews() {
               variants={staggerItem}
               whileHover={{
                 y: -2,
-                borderColor: 'rgba(245,158,11,0.32)',
-                background: 'rgba(217,119,6,0.04)',
-                boxShadow: '0 8px 32px rgba(0,0,0,0.4), 0 0 20px rgba(239,68,68,0.06)',
+                borderColor: 'rgba(255,107,0,0.4)',
+                background: 'rgba(255,107,0,0.04)',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.4), 0 0 20px rgba(255,107,0,0.15)',
               }}
               style={{
-                background: 'rgba(17,16,14,0.85)',
-                border: '1px solid rgba(239,68,68,0.12)',
+                background: 'rgba(19,18,28,0.85)',
+                border: '1px solid rgba(255,107,0,0.18)',
                 borderRadius: '14px',
                 padding: '20px 22px',
                 cursor: 'pointer',
@@ -78,7 +78,7 @@ export default function HiringNews() {
                 left: 0,
                 width: '3px',
                 height: '100%',
-                background: 'linear-gradient(180deg, rgba(239,68,68,0.6), transparent)',
+                background: 'linear-gradient(180deg, rgba(255,107,0,0.7), transparent)',
                 borderRadius: '14px 0 0 14px',
               }} />
               <div className="flex items-center justify-between text-xs text-[#44403c]">

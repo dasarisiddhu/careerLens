@@ -9,7 +9,8 @@ import {
   Loader2, Zap, Download, CheckCircle,
   Tag, ChevronRight, RefreshCw, Badge, Plus,
   Upload, Sparkles, Copy, Check, CheckCircle2,
-  Briefcase, Target,
+  Briefcase, Target, Shield, AlertTriangle,
+  TrendingUp, Eye, BookOpen, XCircle, ArrowRight, Info,
 } from 'lucide-react'
 
 const GITHUB_LOCK_KEY = 'careerlens:locked_github_url'
@@ -52,9 +53,9 @@ function AnimatedScoreCircle({ score, maxScore = 100, size = 120, label, color }
               </feMerge>
             </filter>
           </defs>
-          <circle cx={size/2} cy={size/2} r={radius} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={strokeWidth} />
+          <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={strokeWidth} />
           <circle
-            cx={size/2} cy={size/2} r={radius}
+            cx={size / 2} cy={size / 2} r={radius}
             fill="none" stroke={strokeColor} strokeWidth={strokeWidth} strokeLinecap="round"
             strokeDasharray={circumference}
             strokeDashoffset={offset}
@@ -164,6 +165,12 @@ function isHeadingLine(line = '') {
   return /^(summary|professional summary|experience|work experience|education|projects|skills|certifications|achievements|publications|volunteer|activities|objective|profile|awards|contact|details)\b/i.test(cleaned)
 }
 
+const EDUCATION_TERMS_REGEX = /\b(university|institute|college|school|academy|polytechnic|bachelor|master|degree|b\.?tech|m\.?tech|btech|mtech|b\.?s\.?|m\.?s\.?|b\.?e\.?|m\.?e\.?|bca|mca|ph\.?d|phd|doctorate|campus|department)\b/i
+
+function isEducationText(text = '') {
+  return EDUCATION_TERMS_REGEX.test(String(text || ''))
+}
+
 function extractResumeHeader(text = '') {
   const lines = normalizePdfText(text).split('\n').map((line) => line.trim())
   let i = 0
@@ -175,32 +182,80 @@ function extractResumeHeader(text = '') {
     const line = lines[i]
     if (!line) { i += 1; continue }
     if (isHeadingLine(line)) break
-    contactLines.push(line)
+    if (!isEducationText(line)) {
+      contactLines.push(line)
+    }
     i += 1
   }
   const bodyText = lines.slice(i).join('\n').trim()
-  return { name, contactLines, bodyText }
+  return { name: isEducationText(name) ? '' : name, contactLines, bodyText }
+}
+
+function extractPhone(text = '') {
+  const phoneRegex = /(?:(?:Phone|Tel|Mobile|Mob|Cell)\s*[:#-]?\s*)?((?:\+?\d{1,3}[\s.-]?)?\(?\d{2,5}\)?[\s.-]?\d{3,5}[\s.-]?\d{3,5}(?:[\s.-]?\d{1,4})?)/gi
+  phoneRegex.lastIndex = 0
+  let match
+  while ((match = phoneRegex.exec(text)) !== null) {
+    const candidate = (match[1] || match[0]).trim()
+    const digits = candidate.replace(/\D/g, '')
+    if (digits.length >= 10 && digits.length <= 15) {
+      if (!/^\d{4}\s*[-–]\s*\d{4}$/.test(candidate)) {
+        return candidate
+      }
+    }
+  }
+  return ''
+}
+
+function extractLocationFromHeader(text = '') {
+  const lines = normalizePdfText(text).split('\n').map((l) => l.trim()).filter(Boolean)
+  const headerLines = []
+  for (const line of lines) {
+    if (isHeadingLine(line)) break
+    headerLines.push(line)
+    if (headerLines.length >= 8) break
+  }
+
+  const locRegex = /\b([A-Z][a-zA-Z\s]+,\s*(?:[A-Z]{2}|[A-Za-z]+))\b/g
+  for (const line of headerLines) {
+    if (isEducationText(line)) continue
+    locRegex.lastIndex = 0
+    let match
+    while ((match = locRegex.exec(line)) !== null) {
+      const candidate = match[1].trim()
+      if (!isEducationText(candidate) && !/@/.test(candidate) && !/github|linkedin/i.test(candidate)) {
+        return candidate
+      }
+    }
+  }
+  return ''
 }
 
 function extractContactInfo(text = '') {
   const normalized = normalizePdfText(text)
-  const { name: headerName, contactLines } = extractResumeHeader(normalized)
+  const { name: headerName } = extractResumeHeader(normalized)
   const emailMatch = normalized.match(/[\w.-]+@[\w.-]+\.\w+/)
-  const phoneMatch = normalized.match(/[\+]?[\d][\d\s\-()]{8,}/)
+  const phone = extractPhone(normalized)
+  const linkedinMatch = normalized.match(/(?:https?:\/\/)?(?:www\.)?linkedin\.com\/in\/[\w-]+/i)
+  const githubMatch = normalized.match(/(?:https?:\/\/)?(?:www\.)?github\.com\/[\w-]+/i)
+  const location = extractLocationFromHeader(normalized)
+
   const email = emailMatch?.[0] || ''
-  const phone = phoneMatch?.[0] || ''
+  const linkedin = linkedinMatch?.[0] || ''
+  const github = githubMatch?.[0] || ''
 
   let name = headerName || ''
-  if (!name) {
+  if (!name || isEducationText(name)) {
     const lines = normalized.split('\n').map((line) => line.trim()).filter(Boolean)
-    name = lines.find((line) => !/@/.test(line) && !/\d{6,}/.test(line)) || ''
+    name = lines.find((line) => !/@/.test(line) && !/\d{6,}/.test(line) && !/linkedin|github/i.test(line) && !isEducationText(line)) || ''
   }
 
-  const contactLine = contactLines.length
-    ? contactLines.join(' | ')
-    : [email, phone].filter(Boolean).join(' | ')
+  const contactLine = [email, phone, location, linkedin, github]
+    .filter(Boolean)
+    .filter((val) => !isEducationText(val))
+    .join(' | ')
 
-  return { name, email, phone, contactLine }
+  return { name, email, phone, linkedin, github, location, contactLine }
 }
 
 function readStoredContact() {
@@ -335,6 +390,14 @@ function extractEducationLines(text = '', maxItems = 4) {
   )
 }
 
+function extractCertificationLines(text = '', maxItems = 6) {
+  return extractSectionLines(
+    text,
+    [/^certifications?\b/i, /^certificates?\b/i, /^licenses?\b/i],
+    maxItems,
+  )
+}
+
 function formatEducationLine(value = '') {
   return String(value || '')
     .split('|')
@@ -461,6 +524,9 @@ function composeSummary(sentences = []) {
 }
 
 function normalizeGeneratedSummary(value = '') {
+  // Reject the backend sentinel that signals "no grounded metrics found".
+  // Without this guard the raw string could leak into the summary textarea.
+  if (!value || value === 'ADD_EVIDENCE_REQUIRED') return ''
   const sentences = splitCompleteSummarySentences(value)
   if (sentences.length < 2 || sentences.length > 3) return ''
   const summary = sentences.join(' ')
@@ -577,11 +643,11 @@ function resolveTargetRole(result = {}, currentJobTitle = '') {
 
 function inferSpecialization(role = '', skills = []) {
   const text = `${role} ${skills.join(' ')}`.toLowerCase()
-  if (/(machine learning|\bml\b|\bai\b|data science|\bmodel\b|pytorch|tensorflow|mlops)/.test(text)) return 'scalable AI systems'
-  if (/(data|analytics|pipeline|\bsql\b|pandas|\betl\b)/.test(text)) return 'data pipelines'
-  if (/(frontend|react|\bui\b|javascript|typescript)/.test(text)) return 'web applications'
-  if (/(backend|\bapi\b|fastapi|\bnode\b|django|flask|database)/.test(text)) return 'backend APIs'
-  if (/(cloud|devops|docker|kubernetes|aws|azure|gcp)/.test(text)) return 'cloud deployment'
+  if (/(machine learning|\bml\b|\bai\b|\bdata science\b|\bmodel\b|pytorch|tensorflow|mlops)/.test(text)) return 'scalable AI systems'
+  if (/(\bdata\b|\banalytics\b|\bpipeline\b|\bsql\b|pandas|\betl\b)/.test(text)) return 'data pipelines'
+  if (/(\bfrontend\b|\breact\b|\bui\b|\bjavascript\b|\btypescript\b)/.test(text)) return 'web applications'
+  if (/(\bbackend\b|\bapi\b|\bfastapi\b|\bnode\b|\bdjango\b|\bflask\b|\bdatabase\b)/.test(text)) return 'backend APIs'
+  if (/(\bcloud\b|\bdevops\b|\bdocker\b|\bkubernetes\b|\baws\b|\bazure\b|\bgcp\b)/.test(text)) return 'cloud deployment'
   return 'software systems'
 }
 
@@ -1007,14 +1073,14 @@ function buildOnePageResumeContent(result = {}, sourceText = '', currentJobTitle
 
   const improvedBulletsRaw = Array.isArray(result?.improved_bullets)
     ? result.improved_bullets
-        .map((bullet) => String(bullet?.improved || '').trim())
-        .filter(Boolean)
+      .map((bullet) => String(bullet?.improved || '').trim())
+      .filter(Boolean)
     : []
 
   const newBulletsRaw = Array.isArray(result?.new_bullets)
     ? result.new_bullets
-        .map((bullet) => String(bullet?.text || bullet || '').trim())
-        .filter(Boolean)
+      .map((bullet) => String(bullet?.text || bullet || '').trim())
+      .filter(Boolean)
     : []
 
   const fallbackBullets = extractResumeHighlights(sourceText, 8)
@@ -1024,6 +1090,7 @@ function buildOnePageResumeContent(result = {}, sourceText = '', currentJobTitle
   const newBullets = newBulletsRaw
   const bullets = [...improvedBullets, ...newBullets].filter(Boolean)
   const educationLines = extractEducationLines(sourceText, 4)
+  const certificationLines = extractCertificationLines(sourceText, 6)
 
   return {
     headline: String(currentJobTitle || result?.job_title || result?.role_description || '').trim(),
@@ -1031,8 +1098,19 @@ function buildOnePageResumeContent(result = {}, sourceText = '', currentJobTitle
       || buildProfessionalSummary({ ...result, optimized_summary: summarySource }, sourceText, currentJobTitle),
     skills,
     educationLines,
+    certificationLines,
     improvedBullets,
     newBullets,
+    experienceEntries: Array.isArray(result?.experience_entries)
+      ? result.experience_entries
+      : Array.isArray(result?.reconstructed_resume?.experience)
+        ? result.reconstructed_resume.experience
+        : [],
+    projectEntries: Array.isArray(result?.project_entries)
+      ? result.project_entries
+      : Array.isArray(result?.reconstructed_resume?.projects)
+        ? result.reconstructed_resume.projects
+        : [],
     githubProjects: Array.isArray(result?.githubProjects) ? result.githubProjects : [],
     bullets: bullets.length ? bullets : fallbackBullets.slice(0, 7),
   }
@@ -1220,12 +1298,12 @@ function clampScore(value) {
   return Math.max(0, Math.min(100, Math.round(score)))
 }
 
-function getMatchScoreEstimate(data, addedKeywords = [], missingKeywords = []) {
-  const backendScore = data?.match_score_estimate ?? null
-  if (backendScore !== null) return clampScore(backendScore)
-
-  const total = (addedKeywords?.length ?? 0) + (missingKeywords?.length ?? 0)
-  return total > 0 ? Math.round(((addedKeywords?.length ?? 0) / total) * 100) : 0
+function getMatchScoreEstimate(data) {
+  if (typeof data?.ats_after === 'number') return clampScore(data.ats_after)
+  if (typeof data?.ats_score_estimate === 'number') return clampScore(data.ats_score_estimate)
+  if (typeof data?.ats_before === 'number') return clampScore(data.ats_before)
+  if (data?.match_score_estimate != null) return clampScore(data.match_score_estimate)
+  return 0
 }
 
 function getConfidence(score) {
@@ -1297,13 +1375,23 @@ function ATSMatchBreakdownPanel({ data }) {
   const addedKeywords = Array.isArray(data?.added_keywords) ? data.added_keywords : []
   const missingKeywords = Array.isArray(data?.missing_keywords) ? data.missing_keywords : []
   const atsTips = Array.isArray(data?.ats_tips) ? data.ats_tips : []
-  const score = getMatchScoreEstimate(data, addedKeywords, missingKeywords)
+  const score = getMatchScoreEstimate(data)
   const confidence = getConfidence(score)
+
+  const totalKw = addedKeywords.length + missingKeywords.length
+  const keywordCoverage = totalKw > 0 ? Math.round((addedKeywords.length / totalKw) * 100) : null
 
   return (
     <section className="rounded-[10px] border border-[#1e3a5f] bg-[#0f1a2e] px-6 py-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h3 className="text-[11px] font-bold uppercase tracking-[2px] text-[#4a90d9]">ATS Match Score</h3>
+        <div>
+          <h3 className="text-[11px] font-bold uppercase tracking-[2px] text-[#4a90d9]">ATS Match Score</h3>
+          {keywordCoverage !== null && (
+            <p className="mt-1 text-[11px] text-[#8A8FA8]">
+              LLM-reported coverage (unverified): <span className="font-semibold text-[#d6d3d1]">{keywordCoverage}%</span>
+            </p>
+          )}
+        </div>
         <div className="flex items-center gap-3">
           <span className="text-2xl font-black text-white">{score}%</span>
           <span
@@ -1366,12 +1454,13 @@ function ATSMatchBreakdownPanel({ data }) {
   )
 }
 
-function buildProfessionalResumePrintHtml({ name, email, phone, content }) {
+function buildProfessionalResumePrintHtml({ name, email, phone, linkedin = '', github = '', location = '', content }) {
   const safeName = escapeHtml(name || 'Your Name')
   const safeHeadline = escapeHtml(content?.headline || '')
-  const contactLine = [email, phone]
+  const contactLine = [email, phone, location, linkedin, github]
     .map((item) => String(item || '').trim())
     .filter(Boolean)
+    .filter((item) => !isEducationText(item))
     .map((item, idx) => `${idx ? '<span class="contact-separator">&#8226;</span>' : ''}<span>${escapeHtml(item)}</span>`)
     .join('')
 
@@ -1385,6 +1474,10 @@ function buildProfessionalResumePrintHtml({ name, email, phone, content }) {
     .map((line, idx) => idx === 0
       ? `<div class="entry-heading"><h3>${escapeHtml(line)}</h3><span class="entry-date"></span></div>`
       : `<p class="company-line">${escapeHtml(line)}</p>`)
+    .join('')
+
+  const certificationItems = (content?.certificationLines || [])
+    .map((cert) => `<li>${escapeHtml(cert)}</li>`)
     .join('')
 
   const improvedBulletItems = (content?.improvedBullets || [])
@@ -1543,11 +1636,19 @@ function buildProfessionalResumePrintHtml({ name, email, phone, content }) {
     </section>` : ''}
 
     ${educationMarkup ? `
-    <section class="resume-section last-section">
+    <section class="resume-section">
       <h2 class="section-heading">Education</h2>
       <article class="resume-entry">
         ${educationMarkup}
       </article>
+    </section>` : ''}
+
+    ${certificationItems ? `
+    <section class="resume-section last-section">
+      <h2 class="section-heading">Certifications</h2>
+      <ul class="resume-list">
+        ${certificationItems}
+      </ul>
     </section>` : ''}
   </main>
 </body>
@@ -1756,12 +1857,13 @@ function buildOptimizedPdfBlob(opt, jobTitle, originalResumeText = '') {
   const headerSource = sourceText || opt?.optimized_resume || ''
   const headerInfo = extractResumeHeader(headerSource)
   const name = headerInfo.name
-  const contactLines = headerInfo.contactLines
+  const parsedContact = extractContactInfo(headerSource)
+  const contactLine = parsedContact.contactLine || [parsedContact.email, parsedContact.phone, parsedContact.location, parsedContact.linkedin, parsedContact.github].filter(Boolean).filter((val) => !isEducationText(val)).join(' | ')
   const content = buildOnePageResumeContent(opt, sourceText, jobTitle)
 
   addWrapped(items, name || (content.headline ? `Optimized Resume - ${content.headline}` : 'Optimized Resume'), { font: 'F2', size: 18, maxChars: 48, after: 2 })
-  if (contactLines.length) {
-    addWrapped(items, contactLines.join(' | '), { size: 8.5, maxChars: 104, after: 2 })
+  if (contactLine) {
+    addWrapped(items, contactLine, { size: 8.5, maxChars: 104, after: 2 })
   }
   if (content.headline) {
     addWrapped(items, content.headline, { size: 9, maxChars: 104, after: 6 })
@@ -1779,6 +1881,13 @@ function buildOptimizedPdfBlob(opt, jobTitle, originalResumeText = '') {
     content.educationLines.forEach((line) => {
       const educationLine = formatEducationLine(line)
       if (educationLine) addWrapped(items, educationLine, { size: 8.4, maxChars: 104, after: 1 })
+    })
+  }
+
+  if (content.certificationLines && content.certificationLines.length) {
+    addWrapped(items, 'CERTIFICATIONS', { font: 'F2', size: 9.5, before: 2, after: 2 })
+    content.certificationLines.forEach((line) => {
+      addWrapped(items, `- ${line}`, { size: 8.4, maxChars: 104, indent: 8, after: 1 })
     })
   }
 
@@ -1833,6 +1942,8 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
   const [pdfError, setPdfError] = useState('')
   const [pdfNotice, setPdfNotice] = useState('')
   const [loading, setLoading] = useState(false)
+  const [analysisResult, setAnalysisResult] = useState(null)
+  const [analysisLoading, setAnalysisLoading] = useState(false)
   const [extracting, setExtracting] = useState(false)
   const [error, setError] = useState('')
   const [dragging, setDragging] = useState(false)
@@ -1925,40 +2036,44 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
     if (!resumeText || resumeText.trim().length < 3) return
     const contact = extractContactInfo(resumeText)
     if (contact.name || contact.email || contact.phone) {
-      try { localStorage.setItem('careerlens:resume_contact', JSON.stringify(contact)) } catch {}
+      try { localStorage.setItem('careerlens:resume_contact', JSON.stringify(contact)) } catch { }
     }
   }, [resumeText])
 
   const generateStyledPDF = async (resultData, meta = {}) => {
-  const stored = readStoredContact()
-  const fallbackSourceText = resumeText || prefillResume || resultData?.source_resume_text || resultData?.optimized_resume || ''
-  const fallbackContact = extractContactInfo(resumeText || prefillResume || fallbackSourceText)
-  const name  = meta.name  || fallbackContact.name || stored.name || 'Your Name'
-  const email = meta.email || fallbackContact.email || stored.email || ''
-  const phone = meta.phone || fallbackContact.phone || stored.phone || ''
-  const summary = normalizeGeneratedSummary(meta.summary || editedSummary)
-    || buildProfessionalSummary(resultData, fallbackSourceText, jobTitle)
-  const onePageContent = buildOnePageResumeContent(
-    { ...resultData, optimized_summary: summary, githubProjects: includeGitHubProjects ? githubProjects : [] },
-    fallbackSourceText,
-    jobTitle,
-  )
-  if (!onePageContent) return
+    const stored = readStoredContact()
+    const fallbackSourceText = resumeText || prefillResume || resultData?.source_resume_text || resultData?.optimized_resume || ''
+    const fallbackContact = extractContactInfo(resumeText || prefillResume || fallbackSourceText)
+    const name = meta.name || fallbackContact.name || stored.name || 'Your Name'
+    const email = meta.email || fallbackContact.email || stored.email || ''
+    const phone = meta.phone || fallbackContact.phone || stored.phone || ''
+    const linkedin = meta.linkedin || fallbackContact.linkedin || stored.linkedin || ''
+    const github = meta.github || fallbackContact.github || stored.github || ''
+    const rawLocation = meta.location || fallbackContact.location || stored.location || ''
+    const location = isEducationText(rawLocation) ? '' : rawLocation
+    const summary = normalizeGeneratedSummary(meta.summary || editedSummary)
+      || buildProfessionalSummary(resultData, fallbackSourceText, jobTitle)
+    const onePageContent = buildOnePageResumeContent(
+      { ...resultData, optimized_summary: summary, githubProjects: includeGitHubProjects ? githubProjects : [] },
+      fallbackSourceText,
+      jobTitle,
+    )
+    if (!onePageContent) return
 
-  const blob = await api.downloadProfessionalResumePdf({
-    name, email, phone,
-    job_title: jobTitle,
-    source_resume_text: fallbackSourceText,
-    content: onePageContent,
-  })
+    const blob = await api.downloadProfessionalResumePdf({
+      name, email, phone, linkedin, github, location,
+      job_title: jobTitle,
+      source_resume_text: fallbackSourceText,
+      content: onePageContent,
+    })
 
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = `${(name || 'resume').toLowerCase().replace(/[^a-z0-9]+/g, '-')}.pdf`
-  link.click()
-  URL.revokeObjectURL(url)
-}
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${(name || 'resume').toLowerCase().replace(/[^a-z0-9]+/g, '-')}.pdf`
+    link.click()
+    URL.revokeObjectURL(url)
+  }
 
   const handleFile = async (file) => {
     if (!file || (file.type !== 'application/pdf' && !file.name?.toLowerCase().endsWith('.pdf'))) {
@@ -2087,6 +2202,15 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
     setGithubProjects([])
     setGithubProjectsError('')
     try {
+      // Fire optimize and analyse in parallel — both use the same inputs
+      const analysePromise = api.analyseResume({
+        resume_text: resumeText,
+        job_description: jobDesc,
+        job_title: jobTitle,
+      }).catch(() => null) // Don't block optimize if analyse fails
+
+      setAnalysisLoading(true)
+
       const res = await api.optimizeResume({
         resume_text: resumeText,
         job_description: jobDesc,
@@ -2129,8 +2253,16 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
       }
 
       setResult(normalized)
+
+      // Await the analyse result (already running in parallel)
+      const analyseRes = await analysePromise
+      if (analyseRes?.success && analyseRes?.analysis) {
+        setAnalysisResult(analyseRes.analysis)
+      }
+      setAnalysisLoading(false)
     } catch (err) {
       setError(err.message || 'Optimization failed. Please try again.')
+      setAnalysisLoading(false)
     }
     setLoading(false)
   }
@@ -2172,19 +2304,26 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
   }
 
   const contactMeta = extractContactInfo(resumeText)
-  const pdfMeta = { name: contactMeta.name || '', email: contactMeta.email || '', phone: contactMeta.phone || '' }
+  const pdfMeta = {
+    name: contactMeta.name || '',
+    email: contactMeta.email || '',
+    phone: contactMeta.phone || '',
+    linkedin: contactMeta.linkedin || '',
+    github: contactMeta.github || '',
+    location: contactMeta.location || '',
+  }
   const hasOptimizationResult = result && typeof result === 'object' && !Array.isArray(result)
 
   // ── RESULT SCREEN ────────────────────────────────────────
   if (hasOptimizationResult) {
     const improvedBullets = Array.isArray(result?.improved_bullets) ? result.improved_bullets : []
-    const newBullets      = Array.isArray(result?.new_bullets)      ? result.new_bullets      : []
-    const addedKeywords   = Array.isArray(result?.added_keywords)   ? result.added_keywords   : []
+    const newBullets = Array.isArray(result?.new_bullets) ? result.new_bullets : []
+    const addedKeywords = Array.isArray(result?.added_keywords) ? result.added_keywords : []
     const optimizedSkills = Array.isArray(result?.optimized_skills) ? result.optimized_skills : []
-    const atsTips         = Array.isArray(result?.ats_tips)         ? result.ats_tips         : []
+    const atsTips = Array.isArray(result?.ats_tips) ? result.ats_tips : []
     const atsBefore = typeof result?.ats_before === 'number' ? result.ats_before : 0
-    const atsAfter  = typeof result?.ats_after  === 'number' ? result.ats_after  : atsBefore
-    const atsGain   = atsAfter - atsBefore
+    const atsAfter = typeof result?.ats_after === 'number' ? result.ats_after : atsBefore
+    const atsGain = atsAfter - atsBefore
     const gainPrefix = atsGain > 0 ? '+' : ''
     const displaySummary = normalizeGeneratedSummary(editedSummary)
       || buildProfessionalSummary(result, resumeText || result?.source_resume_text || '', jobTitle)
@@ -2201,337 +2340,560 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
 
     return (
       <motion.div variants={pageTransition} initial="hidden" animate="visible" exit="exit" style={{ width: '100%' }}>
-      <div className="max-w-6xl w-full mx-auto space-y-8">
+        <div className="max-w-6xl w-full mx-auto space-y-8">
 
-        {/* ── Hero impact card ─────────────────────────────── */}
-        <motion.div
-          initial={{ opacity: 0, scale: 0.96 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-          style={{
-            position: 'relative',
-            background: 'rgba(24,27,37,0.72)',
-            border: '1px solid rgba(255,59,59,0.2)',
-            borderRadius: '20px',
-            padding: '48px 40px',
-            overflow: 'hidden',
-            marginBottom: '24px',
-          }}
-          className="space-y-6"
-        >
-          <div style={{
-            position: 'absolute', top: 0, left: '8%', right: '8%', height: '1px',
-            background: 'linear-gradient(90deg, transparent, rgba(255,59,59,0.85), rgba(180,20,20,0.7), transparent)',
-          }} />
-          <div style={{
-            position: 'absolute', top: '-60px', left: '50%', transform: 'translateX(-50%)',
-            width: '500px', height: '300px', borderRadius: '50%',
-            background: 'radial-gradient(ellipse, rgba(255,59,59,0.09) 0%, transparent 65%)',
-            pointerEvents: 'none',
-          }} />
+          {/* ── Hero impact card ─────────────────────────────── */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+            style={{
+              position: 'relative',
+              background: 'rgba(19,18,28,0.75)',
+              border: '1px solid rgba(255,107,0,0.25)',
+              borderRadius: '20px',
+              padding: '48px 40px',
+              overflow: 'hidden',
+              marginBottom: '24px',
+            }}
+            className="space-y-6"
+          >
+            <div style={{
+              position: 'absolute', top: 0, left: '8%', right: '8%', height: '1px',
+              background: 'linear-gradient(90deg, transparent, rgba(255,107,0,0.85), rgba(204,78,0,0.7), transparent)',
+            }} />
+            <div style={{
+              position: 'absolute', top: '-60px', left: '50%', transform: 'translateX(-50%)',
+              width: '500px', height: '300px', borderRadius: '50%',
+              background: 'radial-gradient(ellipse, rgba(255,107,0,0.12) 0%, transparent 65%)',
+              pointerEvents: 'none',
+            }} />
 
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '48px', flexWrap: 'wrap' }}>
-            <div style={{ textAlign: 'center' }}>
-              <AnimatedScoreCircle score={atsBefore} size={120} label="Before" color="#FF8C42" />
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '48px', flexWrap: 'wrap' }}>
+              <div style={{ textAlign: 'center' }}>
+                <AnimatedScoreCircle score={atsBefore} size={120} label="Before" color="#FF8C42" />
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.5 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: 0.4, duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+                >
+                  <div style={{
+                    fontSize: 'clamp(52px, 8vw, 80px)', fontWeight: 900,
+                    letterSpacing: '-3px', lineHeight: 1,
+                    color: '#FF6B00',
+                  }}>
+                    <StatNumber value={atsGain} prefix={gainPrefix} />
+                  </div>
+                  <p style={{
+                    fontSize: '11px', letterSpacing: '2px', textTransform: 'uppercase',
+                    color: 'rgba(120,113,108,0.7)', marginTop: '4px',
+                  }}>
+                    ATS Score Boost
+                  </p>
+                </motion.div>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <AnimatedScoreCircle score={atsAfter} size={120} label="After" color="#10b981" />
+              </div>
             </div>
-            <div style={{ textAlign: 'center' }}>
-              <motion.div
-                initial={{ opacity: 0, scale: 0.5 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.4, duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-              >
-                <div style={{
-                  fontSize: 'clamp(52px, 8vw, 80px)', fontWeight: 900,
-                  letterSpacing: '-3px', lineHeight: 1,
-                  color: '#FF3B3B',
-                }}>
-                  <StatNumber value={atsGain} prefix={gainPrefix} />
-                </div>
-                <p style={{
-                  fontSize: '11px', letterSpacing: '2px', textTransform: 'uppercase',
-                  color: 'rgba(120,113,108,0.7)', marginTop: '4px',
-                }}>
-                  ATS Score Boost
-                </p>
-              </motion.div>
-            </div>
-            <div style={{ textAlign: 'center' }}>
-              <AnimatedScoreCircle score={atsAfter} size={120} label="After" color="#10b981" />
-            </div>
-          </div>
 
-          {result.overall_improvement && (
-            <p className="text-center text-[#d6d3d1] italic">"{result.overall_improvement}"</p>
-          )}
+            {result.overall_improvement && (
+              <p className="text-center text-[#d6d3d1] italic">"{result.overall_improvement}"</p>
+            )}
 
-          {/* ── Action buttons row ───────────────────────── */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 flex-wrap">
-            <motion.button {...buttonMotion} onClick={handleStyledDownload} className="btn-primary flex items-center gap-2">
-              <Download size={16} /> Download Professional Resume PDF
-            </motion.button>
-            <motion.button
-              {...buttonMotion}
-              onClick={() => sendToTool('/dashboard/job-match')}
-              className="btn-primary flex items-center gap-2">
-              <Briefcase size={15} /> Test Job Matches
-            </motion.button>
-            <motion.button
-              {...buttonMotion}
-              onClick={() => sendToTool('/dashboard/ats-checker')}
-              className="btn-ghost flex items-center gap-2">
-              <Target size={15} /> Check ATS Score
-            </motion.button>
-            <motion.button
-              {...buttonMotion}
-              onClick={() => {
-                if (pdfUrl) URL.revokeObjectURL(pdfUrl)
-                localStorage.removeItem(STORAGE_KEY)
-                setResult(null); setPdfUrl(''); setShowPreview(false); setPdfError(''); setPdfNotice('')
-                setIncludeGitHubProjects(false); setGithubProjects([]); setGithubProjectsError('')
-              }}
-              className="btn-ghost flex items-center gap-2"
-            >
-              <RefreshCw size={16} /> Optimize Again
-            </motion.button>
-          </div>
-
-          <div className="mx-auto max-w-xl rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <label className="flex items-center gap-3 text-sm font-semibold text-[#e7e5e4]">
-                <input
-                  type="checkbox"
-                  checked={includeGitHubProjects}
-                  onChange={(event) => handleGitHubProjectsToggle(event.target.checked)}
-                  className="h-4 w-4 accent-[#4a90d9]"
-                />
-                Include GitHub Projects
-              </label>
+            {/* ── Action buttons row ───────────────────────── */}
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 flex-wrap">
+              <motion.button {...buttonMotion} onClick={handleStyledDownload} className="btn-primary flex items-center gap-2">
+                <Download size={16} /> Download Professional Resume PDF
+              </motion.button>
               <motion.button
                 {...buttonMotion}
-                type="button"
-                onClick={handleRefreshGitHubProjects}
-                disabled={!includeGitHubProjects || githubProjectsLoading}
-                className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs font-semibold text-[#d6d3d1] transition hover:border-[#4a90d9]/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={() => sendToTool('/dashboard/job-match')}
+                className="btn-primary flex items-center gap-2">
+                <Briefcase size={15} /> Test Job Matches
+              </motion.button>
+              <motion.button
+                {...buttonMotion}
+                onClick={() => sendToTool('/dashboard/ats-checker')}
+                className="btn-ghost flex items-center gap-2">
+                <Target size={15} /> Check ATS Score
+              </motion.button>
+              <motion.button
+                {...buttonMotion}
+                onClick={() => {
+                  if (pdfUrl) URL.revokeObjectURL(pdfUrl)
+                  localStorage.removeItem(STORAGE_KEY)
+                  setResult(null); setPdfUrl(''); setShowPreview(false); setPdfError(''); setPdfNotice('')
+                  setIncludeGitHubProjects(false); setGithubProjects([]); setGithubProjectsError('')
+                }}
+                className="btn-ghost flex items-center gap-2"
               >
-                {githubProjectsLoading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-                Refresh
+                <RefreshCw size={16} /> Optimize Again
               </motion.button>
             </div>
-            {githubProjectsLoading && (
-              <p className="mt-3 flex items-center gap-2 text-xs text-[#8A8FA8]">
-                <Loader2 size={13} className="animate-spin" /> Fetching and matching your repos...
-              </p>
-            )}
-            {githubProjectsError && !githubProjectsLoading && (
-              <p className="mt-3 text-xs text-red-300">{githubProjectsError}</p>
-            )}
-            {includeGitHubProjects && githubProjects.length > 0 && !githubProjectsLoading && (
-              <p className="mt-3 text-xs text-[#8A8FA8]">{githubProjects.length} GitHub project{githubProjects.length === 1 ? '' : 's'} will be included in the exported resume.</p>
-            )}
-          </div>
-        </motion.div>
 
-        {/* ── Stat pills ───────────────────────────────────── */}
-        <div className="grid gap-4 lg:grid-cols-2">
-          <WhyThisIsBetterPanel items={improvedBullets} />
-          <ATSMatchBreakdownPanel data={result} />
-        </div>
-
-        <div className="grid md:grid-cols-3 gap-3">
-          <div className="rounded-full px-4 py-3 text-center text-sm font-semibold bg-green-500/10 border border-green-500/30 text-green-300">
-            Keywords Injected: {addedKeywords.length}
-          </div>
-          <div className="rounded-full px-4 py-3 text-center text-sm font-semibold bg-red-500/10 border border-red-500/25 text-[#FF7070]">
-            Bullets Rewritten: {improvedBullets.length}
-          </div>
-          <div className="rounded-full px-4 py-3 text-center text-sm font-semibold bg-[rgba(255,140,66,0.12)] border border-[rgba(255,140,66,0.25)] text-[#FF8C42]">
-            New Bullets Added: {newBullets.length}
-          </div>
-        </div>
-
-        {/* ── Keywords injected ────────────────────────────── */}
-        <div className="space-y-3">
-          <div className="flex items-center gap-2 text-[#FF7070]">
-            <Tag size={16} className="text-[#FF3B3B]" />
-            <h3 className="text-sm font-semibold uppercase tracking-wide">Keywords Injected From Job Description</h3>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {addedKeywords.length > 0 ? (
-              addedKeywords.map((keyword, idx) => (
-                <motion.span key={`${keyword}-${idx}`}
-                  initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: idx * 0.04 }}
-                  className="px-3 py-1 rounded-full text-xs bg-red-500/10 border border-red-500/20 text-[#FF7070]">
-                  {keyword}
-                </motion.span>
-              ))
-            ) : (
-              <p className="text-[#78716c] text-sm">No keywords were injected.</p>
-            )}
-          </div>
-        </div>
-
-        {/* ── New bullets ──────────────────────────────────── */}
-        {newBullets.length > 0 && (
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 text-[#FF7070]">
-              <Plus size={16} className="text-[#FF3B3B]" />
-              <h3 className="text-sm font-semibold uppercase tracking-wide">New Bullets Added to Fill JD Gaps</h3>
+            <div className="mx-auto max-w-xl rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <label className="flex items-center gap-3 text-sm font-semibold text-[#e7e5e4]">
+                  <input
+                    type="checkbox"
+                    checked={includeGitHubProjects}
+                    onChange={(event) => handleGitHubProjectsToggle(event.target.checked)}
+                    className="h-4 w-4 accent-[#4a90d9]"
+                  />
+                  Include GitHub Projects
+                </label>
+                <motion.button
+                  {...buttonMotion}
+                  type="button"
+                  onClick={handleRefreshGitHubProjects}
+                  disabled={!includeGitHubProjects || githubProjectsLoading}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs font-semibold text-[#d6d3d1] transition hover:border-[#4a90d9]/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {githubProjectsLoading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                  Refresh
+                </motion.button>
+              </div>
+              {githubProjectsLoading && (
+                <p className="mt-3 flex items-center gap-2 text-xs text-[#8A8FA8]">
+                  <Loader2 size={13} className="animate-spin" /> Fetching and matching your repos...
+                </p>
+              )}
+              {githubProjectsError && !githubProjectsLoading && (
+                <p className="mt-3 text-xs text-red-300">{githubProjectsError}</p>
+              )}
+              {includeGitHubProjects && githubProjects.length > 0 && !githubProjectsLoading && (
+                <p className="mt-3 text-xs text-[#8A8FA8]">{githubProjects.length} GitHub project{githubProjects.length === 1 ? '' : 's'} will be included in the exported resume.</p>
+              )}
             </div>
-            <div className="space-y-3">
-              {newBullets.map((bullet, idx) => (
-                <div key={idx} className="relative rounded-xl border border-red-500/20 border-l-4 border-l-[#FF3B3B] bg-red-500/5 p-4 pl-5">
-                  <div className="absolute top-3 right-3 flex items-center gap-2">
-                    <span className="rounded-full border border-red-500/25 bg-red-500/12 px-2 py-0.5 text-[10px] font-bold text-[#FF7070]">NEW</span>
-                    <CopyBtn text={bullet.text || ''} />
-                  </div>
-                  <p className="text-[#fafaf9] text-sm leading-relaxed">{bullet.text}</p>
-                  {bullet.reason && <p className="text-xs text-[#78716c] mt-2">{bullet.reason}</p>}
+          </motion.div>
+
+          {/* ── Score Cards (Day 2 — from /analyse) ───────────── */}
+          {(analysisResult || analysisLoading) && (
+            <div className="space-y-6">
+              {analysisLoading && !analysisResult ? (
+                <div className="flex items-center justify-center gap-3 py-8 text-[#8A8FA8]">
+                  <Loader2 size={18} className="animate-spin" />
+                  <span className="text-sm">Running deep resume analysis…</span>
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
+              ) : analysisResult && (
+                <>
+                  {/* ── Three Score Cards ───────────────────────── */}
+                  <div className="grid md:grid-cols-3 gap-4">
+                    {(() => {
+                      const atsScore = analysisResult?.module1_ats?.ats_score ?? 0
+                      const recruiterTotal = analysisResult?.module2_recruiter_lens?.total ?? 0
+                      const readiness = Math.round((atsScore * 0.5) + (recruiterTotal * 0.5))
+                      const cards = [
+                        { label: 'ATS Compatibility', score: atsScore, icon: Shield, color: atsScore >= 70 ? '#10b981' : atsScore >= 45 ? '#f59e0b' : '#ef4444', note: "CareerLens's estimate of how well your resume passes automated screening" },
+                        { label: 'Recruiter Impression', score: recruiterTotal, icon: Eye, color: recruiterTotal >= 70 ? '#10b981' : recruiterTotal >= 45 ? '#f59e0b' : '#ef4444', note: `${analysisResult?.module2_recruiter_lens?.interpretation || 'N/A'} — based on title clarity, tenure, quantification, scannability` },
+                        { label: 'Overall Readiness', score: readiness, icon: TrendingUp, color: readiness >= 70 ? '#10b981' : readiness >= 45 ? '#f59e0b' : '#ef4444', note: "Combined estimate — not a guarantee from any specific ATS vendor" },
+                      ]
+                      return cards.map((card) => (
+                        <motion.div key={card.label}
+                          initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.4 }}
+                          style={{ background: 'rgba(19,18,28,0.75)', border: `1px solid ${card.color}30`, borderRadius: 16 }}
+                          className="p-5 space-y-3">
+                          <div className="flex items-center gap-2">
+                            <card.icon size={16} style={{ color: card.color }} />
+                            <span className="text-xs font-semibold uppercase tracking-wide text-[#9499B3]">{card.label}</span>
+                          </div>
+                          <div className="flex items-end gap-2">
+                            <span style={{ fontSize: 36, fontWeight: 800, color: card.color, lineHeight: 1, letterSpacing: '-1px' }}>{card.score}</span>
+                            <span className="text-xs text-[#78716c] mb-1">/ 100</span>
+                          </div>
+                          <p className="text-[10px] text-[#78716c] leading-relaxed">{card.note}</p>
+                        </motion.div>
+                      ))
+                    })()}
+                  </div>
 
-        {/* ── Bullet rewrites ──────────────────────────────── */}
-        {includeGitHubProjects && githubProjects.length > 0 && (
-          <GitHubProjectsSection projects={githubProjects} />
-        )}
-
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h3 className="text-sm font-semibold text-[#e7e5e4] uppercase tracking-wide">
-              Bullet Point Rewrites ({improvedBullets.length})
-            </h3>
-            <div className="flex items-center gap-1 rounded-xl bg-white/5 border border-white/10 p-1">
-              <motion.button {...buttonMotion} onClick={() => setComparisonView('split')}
-                className={`px-3 py-1.5 text-xs rounded-lg transition ${comparisonView === 'split' ? 'bg-red-500/20 text-[#FF7070]' : 'text-[#78716c] hover:text-[#e7e5e4]'}`}>
-                Side by Side
-              </motion.button>
-              <motion.button {...buttonMotion} onClick={() => setComparisonView('single')}
-                className={`px-3 py-1.5 text-xs rounded-lg transition ${comparisonView === 'single' ? 'bg-red-500/20 text-[#FF7070]' : 'text-[#78716c] hover:text-[#e7e5e4]'}`}>
-                Single Column
-              </motion.button>
-            </div>
-          </div>
-
-          {improvedBullets.length > 0 ? (
-            <div className="space-y-4">
-              {improvedBullets.map((item, idx) => {
-                const keywords = Array.isArray(item?.keywords_added) ? item.keywords_added : []
-                return (
-                  <motion.div key={idx} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: idx * 0.04 }}
-                    className="rounded-xl overflow-hidden border border-white/10">
-                    {comparisonView === 'single' ? (
-                      <>
-                        <div className="p-4 bg-red-500/5 border-b border-white/10">
-                          <p className="text-xs font-semibold text-red-400 mb-2 uppercase tracking-wide">Original</p>
-                          <p className="text-sm text-[#78716c] leading-relaxed">{item.original}</p>
-                        </div>
-                        <div className="p-4 bg-green-500/5 relative">
-                          <p className="text-xs font-semibold text-green-400 mb-2 uppercase tracking-wide">Improved</p>
-                          <p className="text-sm text-[#fafaf9] leading-relaxed">{item.improved}</p>
-                          {keywords.length > 0 && (
-                            <div className="flex flex-wrap gap-1.5 mt-3">
-                              {keywords.map((kw, kidx) => (
-                                <span key={kidx} className="px-2 py-0.5 rounded-full text-[10px] bg-red-500/10 border border-red-500/20 text-[#FF7070]">{kw}</span>
-                              ))}
-                            </div>
-                          )}
-                          <div className="absolute top-3 right-3"><CopyBtn text={item.improved || ''} /></div>
-                        </div>
-                      </>
-                    ) : (
-                      <div className="grid md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-white/10">
-                        <div className="p-4 bg-red-500/5">
-                          <p className="text-xs font-semibold text-red-400 mb-2 uppercase tracking-wide">Original</p>
-                          <p className="text-sm text-[#78716c] leading-relaxed">{item.original}</p>
-                        </div>
-                        <div className="p-4 bg-green-500/5 relative">
-                          <p className="text-xs font-semibold text-green-400 mb-2 uppercase tracking-wide">Improved</p>
-                          <p className="text-sm text-[#fafaf9] leading-relaxed">{item.improved}</p>
-                          {keywords.length > 0 && (
-                            <div className="flex flex-wrap gap-1.5 mt-3">
-                              {keywords.map((kw, kidx) => (
-                                <span key={kidx} className="px-2 py-0.5 rounded-full text-[10px] bg-red-500/10 border border-red-500/20 text-[#FF7070]">{kw}</span>
-                              ))}
-                            </div>
-                          )}
-                          <div className="absolute top-3 right-3"><CopyBtn text={item.improved || ''} /></div>
-                        </div>
+                  {/* ── Recruiter Lens Breakdown ────────────────── */}
+                  {analysisResult?.module2_recruiter_lens?.dimensions && (
+                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                      className="rounded-2xl border border-white/10 bg-white/[0.02] p-5 space-y-4">
+                      <div className="flex items-center gap-2">
+                        <Eye size={16} className="text-primary" />
+                        <h3 className="text-sm font-semibold text-accent uppercase tracking-wide">Recruiter Lens Breakdown</h3>
                       </div>
-                    )}
-                  </motion.div>
-                )
-              })}
-            </div>
-          ) : (
-            <div className="rounded-xl border border-white/10 bg-white/5 p-4 text-sm text-[#78716c]">
-              No bullet rewrites were returned.
+                      <div className="grid sm:grid-cols-2 gap-3">
+                        {Object.entries(analysisResult.module2_recruiter_lens.dimensions).map(([key, dim]) => {
+                          const pct = dim.max ? Math.round((dim.score / dim.max) * 100) : 0
+                          const barColor = pct >= 70 ? '#10b981' : pct >= 45 ? '#f59e0b' : '#ef4444'
+                          return (
+                            <div key={key} className="space-y-1.5">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs text-[#d6d3d1] capitalize">{key.replace(/_/g, ' ')}</span>
+                                <span className="text-xs font-semibold" style={{ color: barColor }}>{dim.score}/{dim.max}</span>
+                              </div>
+                              <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+                                <motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.6, ease: 'easeOut' }}
+                                  className="h-full rounded-full" style={{ background: barColor }} />
+                              </div>
+                              {dim.reason && <p className="text-[10px] text-[#78716c]">{dim.reason}</p>}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {/* ── Skill Gap Table ─────────────────────────── */}
+                  {analysisResult?.module4_skill_gap && (() => {
+                    const sg = analysisResult.module4_skill_gap
+                    const hasCritical = sg.critical?.length > 0
+                    const hasPartial = sg.partial?.length > 0
+                    const hasStrengths = sg.strengths?.length > 0
+                    const hasIrrelevant = sg.irrelevant?.length > 0
+                    if (!hasCritical && !hasPartial && !hasStrengths && !hasIrrelevant) return null
+                    const sections = [
+                      { key: 'critical', label: 'Missing (Critical)', items: sg.critical || [], color: '#ef4444', icon: XCircle, desc: 'JD requires these — your resume has zero signal' },
+                      { key: 'partial', label: 'Weak (Partial Match)', items: sg.partial || [], color: '#f59e0b', icon: AlertTriangle, desc: 'Present but not prominent enough' },
+                      { key: 'strengths', label: 'Proven (Strengths)', items: sg.strengths || [], color: '#10b981', icon: CheckCircle, desc: 'Resume strong, JD requires — lead with these' },
+                      { key: 'irrelevant', label: 'Deprioritize', items: sg.irrelevant || [], color: '#6b7280', icon: Info, desc: 'Resume strong but JD doesn\'t need' },
+                    ]
+                    return (
+                      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                        className="rounded-2xl border border-white/10 bg-white/[0.02] p-5 space-y-4">
+                        <div className="flex items-center gap-2">
+                          <BookOpen size={16} className="text-primary" />
+                          <h3 className="text-sm font-semibold text-accent uppercase tracking-wide">Skill Gap Analysis</h3>
+                        </div>
+                        <div className="grid sm:grid-cols-2 gap-4">
+                          {sections.filter(s => s.items.length > 0).map((section) => (
+                            <div key={section.key} className="space-y-2">
+                              <div className="flex items-center gap-2">
+                                <section.icon size={13} style={{ color: section.color }} />
+                                <span className="text-xs font-semibold" style={{ color: section.color }}>{section.label}</span>
+                                <span className="text-[10px] text-[#78716c] ml-auto">{section.items.length}</span>
+                              </div>
+                              <div className="space-y-1.5">
+                                {section.items.map((item, i) => (
+                                  <div key={i} className="rounded-lg px-3 py-2 text-xs" style={{ background: `${section.color}08`, border: `1px solid ${section.color}20` }}>
+                                    <span className="font-medium text-[#e7e5e4]">{item.skill}</span>
+                                    {item.reason && <p className="text-[#78716c] mt-0.5">{item.reason}</p>}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </motion.div>
+                    )
+                  })()}
+
+                  {/* ── Rejection Diagnosis ─────────────────────── */}
+                  {analysisResult?.module5_rejection_diagnosis?.length > 0 && (
+                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                      className="rounded-2xl border border-white/10 bg-white/[0.02] p-5 space-y-4">
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle size={16} className="text-red-400" />
+                        <h3 className="text-sm font-semibold text-accent uppercase tracking-wide">Why This Gets Rejected</h3>
+                      </div>
+                      <div className="space-y-3">
+                        {analysisResult.module5_rejection_diagnosis.filter(d => d.summary).map((diag, idx) => (
+                          <motion.div key={idx} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: idx * 0.1 }}
+                            className="rounded-xl border border-red-500/15 bg-red-500/5 p-4 space-y-2">
+                            <div className="flex items-start gap-3">
+                              <span className="flex-shrink-0 w-6 h-6 rounded-full bg-red-500/20 flex items-center justify-center text-xs font-bold text-red-400">#{diag.rank}</span>
+                              <div className="flex-1 space-y-2">
+                                <p className="text-sm font-medium text-[#fafaf9]">{diag.summary}</p>
+                                {diag.evidence && (
+                                  <div className="flex items-start gap-2 text-xs text-[#78716c]">
+                                    <span className="text-[#9499B3] font-semibold shrink-0">Evidence:</span>
+                                    <span className="italic">"{diag.evidence}"</span>
+                                  </div>
+                                )}
+                                {diag.recruiter_thought && (
+                                  <div className="flex items-start gap-2 text-xs text-[#78716c]">
+                                    <span className="text-[#9499B3] font-semibold shrink-0">Recruiter thinks:</span>
+                                    <span>"{diag.recruiter_thought}"</span>
+                                  </div>
+                                )}
+                                {diag.fix && (
+                                  <div className="flex items-start gap-2 text-xs">
+                                    <ArrowRight size={12} className="text-green-400 shrink-0 mt-0.5" />
+                                    <span className="text-green-300">{diag.fix}</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </motion.div>
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {/* ── ATS Checks ──────────────────────────────── */}
+                  {analysisResult?.module1_ats?.checks?.length > 0 && (
+                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                      className="rounded-2xl border border-white/10 bg-white/[0.02] p-5 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <Shield size={16} className="text-primary" />
+                        <h3 className="text-sm font-semibold text-accent uppercase tracking-wide">ATS Compatibility Checks</h3>
+                      </div>
+                      <div className="space-y-2">
+                        {analysisResult.module1_ats.checks.map((check, idx) => {
+                          const statusColor = check.status === 'PASS' ? '#10b981' : check.status === 'WARN' ? '#f59e0b' : '#ef4444'
+                          const StatusIcon = check.status === 'PASS' ? CheckCircle : check.status === 'WARN' ? AlertTriangle : XCircle
+                          return (
+                            <div key={idx} className="flex items-start gap-3 rounded-lg px-3 py-2" style={{ background: `${statusColor}08` }}>
+                              <StatusIcon size={14} style={{ color: statusColor }} className="shrink-0 mt-0.5" />
+                              <div className="flex-1">
+                                <span className="text-xs font-medium text-[#e7e5e4]">{check.item}</span>
+                                {check.reason && <p className="text-[10px] text-[#78716c] mt-0.5">{check.reason}</p>}
+                              </div>
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ color: statusColor, background: `${statusColor}15` }}>{check.status}</span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </motion.div>
+                  )}
+                </>
+              )}
             </div>
           )}
-        </div>
 
-        {/* ── Editable summary ─────────────────────────────── */}
-        <div className="relative rounded-2xl border border-white/10 border-l-4 border-[#FF3B3B] bg-red-500/5 p-5">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-[#FF7070] uppercase tracking-wide">Rewritten Professional Summary</h3>
-            <CopyBtn text={displaySummary} />
+          {/* ── Stat pills ───────────────────────────────────── */}
+          <div className="grid gap-4 lg:grid-cols-2">
+            <WhyThisIsBetterPanel items={improvedBullets} />
+            <ATSMatchBreakdownPanel data={result} />
           </div>
-          <textarea value={displaySummary} onChange={(e) => setEditedSummary(sanitizeProfessionalSummary(e.target.value))} rows={4}
-            className="input-field resize-none" />
-        </div>
 
-        {/* ── Updated skills ───────────────────────────────── */}
-        <div className="space-y-3">
-          <div className="flex items-center gap-2 text-[#FF7070]">
-            <Badge size={16} className="text-[#FF3B3B]" />
-            <h3 className="text-sm font-semibold uppercase tracking-wide">Updated Skills Section</h3>
+          <div className="grid md:grid-cols-3 gap-3">
+            <div className="rounded-full px-4 py-3 text-center text-sm font-semibold bg-green-500/10 border border-green-500/30 text-green-300">
+              Keywords Injected: {addedKeywords.length}
+            </div>
+            <div className="rounded-full px-4 py-3 text-center text-sm font-semibold bg-red-500/10 border border-red-500/25 text-[#FF7070]">
+              Bullets Rewritten: {improvedBullets.length}
+            </div>
+            <div className="rounded-full px-4 py-3 text-center text-sm font-semibold bg-[rgba(255,140,66,0.12)] border border-[rgba(255,140,66,0.25)] text-[#FF8C42]">
+              New Bullets Added: {newBullets.length}
+            </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {optimizedSkills.length > 0 ? (
-              optimizedSkills.map((skill, idx) => (
-                <motion.span key={`${skill}-${idx}`}
-                  initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: idx * 0.04 }}
-                  className="px-3 py-1 rounded-full text-xs bg-red-500/10 border border-red-500/20 text-[#FF7070]">
-                  {skill}
-                </motion.span>
-              ))
-            ) : <p className="text-[#78716c] text-sm">No skills returned.</p>}
-          </div>
-        </div>
 
-        {/* ── ATS checklist ────────────────────────────────── */}
-        <div className="space-y-3">
-          <h3 className="text-sm font-semibold text-[#e7e5e4] uppercase tracking-wide">ATS Formatting Checklist</h3>
-          <div className="space-y-2">
-            {atsTips.length > 0 ? (
-              atsTips.map((tip, idx) => {
-                const checked = Boolean(checkedTips[idx])
-                return (
-                  <motion.button {...buttonMotion} key={idx} type="button" onClick={() => toggleTip(idx)}
-                    className="w-full flex items-start gap-3 rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-left">
-                    <span className="mt-0.5">
-                      {checked
-                        ? <CheckCircle2 size={16} className="text-green-400" />
-                        : <span className="block w-4 h-4 rounded border border-[#78716c]" />}
-                    </span>
-                    <span className={`text-sm ${checked ? 'text-[#78716c] line-through' : 'text-[#e7e5e4]'}`}>{tip}</span>
-                  </motion.button>
-                )
-              })
-            ) : <p className="text-[#78716c] text-sm">No ATS tips were returned.</p>}
+          {/* ── Keywords injected ────────────────────────────── */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 text-accent">
+              <Tag size={16} className="text-primary" />
+              <h3 className="text-sm font-semibold uppercase tracking-wide">Keywords Injected From Job Description</h3>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {addedKeywords.length > 0 ? (
+                addedKeywords.map((keyword, idx) => (
+                  <motion.span key={`${keyword}-${idx}`}
+                    initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: idx * 0.04 }}
+                    className="px-3 py-1 rounded-full text-xs bg-primary/10 border border-primary/20 text-accent">
+                    {keyword}
+                  </motion.span>
+                ))
+              ) : (
+                <p className="text-[#78716c] text-sm">No keywords were injected.</p>
+              )}
+            </div>
           </div>
-        </div>
 
-        {/* ── Bottom download button ───────────────────────── */}
-        <motion.button {...buttonMotion} onClick={handleStyledDownload}
-          className="w-full flex items-center justify-center gap-2 rounded-2xl py-4 font-bold text-white bg-gradient-to-r from-[#FF3B3B] to-[#CC1A1A] shadow-[0_4px_20px_rgba(255,59,59,0.4)] transition">
-          <Download size={16} /> Download Professional Resume PDF
-        </motion.button>
-      </div>
+          {/* ── New bullets ──────────────────────────────────── */}
+          {newBullets.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-accent">
+                <Plus size={16} className="text-primary" />
+                <h3 className="text-sm font-semibold uppercase tracking-wide">New Bullets Added to Fill JD Gaps</h3>
+              </div>
+              <div className="space-y-3">
+                {newBullets.map((bullet, idx) => (
+                  <div key={idx} className="relative rounded-xl border border-primary/20 border-l-4 border-l-primary bg-primary/5 p-4 pl-5">
+                    <div className="absolute top-3 right-3 flex items-center gap-2">
+                      <span className="rounded-full border border-primary/25 bg-primary/15 px-2 py-0.5 text-[10px] font-bold text-accent">NEW</span>
+                      <CopyBtn text={bullet.text || ''} />
+                    </div>
+                    <p className="text-[#fafaf9] text-sm leading-relaxed">{bullet.text}</p>
+                    {bullet.reason && <p className="text-xs text-[#78716c] mt-2">{bullet.reason}</p>}
+                    {bullet.jd_requirement && (
+                      <p className="text-[11px] text-[#9499B3] mt-1 flex items-center gap-1.5">
+                        <Target size={10} className="text-primary shrink-0" />
+                        JD requirement: {bullet.jd_requirement}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── Bullet rewrites ──────────────────────────────── */}
+          {includeGitHubProjects && githubProjects.length > 0 && (
+            <GitHubProjectsSection projects={githubProjects} />
+          )}
+
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h3 className="text-sm font-semibold text-[#e7e5e4] uppercase tracking-wide">
+                Bullet Point Rewrites ({improvedBullets.length})
+              </h3>
+              <div className="flex items-center gap-1 rounded-xl bg-white/5 border border-white/10 p-1">
+                <motion.button {...buttonMotion} onClick={() => setComparisonView('split')}
+                  className={`px-3 py-1.5 text-xs rounded-lg transition ${comparisonView === 'split' ? 'bg-primary/20 text-accent font-medium' : 'text-[#78716c] hover:text-[#e7e5e4]'}`}>
+                  Side by Side
+                </motion.button>
+                <motion.button {...buttonMotion} onClick={() => setComparisonView('single')}
+                  className={`px-3 py-1.5 text-xs rounded-lg transition ${comparisonView === 'single' ? 'bg-primary/20 text-accent font-medium' : 'text-[#78716c] hover:text-[#e7e5e4]'}`}>
+                  Single Column
+                </motion.button>
+              </div>
+            </div>
+
+            {improvedBullets.length > 0 ? (
+              <div className="space-y-4">
+                {improvedBullets.map((item, idx) => {
+                  const keywords = Array.isArray(item?.keywords_added) ? item.keywords_added : []
+                  const isReverted = item.original && item.improved && item.original.trim() === item.improved.trim()
+                  return (
+                    <motion.div key={idx} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: idx * 0.04 }}
+                      className="rounded-xl overflow-hidden border border-white/10">
+                      {comparisonView === 'single' ? (
+                        <>
+                          <div className="p-4 bg-red-500/5 border-b border-white/10">
+                            <p className="text-xs font-semibold text-red-400 mb-2 uppercase tracking-wide">Original</p>
+                            <p className="text-sm text-[#78716c] leading-relaxed">{item.original}</p>
+                          </div>
+                          <div className="p-4 bg-green-500/5 relative">
+                            <p className="text-xs font-semibold text-green-400 mb-2 uppercase tracking-wide">
+                              {isReverted ? 'Kept Original' : 'Improved'}
+                            </p>
+                            <p className="text-sm text-[#fafaf9] leading-relaxed">{item.improved}</p>
+                            {isReverted && (
+                              <div className="mt-2 flex items-start gap-2 rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2">
+                                <Shield size={12} className="text-amber-400 shrink-0 mt-0.5" />
+                                <p className="text-[11px] text-amber-300">Kept original — rewrite would have added unverified details</p>
+                              </div>
+                            )}
+                            {item.improvement_reason && !isReverted && (
+                              <p className="text-[11px] text-[#9499B3] mt-2 italic">Why: {item.improvement_reason}</p>
+                            )}
+                            {keywords.length > 0 && (
+                              <div className="flex flex-wrap gap-1.5 mt-3">
+                                {keywords.map((kw, kidx) => (
+                                  <span key={kidx} className="px-2 py-0.5 rounded-full text-[10px] bg-primary/10 border border-primary/20 text-accent">{kw}</span>
+                                ))}
+                              </div>
+                            )}
+                            <div className="absolute top-3 right-3"><CopyBtn text={item.improved || ''} /></div>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="grid md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-white/10">
+                          <div className="p-4 bg-red-500/5">
+                            <p className="text-xs font-semibold text-red-400 mb-2 uppercase tracking-wide">Original</p>
+                            <p className="text-sm text-[#78716c] leading-relaxed">{item.original}</p>
+                          </div>
+                          <div className="p-4 bg-green-500/5 relative">
+                            <p className="text-xs font-semibold text-green-400 mb-2 uppercase tracking-wide">
+                              {isReverted ? 'Kept Original' : 'Improved'}
+                            </p>
+                            <p className="text-sm text-[#fafaf9] leading-relaxed">{item.improved}</p>
+                            {isReverted && (
+                              <div className="mt-2 flex items-start gap-2 rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2">
+                                <Shield size={12} className="text-amber-400 shrink-0 mt-0.5" />
+                                <p className="text-[11px] text-amber-300">Kept original — rewrite would have added unverified details</p>
+                              </div>
+                            )}
+                            {item.improvement_reason && !isReverted && (
+                              <p className="text-[11px] text-[#9499B3] mt-2 italic">Why: {item.improvement_reason}</p>
+                            )}
+                            {keywords.length > 0 && (
+                              <div className="flex flex-wrap gap-1.5 mt-3">
+                                {keywords.map((kw, kidx) => (
+                                  <span key={kidx} className="px-2 py-0.5 rounded-full text-[10px] bg-primary/10 border border-primary/20 text-accent">{kw}</span>
+                                ))}
+                              </div>
+                            )}
+                            <div className="absolute top-3 right-3"><CopyBtn text={item.improved || ''} /></div>
+                          </div>
+                        </div>
+                      )}
+                    </motion.div>
+                  )
+                })}
+              </div>
+            ) : (
+              <div className="rounded-xl border border-white/10 bg-white/5 p-4 text-sm text-[#78716c]">
+                No bullet rewrites were returned.
+              </div>
+            )}
+          </div>
+
+          {/* ── Editable summary ─────────────────────────────── */}
+          <div className="relative rounded-2xl border border-white/10 border-l-4 border-l-primary bg-primary/5 p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-accent uppercase tracking-wide">Rewritten Professional Summary</h3>
+              <CopyBtn text={displaySummary} />
+            </div>
+            <textarea value={displaySummary} onChange={(e) => setEditedSummary(sanitizeProfessionalSummary(e.target.value))} rows={4}
+              className="input-field resize-none" />
+          </div>
+
+          {/* ── Updated skills ───────────────────────────────── */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 text-accent">
+              <Badge size={16} className="text-primary" />
+              <h3 className="text-sm font-semibold uppercase tracking-wide">Updated Skills Section</h3>
+            </div>
+            {result?.skills_optimization_failed && (
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-xs text-amber-300">
+                Notice: Skills optimization could not safely enhance your skills list without potential inaccuracies. Original resume skills were preserved.
+              </div>
+            )}
+            <div className="flex flex-wrap gap-2">
+              {optimizedSkills.length > 0 ? (
+                optimizedSkills.map((skill, idx) => (
+                  <motion.span key={`${skill}-${idx}`}
+                    initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: idx * 0.04 }}
+                    className="px-3 py-1 rounded-full text-xs bg-primary/10 border border-primary/20 text-accent">
+                    {skill}
+                  </motion.span>
+                ))
+              ) : <p className="text-[#78716c] text-sm">No skills returned.</p>}
+            </div>
+          </div>
+
+          {/* ── ATS checklist ────────────────────────────────── */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-[#e7e5e4] uppercase tracking-wide">ATS Formatting Checklist</h3>
+            <div className="space-y-2">
+              {atsTips.length > 0 ? (
+                atsTips.map((tip, idx) => {
+                  const checked = Boolean(checkedTips[idx])
+                  return (
+                    <motion.button {...buttonMotion} key={idx} type="button" onClick={() => toggleTip(idx)}
+                      className="w-full flex items-start gap-3 rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-left">
+                      <span className="mt-0.5">
+                        {checked
+                          ? <CheckCircle2 size={16} className="text-green-400" />
+                          : <span className="block w-4 h-4 rounded border border-[#78716c]" />}
+                      </span>
+                      <span className={`text-sm ${checked ? 'text-[#78716c] line-through' : 'text-[#e7e5e4]'}`}>{tip}</span>
+                    </motion.button>
+                  )
+                })
+              ) : <p className="text-[#78716c] text-sm">No ATS tips were returned.</p>}
+            </div>
+          </div>
+
+          {/* ── Bottom download button ───────────────────────── */}
+          <motion.button {...buttonMotion} onClick={handleStyledDownload}
+            className="w-full flex items-center justify-center gap-2 rounded-2xl py-4 font-bold text-white bg-gradient-to-r from-primary to-primary-dark shadow-[0_4px_20px_rgba(255,107,0,0.4)] hover:shadow-[0_6px_28px_rgba(255,107,0,0.6)] transition">
+            <Download size={16} /> Download Professional Resume PDF
+          </motion.button>
+        </div>
       </motion.div>
     )
   }
@@ -2539,72 +2901,72 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
   // ── INPUT SCREEN ─────────────────────────────────────────
   return (
     <motion.div variants={pageTransition} initial="hidden" animate="visible" exit="exit" style={{ width: '100%' }}>
-    <div className="max-w-4xl w-full mx-auto space-y-6">
-      <div className="max-w-2xl mx-auto text-center">
-        <h1 className="gradient-text text-3xl font-bold flex items-center justify-center gap-3">
-          <Sparkles size={26} className="text-[#FF3B3B]" /> Resume Optimizer
-        </h1>
-        <p className="text-[#78716c] mt-2">Rewrite your resume bullets to match the exact job and export the optimized version as a PDF</p>
+      <div className="max-w-4xl w-full mx-auto space-y-6">
+        <div className="max-w-2xl mx-auto text-center">
+          <h1 className="gradient-text text-3xl font-bold flex items-center justify-center gap-3">
+            <Sparkles size={26} className="text-primary" /> Resume Optimizer
+          </h1>
+          <p className="text-[#78716c] mt-2">Rewrite your resume bullets to match the exact job and export the optimized version as a PDF</p>
+        </div>
+
+        {error && <div className="max-w-3xl mx-auto p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{error}</div>}
+
+        <div className="glass-glow p-6 rounded-3xl space-y-5 max-w-3xl w-full mx-auto">
+          <div>
+            <label className="text-xs font-semibold text-[#78716c] uppercase tracking-wide mb-2 block">Resume *</label>
+            {!resumeFile ? (
+              <div
+                onDrop={(e) => { e.preventDefault(); setDragging(false); handleFile(e.dataTransfer.files[0]) }}
+                onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
+                onDragLeave={() => setDragging(false)}
+                onClick={() => fileRef.current?.click()}
+                className={`border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-all mb-2
+                ${dragging ? 'border-primary bg-primary/10 shadow-[0_0_30px_rgba(255,107,0,0.2)]' : 'border-white/10 bg-white/[0.02] hover:border-primary/30 hover:bg-primary/5'}`}>
+                <input ref={fileRef} type="file" accept=".pdf" className="hidden" onChange={(e) => handleFile(e.target.files[0])} />
+                <Upload size={24} className="float text-primary mx-auto mb-2" />
+                <p className="text-[#d6d3d1] text-sm">Drop PDF or click to upload</p>
+              </div>
+            ) : (
+              <div className="flex items-center gap-3 p-3 rounded-xl bg-green-500/10 border border-green-500/20 mb-2">
+                {extracting
+                  ? <Loader2 size={16} className="text-green-400 animate-spin" />
+                  : <CheckCircle size={16} className="text-green-400" />}
+                <span className="text-sm text-white flex-1">
+                  {resumeFile.name}
+                  {extracting && <span className="text-[#78716c] ml-2">Reading your resume...</span>}
+                </span>
+                <motion.button {...buttonMotion} onClick={() => { setResumeFile(null); setResumeText(''); setError(''); setExtracting(false) }}
+                  className="text-[#78716c] hover:text-white text-xs">Remove</motion.button>
+              </div>
+            )}
+            <textarea value={resumeText} onChange={(e) => setResumeText(e.target.value)}
+              placeholder="Or paste your resume text here..." rows={4}
+              className="input-field resize-none w-full text-sm" />
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-[#78716c] uppercase tracking-wide mb-2 block">Job Title</label>
+            <input value={jobTitle} onChange={(e) => setJobTitle(e.target.value)}
+              placeholder="e.g. ML Engineer, Frontend Developer" className="input-field w-full" />
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-[#78716c] uppercase tracking-wide mb-2 block">Paste Job Description</label>
+            <textarea value={jobDesc} onChange={(e) => setJobDesc(e.target.value)}
+              placeholder="Paste the job description you are applying for..." rows={7}
+              className="input-field resize-none w-full" />
+          </div>
+
+          <motion.button {...buttonMotion} onClick={handleOptimize} disabled={loading || extracting || !jobDesc.trim()}
+            className="btn-primary w-full flex items-center justify-center gap-3 py-4 font-bold disabled:opacity-50">
+            {loading
+              ? <><Loader2 size={17} className="animate-spin" /> Optimizing...</>
+              : extracting
+                ? <><Loader2 size={17} className="animate-spin" /> Reading resume...</>
+                : <><Zap size={17} /> Optimize My Resume</>}
+          </motion.button>
+        </div>
       </div>
-
-      {error && <div className="max-w-3xl mx-auto p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{error}</div>}
-
-      <div className="glass-glow p-6 rounded-3xl space-y-5 max-w-3xl w-full mx-auto">
-        <div>
-          <label className="text-xs font-semibold text-[#78716c] uppercase tracking-wide mb-2 block">Resume *</label>
-          {!resumeFile ? (
-            <div
-              onDrop={(e) => { e.preventDefault(); setDragging(false); handleFile(e.dataTransfer.files[0]) }}
-              onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
-              onDragLeave={() => setDragging(false)}
-              onClick={() => fileRef.current?.click()}
-              className={`border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-all mb-2
-                ${dragging ? 'border-[#FF3B3B] bg-red-500/10 shadow-[0_0_30px_rgba(255,59,59,0.1)]' : 'border-white/10 bg-white/[0.02] hover:border-[rgba(255,59,59,0.28)] hover:bg-red-500/5'}`}>
-              <input ref={fileRef} type="file" accept=".pdf" className="hidden" onChange={(e) => handleFile(e.target.files[0])} />
-              <Upload size={24} className="float text-[#FF7070] mx-auto mb-2" />
-              <p className="text-[#d6d3d1] text-sm">Drop PDF or click to upload</p>
-            </div>
-          ) : (
-            <div className="flex items-center gap-3 p-3 rounded-xl bg-green-500/10 border border-green-500/20 mb-2">
-              {extracting
-                ? <Loader2 size={16} className="text-green-400 animate-spin" />
-                : <CheckCircle size={16} className="text-green-400" />}
-              <span className="text-sm text-white flex-1">
-                {resumeFile.name}
-                {extracting && <span className="text-[#78716c] ml-2">Reading your resume...</span>}
-              </span>
-              <motion.button {...buttonMotion} onClick={() => { setResumeFile(null); setResumeText(''); setError(''); setExtracting(false) }}
-                className="text-[#78716c] hover:text-white text-xs">Remove</motion.button>
-            </div>
-          )}
-          <textarea value={resumeText} onChange={(e) => setResumeText(e.target.value)}
-            placeholder="Or paste your resume text here..." rows={4}
-            className="input-field resize-none w-full text-sm" />
-        </div>
-
-        <div>
-          <label className="text-xs font-semibold text-[#78716c] uppercase tracking-wide mb-2 block">Job Title</label>
-          <input value={jobTitle} onChange={(e) => setJobTitle(e.target.value)}
-            placeholder="e.g. ML Engineer, Frontend Developer" className="input-field w-full" />
-        </div>
-
-        <div>
-          <label className="text-xs font-semibold text-[#78716c] uppercase tracking-wide mb-2 block">Paste Job Description</label>
-          <textarea value={jobDesc} onChange={(e) => setJobDesc(e.target.value)}
-            placeholder="Paste the job description you are applying for..." rows={7}
-            className="input-field resize-none w-full" />
-        </div>
-
-        <motion.button {...buttonMotion} onClick={handleOptimize} disabled={loading || extracting || !jobDesc.trim()}
-          className="btn-primary w-full flex items-center justify-center gap-3 py-4 font-bold disabled:opacity-50">
-          {loading
-            ? <><Loader2 size={17} className="animate-spin" /> Optimizing...</>
-            : extracting
-              ? <><Loader2 size={17} className="animate-spin" /> Reading resume...</>
-              : <><Zap size={17} /> Optimize My Resume</>}
-        </motion.button>
-      </div>
-    </div>
     </motion.div>
   )
 }

@@ -16,6 +16,9 @@
     "@radix-ui/react-slot": "^1.0.2",
     "@radix-ui/react-tabs": "^1.0.4",
     "@radix-ui/react-toast": "^1.1.5",
+    "@react-three/drei": "^9.121.5",
+    "@react-three/fiber": "^8.17.14",
+    "@react-three/postprocessing": "^2.16.3",
     "@stripe/react-stripe-js": "^6.12.0",
     "@stripe/stripe-js": "^9.17.0",
     "@studio-freight/lenis": "^1.0.42",
@@ -25,13 +28,15 @@
     "framer-motion": "^11.2.10",
     "gsap": "^3.14.2",
     "lucide-react": "^0.379.0",
+    "postprocessing": "^6.39.5",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-dropzone": "^14.2.3",
     "react-hot-toast": "^2.6.0",
     "react-router-dom": "^6.30.6",
     "recharts": "^2.12.7",
-    "tailwind-merge": "^2.3.0"
+    "tailwind-merge": "^2.3.0",
+    "three": "^0.160.0"
   },
   "overrides": {
     "lodash": "^4.18.1",

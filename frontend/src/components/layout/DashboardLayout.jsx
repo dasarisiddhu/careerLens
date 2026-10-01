@@ -1,25 +1,47 @@
 import { useEffect, useState } from 'react'
-import { Star, LogOut, Menu, ChevronRight, Zap, X } from 'lucide-react'
+import {
+  Star,
+  LogOut,
+  Menu,
+  ChevronRight,
+  Zap,
+  X,
+  LayoutDashboard,
+  FileText,
+  Bot,
+  Mic,
+  Cpu,
+  Briefcase,
+  Rocket,
+  Globe,
+  Target,
+  Flame,
+  TrendingUp,
+  Sparkles,
+  Users,
+  Brain,
+} from 'lucide-react'
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '../../context/AuthContext'
+import CompanionWidget from '../companion/CompanionWidget'
 
+// Demo-ready nav — un-comment items to restore after Oct 5 panel.
 const NAV = [
-  { to: '/dashboard', label: 'Dashboard', emoji: '🏠', end: true },
-  { to: '/dashboard/resume', label: 'Resume Analysis', emoji: '📄' },
-  { to: '/dashboard/chatbot', label: 'Honest Career Coach', emoji: '🤖' },
-  { to: '/dashboard/interview', label: 'Mock Interview', emoji: '🎤' },
-  { to: '/dashboard/news/tech', label: 'Tech News', emoji: '🧠' },
-  { to: '/dashboard/news/hiring', label: 'Hiring News', emoji: '💼' },
-  { to: '/dashboard/career-switch', label: 'Career Switch', emoji: '🚀' },
-  { to: '/dashboard/portfolio', label: 'Portfolio', emoji: '🌐' },
-  { to: '/dashboard/job-match', label: 'Job Match', emoji: '🎯' },
-  { to: '/dashboard/ats-checker', label: 'ATS Checker', emoji: '🎯' },
-  { to: '/dashboard/optimizer', label: 'Resume Optimizer', emoji: '🔥' },
-  { to: '/dashboard/progress', label: 'Progress Tracker', emoji: '📈' },
-  { to: '/dashboard/recommendations', label: 'AI Recommendations', emoji: '✨' },
-  { to: '/dashboard/community', label: 'Community', emoji: '👥' },
-  { to: '/dashboard/interview-predictor', label: 'Interview Predictor', emoji: '🧠' },
+  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, end: true },
+  { to: '/dashboard/optimizer', label: 'Resume Optimizer', icon: FileText },
+  { to: '/dashboard/job-match', label: 'Job Match', icon: Target },
+  { to: '/dashboard/resume', label: 'GitHub Project Insights', icon: Flame },
+  // { to: '/dashboard/chatbot', label: 'Honest Career Coach', icon: Bot },
+  // { to: '/dashboard/interview', label: 'Mock Interview', icon: Mic },
+  // { to: '/dashboard/news/tech', label: 'Tech News', icon: Cpu },
+  // { to: '/dashboard/news/hiring', label: 'Hiring News', icon: Briefcase },
+  // { to: '/dashboard/career-switch', label: 'Career Switch', icon: Rocket },
+  // { to: '/dashboard/portfolio', label: 'Portfolio', icon: Globe },
+  // { to: '/dashboard/progress', label: 'Progress Tracker', icon: TrendingUp },
+  // { to: '/dashboard/recommendations', label: 'AI Recommendations', icon: Sparkles },
+  // { to: '/dashboard/community', label: 'Community', icon: Users },
+  // { to: '/dashboard/interview-predictor', label: 'Interview Predictor', icon: Brain },
 ]
 
 function useMouseSpotlight() {
@@ -45,7 +67,7 @@ function MouseSpotlight() {
         width: '700px',
         height: '700px',
         borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(255,59,59,0.03) 0%, transparent 68%)',
+        background: 'radial-gradient(circle, rgba(255,107,0,0.04) 0%, transparent 68%)',
         transform: 'translate(-50%, -50%)',
         left: 'var(--mouse-x, 50vw)',
         top: 'var(--mouse-y, 50vh)',
@@ -68,10 +90,10 @@ function Sidebar({ mobile = false, onClose }) {
   return (
     <aside
       style={{
-        background: 'rgba(14, 16, 22, 0.96)',
+        background: 'rgba(11, 10, 16, 0.96)',
         backdropFilter: 'blur(24px)',
         WebkitBackdropFilter: 'blur(24px)',
-        borderRight: '1px solid rgba(255, 59, 59, 0.08)',
+        borderRight: '1px solid rgba(255, 107, 0, 0.12)',
       }}
       className="relative flex h-screen flex-col overflow-hidden"
     >
@@ -83,7 +105,7 @@ function Sidebar({ mobile = false, onClose }) {
           left: 0,
           right: 0,
           height: '180px',
-          background: 'linear-gradient(180deg, rgba(255,59,59,0.08) 0%, transparent 100%)',
+          background: 'linear-gradient(180deg, rgba(255,107,0,0.08) 0%, transparent 100%)',
           pointerEvents: 'none',
         }}
       />
@@ -98,11 +120,11 @@ function Sidebar({ mobile = false, onClose }) {
                 width: 40,
                 height: 40,
                 borderRadius: 12,
-                background: 'linear-gradient(135deg, #FF3B3B, #CC1A1A)',
+                background: 'linear-gradient(135deg, #FF6B00, #CC4E00)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                boxShadow: '0 0 20px rgba(255,59,59,0.45)',
+                boxShadow: '0 0 20px rgba(255,107,0,0.45)',
               }}
             >
               <Zap size={18} className="text-white" />
@@ -153,7 +175,7 @@ function Sidebar({ mobile = false, onClose }) {
           }}
           onWheelCapture={(event) => event.stopPropagation()}
         >
-          {NAV.map(({ to, label, emoji, end }) => (
+          {NAV.map(({ to, label, icon: Icon, end }) => (
             <NavLink
               key={to}
               to={to}
@@ -161,7 +183,7 @@ function Sidebar({ mobile = false, onClose }) {
               onClick={onClose}
               className={({ isActive }) =>
                 `group relative flex items-center gap-3 overflow-hidden rounded-xl px-3 py-2 text-sm font-medium transition ${
-                  isActive ? 'text-white' : 'text-[rgba(138,143,168,0.7)] hover:text-[#F5F5F7]'
+                  isActive ? 'text-white' : 'text-[rgba(148,153,179,0.7)] hover:text-[#F5F5F7]'
                 }`
               }
             >
@@ -173,18 +195,23 @@ function Sidebar({ mobile = false, onClose }) {
                       style={{
                         position: 'absolute',
                         inset: 0,
-                        background: 'rgba(255,59,59,0.1)',
+                        background: 'rgba(255,107,0,0.12)',
                         borderRadius: 12,
-                        border: '1px solid rgba(255,59,59,0.22)',
-                        borderLeft: '2px solid #FF3B3B',
-                        boxShadow: 'inset 3px 0 12px rgba(255,59,59,0.12)',
+                        border: '1px solid rgba(255,107,0,0.25)',
+                        borderLeft: '2px solid #FF6B00',
+                        boxShadow: 'inset 3px 0 12px rgba(255,107,0,0.15)',
                       }}
                       transition={{ type: 'spring', bounce: 0.18, duration: 0.38 }}
                     />
                   )}
 
                   <div className="absolute inset-0 rounded-xl bg-transparent transition group-hover:bg-white/[0.03]" />
-                  <span className="relative text-base leading-none">{emoji}</span>
+                  <Icon
+                    size={17}
+                    className={`relative shrink-0 transition-colors ${
+                      isActive ? 'text-primary' : 'text-[#8A8FA8] group-hover:text-primary-light'
+                    }`}
+                  />
                   <span
                     className="relative flex-1 truncate"
                     style={{ fontFamily: 'Cabinet Grotesk, sans-serif', fontWeight: 500 }}
@@ -193,7 +220,7 @@ function Sidebar({ mobile = false, onClose }) {
                   </span>
                   {isActive && (
                     <motion.div initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} className="relative">
-                      <ChevronRight size={13} style={{ color: '#FF3B3B' }} />
+                      <ChevronRight size={13} style={{ color: '#FF6B00' }} />
                     </motion.div>
                   )}
                 </>
@@ -210,8 +237,8 @@ function Sidebar({ mobile = false, onClose }) {
             whileTap={{ scale: 0.98 }}
             className="glass-glow rounded-2xl p-4"
             style={{
-              background: 'linear-gradient(135deg, rgba(255,59,59,0.12) 0%, rgba(180,20,20,0.12) 100%)',
-              border: '1px solid rgba(255,59,59,0.22)',
+              background: 'linear-gradient(135deg, rgba(255,107,0,0.14) 0%, rgba(204,78,0,0.12) 100%)',
+              border: '1px solid rgba(255,107,0,0.28)',
             }}
           >
             <div className="flex items-center gap-3">
@@ -220,14 +247,14 @@ function Sidebar({ mobile = false, onClose }) {
                   width: 34,
                   height: 34,
                   borderRadius: 12,
-                  background: 'rgba(255,59,59,0.12)',
-                  border: '1px solid rgba(255,59,59,0.24)',
+                  background: 'rgba(255,107,0,0.15)',
+                  border: '1px solid rgba(255,107,0,0.3)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
               >
-                <Star size={16} style={{ color: '#FF3B3B' }} />
+                <Star size={16} style={{ color: '#FFA726' }} />
               </div>
               <div>
                 <p
@@ -237,7 +264,7 @@ function Sidebar({ mobile = false, onClose }) {
                   Upgrade to Pro
                 </p>
                 <p
-                  className="text-[11px] text-[#8A8FA8]"
+                  className="text-[11px] text-[#9499B3]"
                   style={{ fontFamily: 'Cabinet Grotesk, sans-serif', fontWeight: 400 }}
                 >
                   Unlimited everything
@@ -279,7 +306,7 @@ export default function DashboardLayout() {
   })
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: '#11131A' }}>
+    <div style={{ display: 'flex', minHeight: '100vh', background: '#0B0A10' }}>
       <MouseSpotlight />
 
       <div className="hidden lg:block" style={{ width: 240, flexShrink: 0, zIndex: 2, position: 'sticky', top: 0, height: '100vh', alignSelf: 'flex-start', overflow: 'hidden' }}>
@@ -317,9 +344,9 @@ export default function DashboardLayout() {
             justifyContent: 'space-between',
             padding: '0 24px',
             height: 64,
-            background: 'rgba(14,16,22,0.85)',
+            background: 'rgba(11,10,16,0.85)',
             backdropFilter: 'blur(20px)',
-            borderBottom: '1px solid rgba(255,255,255,0.05)',
+            borderBottom: '1px solid rgba(255,255,255,0.06)',
             position: 'sticky',
             top: 0,
             zIndex: 10,
@@ -363,14 +390,14 @@ export default function DashboardLayout() {
                   width: 30,
                   height: 30,
                   borderRadius: '50%',
-                  background: 'linear-gradient(135deg,#FF3B3B,#8B0000)',
+                  background: 'linear-gradient(135deg,#FF6B00,#CC4E00)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   fontSize: 11,
                   fontWeight: 800,
                   color: 'white',
-                  boxShadow: '0 0 12px rgba(255,59,59,0.4)',
+                  boxShadow: '0 0 12px rgba(255,107,0,0.4)',
                   flexShrink: 0,
                 }}
               >
@@ -411,6 +438,9 @@ export default function DashboardLayout() {
             <Outlet />
           </motion.div>
         </main>
+
+        {/* Persistent Nova Assistant Widget outside per-route transitions */}
+        <CompanionWidget />
       </div>
     </div>
   )

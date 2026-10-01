@@ -11,6 +11,12 @@ from middleware.auth import get_authenticated_user, require_premium
 from database import supabase
 from services.gemini_service import call_groq, _extract_json
 from services.professional_resume_pdf import build_professional_resume_pdf
+from services.resume_structure import (
+    ResumeDocument,
+    parse_source_resume,
+    build_source_items_for_prompt,
+    reconstruct_resume_structure,
+)
 import functools
 import json
 import logging
@@ -29,7 +35,12 @@ def _safe_limit(rate: str):
                 if args and isinstance(args[0], BaseModel):
                     return await fn(None, *args, **kwargs)
                 return await fn(*args, **kwargs)
-            return await wrapped(*args, **kwargs)
+            try:
+                return await wrapped(*args, **kwargs)
+            except Exception as e:
+                if "parameter `response` must be an instance of" in str(e):
+                    return await fn(*args, **kwargs)
+                raise
         return handler
     return decorator
 
@@ -209,7 +220,7 @@ Return ONLY this exact JSON structure. No extra fields. No markdown.
 """
 
 
-def count_kw_coverage(text: str, jd: str) -> int:
+def count_kw_coverage(text: str, jd: str, source_text: str = "") -> int:
     import re
     stopwords = {
         "the", "and", "for", "with", "that", "this", "will", "have",
@@ -225,7 +236,14 @@ def count_kw_coverage(text: str, jd: str) -> int:
     keywords = [w for w in words if len(w) > 3 and w not in stopwords]
     if not keywords:
         return 30
-    matches = sum(1 for k in keywords if k in text.lower())
+    text_lower = text.lower()
+    source_lower = source_text.lower() if source_text else ""
+    matches = 0
+    for k in keywords:
+        if k in text_lower:
+            # If source_text is provided, reward keyword only if supported by candidate's source resume
+            if not source_lower or k in source_lower:
+                matches += 1
     return min(int((matches / len(keywords)) * 100), 99)
 
 
@@ -325,8 +343,21 @@ def _contains_grounded_term(haystack: str, term: str) -> bool:
     cleaned = _normalize_grounding_text(term)
     if not cleaned:
         return False
+    if cleaned in haystack:
+        return True
     pattern = re.escape(cleaned).replace(r"\ ", r"\s+")
-    return bool(re.search(rf"(?<![a-z0-9]){pattern}(?![a-z0-9])", haystack))
+    if bool(re.search(rf"(?<![a-z0-9]){pattern}(?![a-z0-9])", haystack)):
+        return True
+    # Handle common tech variants / abbreviations
+    if cleaned == "rest" and "restful" in haystack:
+        return True
+    if cleaned == "restful" and "rest" in haystack:
+        return True
+    if cleaned == "kubernetes" and "k8s" in haystack:
+        return True
+    if cleaned == "k8s" and "kubernetes" in haystack:
+        return True
+    return False
 
 
 def _is_grounded_phrase(value: str, source_lower: str, jd_lower: str) -> bool:
@@ -369,15 +400,33 @@ def _append_grounding_warning(result: dict, kind: str, message: str, values: lis
     result["is_suspicious"] = True
 
 
-def _find_ungrounded_tech_terms(text: str, source_lower: str, jd_lower: str) -> list[str]:
+def _find_ungrounded_tech_terms(text: str, source_lower: str, jd_lower: str = "") -> list[str]:
     normalized_text = _normalize_grounding_text(text)
     ungrounded: list[str] = []
+    # 1. Check curated list of technical terms against source resume
     for term in GROUNDING_TECH_TERMS:
         if not _contains_grounded_term(normalized_text, term):
             continue
-        if _is_grounded_phrase(term, source_lower, jd_lower):
+        if _contains_grounded_term(source_lower, term):
             continue
         ungrounded.append(term)
+
+    # 2. Check general tech candidates (mixed-case names, symbols, or curated ML markers)
+    tech_candidates = re.findall(r"\b[A-Z][a-zA-Z0-9+#.]{2,}\b", text)
+    for cand in tech_candidates:
+        cand_lower = cand.lower().strip("*")
+        if len(cand_lower) < 3 or cand_lower in OPTIMIZER_IGNORED_TECH_TERMS:
+            continue
+        is_tech = (
+            cand_lower in GROUNDING_TECH_TERMS
+            or cand_lower in OPTIMIZER_ML_MARKERS
+            or bool(re.search(r"[a-z][A-Z]|[A-Z]{2,}[a-z]|[a-zA-Z][0-9]|[0-9][a-zA-Z]|[+#.]", cand))
+        )
+        if not is_tech:
+            continue
+        if not _contains_grounded_term(source_lower, cand_lower):
+            ungrounded.append(cand)
+
     return list(dict.fromkeys(ungrounded))
 
 
@@ -386,14 +435,14 @@ def _metric_is_estimated(text: str, start: int) -> bool:
     return bool(GROUNDING_ESTIMATE_PREFIX_RE.search(prefix))
 
 
-def _metric_is_grounded(metric: str, source_lower: str, jd_lower: str) -> bool:
+def _metric_is_grounded(metric: str, source_lower: str, jd_lower: str = "") -> bool:
     cleaned = _normalize_grounding_text(metric)
     compact = re.sub(r"\s+", "", cleaned)
+    # The source resume is the ONLY valid source for candidate metrics.
+    # The JD is NEVER evidence for candidate achievement.
     return (
         cleaned in source_lower
-        or cleaned in jd_lower
         or compact in re.sub(r"\s+", "", source_lower)
-        or compact in re.sub(r"\s+", "", jd_lower)
     )
 
 
@@ -626,7 +675,7 @@ def _enforce_source_number_grounding(result: dict, resume_text: str, user_id: st
         if not isinstance(bullet_obj, dict):
             continue
         for key, value in list(bullet_obj.items()):
-            if key in {"original", "improved"}:
+            if key in {"original", "improved", "source_id", "entry_id", "section"}:
                 continue
             sanitized = _sanitize_numbered_generated_value(
                 value,
@@ -744,6 +793,55 @@ def _audit_resume_numbers_against_source(result: dict, source_text: str) -> list
     return list(rows_by_number.values())
 
 
+def _extract_source_skills(resume_text: str) -> list[str]:
+    skills: list[str] = []
+    in_skills_section = False
+    for line in resume_text.splitlines():
+        trimmed = line.strip()
+        if not trimmed:
+            continue
+        lower = trimmed.lower()
+        if re.match(r"^(?:technical\s+|core\s+)?skills?\s*[:|-]", lower):
+            parts = re.split(r"[:|-]", trimmed, maxsplit=1)
+            if len(parts) > 1 and parts[1].strip():
+                for item in re.split(r"[,|;/•\t]", parts[1]):
+                    s = item.strip().strip("-*•")
+                    if s and len(s) > 1 and s not in skills:
+                        skills.append(s)
+            in_skills_section = True
+            continue
+        elif in_skills_section:
+            if re.match(r"^(?:experience|education|projects|summary|certifications|awards|work)\b", lower):
+                in_skills_section = False
+            else:
+                for item in re.split(r"[,|;/•\t]", trimmed):
+                    s = item.strip().strip("-*•")
+                    if s and len(s) > 1 and s not in skills:
+                        skills.append(s)
+
+    try:
+        from routers.job_match import extract_skills
+        for skill in extract_skills(resume_text):
+            m = re.search(rf"\b{re.escape(skill)}\b", resume_text, re.IGNORECASE)
+            display = m.group(0) if m else skill.title()
+            if not any(display.lower() == s.lower() for s in skills):
+                skills.append(display)
+    except Exception:
+        pass
+
+    return skills
+
+
+def _is_skills_empty(s) -> bool:
+    if not s:
+        return True
+    if isinstance(s, dict):
+        return not any(bool(items) for items in s.values())
+    if isinstance(s, (list, tuple, set)):
+        return len(s) == 0
+    return False
+
+
 def _validate_against_source(result: dict, resume_text: str, jd: str) -> dict:
     if not isinstance(result, dict):
         return result
@@ -759,7 +857,7 @@ def _validate_against_source(result: dict, resume_text: str, jd: str) -> dict:
             if _contains_grounded_term(source_lower, skill):
                 kept.append(skill)
             elif _contains_grounded_term(jd_lower, skill):
-                kept.append(skill)
+                # JD-only skills are GAPS, NOT candidate skills!
                 jd_gap_fill_skills.append(skill)
             else:
                 dropped_skills.append(skill)
@@ -771,13 +869,18 @@ def _validate_against_source(result: dict, resume_text: str, jd: str) -> dict:
             kept = filter_skill_list(items)
             dropped = [
                 skill for skill in _split_skill_items(items)
-                if skill not in kept and not _is_grounded_phrase(skill, source_lower, jd_lower)
+                if skill not in kept and not _contains_grounded_term(source_lower, skill)
             ]
             skills[category] = kept
             if dropped:
                 logger.warning(f"Dropped ungrounded skills in {category}: {dropped}")
     elif isinstance(skills, list):
         result["optimized_skills"] = filter_skill_list(skills)
+
+    if _is_skills_empty(result.get("optimized_skills")):
+        source_skills = _extract_source_skills(resume_text)
+        result["optimized_skills"] = source_skills
+        result["skills_optimization_failed"] = True
 
     for key in ("skills_to_highlight", "added_keywords"):
         if isinstance(result.get(key), list):
@@ -796,6 +899,11 @@ def _validate_against_source(result: dict, resume_text: str, jd: str) -> dict:
     gap_fill_unique = list(dict.fromkeys(jd_gap_fill_skills))
     if gap_fill_unique:
         result["jd_gap_fill_skills"] = gap_fill_unique
+        missing = result.setdefault("missing_keywords", [])
+        if isinstance(missing, list):
+            for g_skill in gap_fill_unique:
+                if g_skill not in missing:
+                    missing.append(g_skill)
 
     for collection_key, text_key in (("improved_bullets", "improved"), ("new_bullets", "text")):
         for bullet_obj in result.get(collection_key) or []:
@@ -843,6 +951,168 @@ def _validate_against_source(result: dict, resume_text: str, jd: str) -> dict:
                 logger.warning(
                     f"Marked ungrounded metrics in {collection_key}: {flagged_metrics}"
                 )
+
+    return result
+
+
+def _validate_optimized_structure(doc: ResumeDocument, result: dict, user_id: str = "") -> dict:
+    """
+    Validates structural integrity of the optimized resume against the parsed source document.
+    Enforces:
+    - Section ownership (experience vs projects never mix)
+    - Source ID validity
+    - Original entry count preservation (no dropped experiences or projects)
+    - Company, role, and date preservation
+    - Document hierarchy reconstruction
+    """
+    if not isinstance(result, dict) or not doc:
+        return result
+
+    bullet_map = doc.bullet_map
+    valid_source_ids = set(bullet_map.keys())
+
+    validated_rewrites: dict[str, dict[str, Any]] = {}
+    for bullet_obj in result.get("improved_bullets") or []:
+        if not isinstance(bullet_obj, dict):
+            continue
+
+        source_id = str(bullet_obj.get("source_id") or "").strip()
+        original_text = str(bullet_obj.get("original") or "").strip()
+        improved_text = str(bullet_obj.get("improved") or "").strip()
+
+        if not source_id or source_id not in valid_source_ids:
+            # Attempt to resolve by original text match
+            matched_bullet = None
+            if original_text:
+                for b in doc.all_bullets:
+                    if b.source_id not in validated_rewrites and (
+                        b.original.strip() == original_text
+                        or b.original.strip() in original_text
+                        or original_text in b.original.strip()
+                    ):
+                        matched_bullet = b
+                        break
+            if matched_bullet:
+                source_id = matched_bullet.source_id
+                bullet_obj["source_id"] = source_id
+            else:
+                logger.warning(
+                    "optimizer.source_id_invalid: Rejected item with unknown or missing source_id '%s' for user %s",
+                    source_id,
+                    user_id,
+                )
+                _append_grounding_warning(
+                    result,
+                    "structure",
+                    f"Rejected item with unknown source_id '{source_id}'.",
+                    [source_id or "missing_source_id"],
+                )
+                continue
+
+        source_bullet = bullet_map[source_id]
+
+        # Enforce section ownership: an experience bullet CANNOT become a project bullet and vice-versa
+        claimed_section = str(bullet_obj.get("section") or source_bullet.section).strip().lower()
+        if claimed_section != source_bullet.section:
+            logger.warning(
+                "optimizer.structure_mismatch: Section mismatch for source_id '%s': claimed '%s', expected '%s'",
+                source_id,
+                claimed_section,
+                source_bullet.section,
+            )
+            bullet_obj["section"] = source_bullet.section
+            _append_grounding_warning(
+                result,
+                "structure",
+                f"Enforced section ownership for {source_id} to {source_bullet.section}.",
+                [source_id],
+            )
+
+        # Phase 8: Reject unsupported technology claims in improved bullets
+        source_lower = _normalize_grounding_text(doc.raw_text)
+        ungrounded_tech = _find_ungrounded_tech_terms(improved_text, source_lower)
+        if ungrounded_tech:
+            logger.warning(
+                "optimizer.tech_rejected: Reverting %s due to unsupported tech: %s",
+                source_id,
+                ungrounded_tech,
+            )
+            improved_text = source_bullet.original
+            bullet_obj["improved"] = improved_text
+            bullet_obj["keywords_added"] = []
+            bullet_obj["metric_added"] = ""
+            bullet_obj["improvement_reason"] = (
+                "Kept original bullet because the generated rewrite introduced technologies absent from the source resume."
+            )
+
+        validated_rewrites[source_id] = {
+            "source_id": source_id,
+            "section": source_bullet.section,
+            "original": source_bullet.original,
+            "improved": improved_text if improved_text else source_bullet.original,
+            "keywords_added": bullet_obj.get("keywords_added", []),
+            "metric_added": bullet_obj.get("metric_added", ""),
+            "improvement_reason": bullet_obj.get("improvement_reason", ""),
+        }
+
+    # Ensure NO original bullet is omitted: restore missing bullets
+    for b in doc.all_bullets:
+        if b.source_id not in validated_rewrites:
+            logger.info("optimizer.bullet_restored: Restoring omitted source bullet %s", b.source_id)
+            validated_rewrites[b.source_id] = {
+                "source_id": b.source_id,
+                "section": b.section,
+                "original": b.original,
+                "improved": b.original,
+                "keywords_added": [],
+                "metric_added": "",
+                "improvement_reason": "Restored original bullet because model omitted this item.",
+            }
+
+    # Reconstruct improved_bullets list in stable source order
+    final_improved_bullets = [
+        validated_rewrites[b.source_id]
+        for b in doc.all_bullets
+    ]
+    result["improved_bullets"] = final_improved_bullets
+
+    # Reject any new_bullets that attempt to invent new entries or projects or claim unsupported tech
+    safe_new_bullets = []
+    source_lower = _normalize_grounding_text(doc.raw_text)
+    for nb in result.get("new_bullets") or []:
+        if not isinstance(nb, dict):
+            continue
+        if nb.get("is_new_entry") or nb.get("new_project") or nb.get("new_company"):
+            logger.warning("optimizer.structure_mismatch: Rejected invented project/entry in new_bullets")
+            continue
+        nb_text = str(nb.get("text", "") or "")
+        if _find_ungrounded_tech_terms(nb_text, source_lower):
+            logger.warning("optimizer.tech_rejected: Dropping new_bullet due to ungrounded tech: %s", nb_text)
+            continue
+        safe_new_bullets.append(nb)
+    result["new_bullets"] = safe_new_bullets
+
+    # Reconstruct resume structure deterministically
+    reconstructed = reconstruct_resume_structure(
+        doc=doc,
+        bullet_rewrites=validated_rewrites,
+        optimized_summary=result.get("optimized_summary", ""),
+        optimized_skills=result.get("optimized_skills"),
+    )
+
+    result["reconstructed_resume"] = reconstructed
+    result["experience_entries"] = reconstructed["experience"]
+    result["project_entries"] = reconstructed["projects"]
+
+    # Record entry counts
+    result["original_experience_count"] = doc.experience_count
+    result["optimized_experience_count"] = len(reconstructed["experience"])
+    result["original_project_count"] = doc.project_count
+    result["optimized_project_count"] = len(reconstructed["projects"])
+    result["original_education_count"] = doc.education_count
+    result["optimized_education_count"] = len(reconstructed["education"])
+    result["original_certification_count"] = doc.certification_count
+    result["optimized_certification_count"] = len(reconstructed["certifications"])
 
     return result
 
@@ -1492,6 +1762,9 @@ class ProfessionalResumePdfRequest(BaseModel):
     name: Optional[str] = ""
     email: Optional[str] = ""
     phone: Optional[str] = ""
+    linkedin: Optional[str] = ""
+    github: Optional[str] = ""
+    location: Optional[str] = ""
     job_title: Optional[str] = ""
     source_resume_text: Optional[str] = ""
     content: dict[str, Any]
@@ -1515,6 +1788,9 @@ async def generate_professional_resume_pdf(
             name=body.name or "Your Name",
             email=body.email or "",
             phone=body.phone or "",
+            linkedin=body.linkedin or "",
+            github=body.github or "",
+            location=body.location or "",
             content=body.content,
             source_resume_text=body.source_resume_text or "",
         )
@@ -1594,7 +1870,7 @@ def _resume_number_audit_pieces(result: dict) -> list[str]:
         for bullet_obj in result.get(collection_key) or []:
             if isinstance(bullet_obj, dict):
                 for key, value in bullet_obj.items():
-                    if collection_key == "improved_bullets" and key == "original":
+                    if key in {"original", "source_id", "entry_id", "section"}:
                         continue
                     pieces.extend(_flatten_skills(value))
             elif bullet_obj:
@@ -1614,7 +1890,7 @@ def _resume_number_audit_pieces(result: dict) -> list[str]:
 
 def _stamp_ats_scores(result: dict, resume_text: str, job_description: str) -> tuple[int, int]:
     ats_before = count_kw_coverage(resume_text, job_description)
-    ats_after = count_kw_coverage(_optimized_text_for_ats(result), job_description)
+    ats_after = count_kw_coverage(_optimized_text_for_ats(result), job_description, source_text=resume_text)
     result["ats_before"] = ats_before
     result["ats_after"] = ats_after
     result["ats_regressed"] = ats_after < ats_before
@@ -1662,8 +1938,8 @@ def _apply_optimizer_safety_filters(
         f"flag_reason={result.get('flag_reason', '')[:120]}"
     )
 
-    # Skills absent from the source but present in the JD can stay only as
-    # defensible gap-fill. Skills absent from both are treated as fabricated.
+    # Candidate technologies in bullets must be grounded in the source resume.
+    # The JD is NEVER evidence for candidate skills or technical experience.
     fabricated_skills = []
 
     for bullet_obj in result.get("improved_bullets") or []:
@@ -1675,7 +1951,7 @@ def _apply_optimizer_safety_filters(
             t = term.lower().strip("*")
             if len(t) < 3 or t in OPTIMIZER_IGNORED_TECH_TERMS:
                 continue
-            if t not in original_lower and t not in jd_lower:
+            if t not in original_lower:
                 fabricated_skills.append(term)
 
     for bullet_obj in result.get("new_bullets") or []:
@@ -1687,8 +1963,82 @@ def _apply_optimizer_safety_filters(
             t = term.lower().strip("*")
             if len(t) < 3 or t in OPTIMIZER_IGNORED_TECH_TERMS:
                 continue
-            if t not in original_lower and t not in jd_lower:
+            if t not in original_lower:
                 fabricated_skills.append(term)
+
+    # Claim-level grounding for new_bullets:
+    # Require that the action/capability described has reasonable lexical overlap
+    # with the source resume's actual bullets/sentences.
+    action_stopwords = {
+        "a", "an", "the", "and", "or", "with", "for", "to", "of", "in", "on", "at",
+        "by", "from", "using", "as", "is", "was", "were", "be", "been", "being",
+        "have", "has", "had", "do", "does", "did", "our", "your", "my", "their",
+        "its", "this", "that", "these", "those", "we", "i", "you", "they", "it",
+        "into", "over", "after", "before", "between", "through", "during", "without",
+        "again", "further", "then", "once", "here", "there", "when", "where", "why",
+        "how", "all", "any", "both", "each", "few", "more", "most", "other", "some",
+        "such", "no", "nor", "not", "only", "own", "same", "so", "than", "too",
+        "very", "can", "will", "just", "should", "now", "etc", "across", "per",
+    }
+    source_bullet_word_sets: list[set[str]] = []
+    for line in resume_text.splitlines():
+        line_clean = line.strip()
+        if not line_clean:
+            continue
+        words = {
+            w.lower()
+            for w in re.findall(r"\b[A-Za-z][A-Za-z0-9+#.]*\b", line_clean)
+            if len(w) > 2 and w.lower() not in action_stopwords
+        }
+        if words:
+            source_bullet_word_sets.append(words)
+
+    grounded_new_bullets = []
+    unsupported_action_bullets = []
+    unsupported_action_terms = []
+
+    for bullet_obj in result.get("new_bullets") or []:
+        if not isinstance(bullet_obj, dict):
+            continue
+        bullet_text = str(bullet_obj.get("text", "") or "")
+        bullet_words = {
+            w.lower()
+            for w in re.findall(r"\b[A-Za-z][A-Za-z0-9+#.]*\b", bullet_text)
+            if len(w) > 2 and w.lower() not in action_stopwords
+        }
+        max_overlap = max(
+            (len(bullet_words & s_set) for s_set in source_bullet_word_sets),
+            default=0,
+        )
+        if max_overlap < 2:
+            unsupported_action_bullets.append(bullet_text)
+            terms = [
+                t for t in re.findall(r'\b[A-Z][a-zA-Z0-9+#.]{2,}\b', bullet_text)
+                if t.lower() not in original_lower
+            ]
+            if terms:
+                unsupported_action_terms.extend(terms)
+            continue
+        grounded_new_bullets.append(bullet_obj)
+
+    if unsupported_action_bullets:
+        result["is_suspicious"] = True
+        result["domain_mismatch"] = True
+        result["insufficient_data"] = True
+        flagged_snippet = ", ".join(dict.fromkeys(unsupported_action_terms)) if unsupported_action_terms else unsupported_action_bullets[0][:60]
+        existing_reason = result.get("flag_reason") or ""
+        action_flag_reason = (
+            f"Fabricated action capability in new bullets: {flagged_snippet}. "
+            f"Action has no counterpart in source resume."
+        )
+        result["flag_reason"] = f"{action_flag_reason} {existing_reason}".strip()
+        _append_grounding_warning(
+            result,
+            "new_bullets_action",
+            "Removed new bullets describing actions/capabilities absent from source resume.",
+            unsupported_action_terms or [b[:60] for b in unsupported_action_bullets],
+        )
+        result["new_bullets"] = grounded_new_bullets
 
     if result.get("domain_mismatch"):
         ml_display_names = {
@@ -1810,8 +2160,8 @@ def _ats_regression_retry_addendum(ats_before: int, ats_after: int) -> str:
         f"The prior attempt under-covered JD keywords and scored {ats_after}, "
         f"while the original resume scored {ats_before}. Close the {gap}-point gap.\n"
         "- Regenerate the same JSON structure.\n"
-        "- Use RULE 7 to add genuine, defensible JD gap-fill bullets and skills.\n"
-        "- Copy missing JD technical phrases verbatim when they are defensible.\n"
+        "- Incorporate JD keywords supported by candidate source context into improved bullets.\n"
+        "- Copy missing JD technical phrases verbatim when they are supported by source context.\n"
         "- Do not reintroduce anything ungrounded or fabricated.\n"
         "- The revised ats keyword coverage must be at least the original resume.\n"
     )
@@ -1825,7 +2175,10 @@ async def _generate_optimizer_attempt(
     job_title: str,
     user_id: str,
     retry_addendum: str = "",
+    doc: Optional[ResumeDocument] = None,
 ) -> tuple[dict, int, int]:
+    if doc is None:
+        doc = parse_source_resume(resume_text)
     messages = [
         {"role": "system", "content": system},
         {"role": "user", "content": f"{user_msg}{retry_addendum}"},
@@ -1868,6 +2221,11 @@ async def _generate_optimizer_attempt(
         job_title,
         user_id,
     )
+    result = _validate_optimized_structure(
+        doc,
+        result,
+        user_id,
+    )
     ats_before, ats_after = _stamp_ats_scores(result, resume_text, job_description)
     return result, ats_before, ats_after
 
@@ -1877,6 +2235,9 @@ async def _generate_optimizer_attempt(
 async def optimize_resume(request: Request, body: OptimizeRequest, user=Depends(get_authenticated_user), premium=Depends(require_premium)):
     if not body.resume_text.strip() or not body.job_description.strip():
         raise HTTPException(status_code=400, detail="Resume and job description required.")
+
+    doc = parse_source_resume(body.resume_text)
+    source_items = build_source_items_for_prompt(doc)
 
     system = (
         "You are an elite ATS optimization specialist and resume writer. "
@@ -1915,6 +2276,7 @@ async def optimize_resume(request: Request, body: OptimizeRequest, user=Depends(
         f"TARGET JOB TITLE: {body.job_title or 'Software Developer'}\n\n"
         f"JOB DESCRIPTION:\n{body.job_description}\n\n"
         f"ORIGINAL RESUME:\n{body.resume_text}\n\n"
+        f"SOURCE BULLETS TO TRANSFORM (preserve every source_id exactly):\n{json.dumps(source_items, indent=2)}\n\n"
         
         "════════════════════════════════════════════════════════\n"
         "RULE 0 — PRESERVE REALITY (NON-NEGOTIABLE)\n"
@@ -2041,51 +2403,33 @@ async def optimize_resume(request: Request, body: OptimizeRequest, user=Depends(
         "- Pick one domain set and apply it consistently\n\n"
         
         "════════════════════════════════════════════════════════\n"
-        "RULE 4 — BULLETS (STRICT STRUCTURE)\n"
+        "RULE 4 — BULLET REWRITING & WORDING\n"
         "════════════════════════════════════════════════════════\n"
-        "Each bullet MUST follow this exact formula:\n"
-        "[Power Verb] + [Specific Technology] + "
-        "[System Behavior] + [optional **source metric**]\n\n"
-        "Hard constraints:\n"
-        "- Maximum 25 words per bullet\n"
-        "- All bullets in past tense\n"
-        "- Metrics are optional and allowed only when the same figure\n"
-        "  exists in the original source bullet or elsewhere in the\n"
-        "  original resume text\n"
-        "- If the source bullet has no metric, end with the system\n"
-        "  behavior or impact wording without any number\n"
-        "- No vague phrases: 'scalable', 'robust', 'efficient',\n"
-        "  'various', 'multiple', 'several', 'significant'\n"
-        "- No filler words\n"
-        "- No same keyword repeated more than twice across\n"
-        "  the entire resume\n\n"
-        "When the source already contains a metric, preserve the exact\n"
-        "source figure and its unit; otherwise, omit the metric entirely.\n\n"
+        "Each bullet should be:\n"
+        "- Concise (preferred 15–28 words, hard maximum 32 words)\n"
+        "- Specific, technically accurate, and relevant to the target JD\n"
+        "- Outcome-oriented when source evidence supports an outcome\n"
+        "- Never invent a metric simply to satisfy a format\n"
+        "- If the source has no metric, do not create one\n"
+        "- When the source already contains a metric, preserve the exact\n"
+        "  source figure and its unit; otherwise, omit the metric entirely\n"
+        "- No vague filler phrases: 'scalable', 'robust', 'efficient', 'various', 'multiple'\n"
+        "- All bullets in past tense\n\n"
         "BAD examples — NEVER generate these:\n"
         "'Engineered a scalable system' ← vague, no specifics\n"
         "'Achieved an unsupported accuracy claim' ← no context, sounds fabricated\n"
         "'Increased business revenue by an unsupported percentage' ← unverifiable,\n"
         " destroys recruiter trust instantly\n"
-        "'Worked on backend development' ← banned verb, no detail\n\n"
+        "'Worked on backend development' ← weak verb, no detail\n\n"
         
         "════════════════════════════════════════════════════════\n"
-        "RULE 5 — BANNED VERBS (ABSOLUTE)\n"
+        "RULE 5 — ACTION VERBS & STYLE\n"
         "════════════════════════════════════════════════════════\n"
-        "NEVER use:\n"
-        "worked, helped, assisted, involved, responsible,\n"
-        "participated, supported, contributed, handled\n\n"
-        "Exception: 'Managed' is allowed ONLY when referring\n"
-        "to people or teams. Never use for tasks or systems.\n\n"
-        "USE THESE INSTEAD — each verb used MAX ONCE per resume:\n"
-        "Engineered, Architected, Built, Developed, Designed,\n"
-        "Implemented, Deployed, Optimized, Automated, Integrated,\n"
-        "Migrated, Launched, Streamlined, Trained, Evaluated,\n"
-        "Constructed, Delivered, Established, Reduced, Accelerated,\n"
-        "Spearheaded, Orchestrated, Reconstructed, Configured\n\n"
-        "ANTI-REPETITION RULE:\n"
-        "Never open two bullets with the same verb anywhere\n"
-        "in the entire resume. Every bullet must start with\n"
-        "a different verb. Scan all bullets before finalizing.\n\n"
+        "- Prefer strong action verbs (Engineered, Architected, Built, Developed, Designed,\n"
+        "  Implemented, Deployed, Optimized, Automated, Integrated, Launched, Streamlined, etc.)\n"
+        "- Avoid passive or weak openings (worked, helped, assisted, involved, responsible, participated)\n"
+        "- Avoid repetitive openings where natural, but never replace an accurate verb with an\n"
+        "  unnatural synonym merely to increase vocabulary diversity.\n\n"
         
         "════════════════════════════════════════════════════════\n"
         "RULE 6 — JD EXACT PHRASE MATCHING\n"
@@ -2098,14 +2442,13 @@ async def optimize_resume(request: Request, body: OptimizeRequest, user=Depends(
         "- Never substitute a synonym for a technical term\n\n"
         
         "════════════════════════════════════════════════════════\n"
-        "RULE 7 — NEW BULLETS FOR JD GAPS\n"
+        "RULE 7 — JD GAPS ARE ANALYSIS RESULTS, NOT FABRICATION LICENSE\n"
         "════════════════════════════════════════════════════════\n"
-        "- Identify 2–4 JD requirements absent from original\n"
-        "- Write bullets plausible for this candidate's background\n"
-        "- Do NOT introduce technologies from a different domain\n"
-        "- Fewer believable bullets > more fabricated ones\n"
-        "- If fewer than 2 genuine gaps exist, write fewer bullets\n"
-        "- Each new bullet must cite which JD phrase it covers\n\n"
+        "- JD requirements absent from the original resume are candidate GAPS.\n"
+        "- Report missing JD requirements in missing_keywords.\n"
+        "- NEVER fabricate experience, projects, technologies, or skills to fill JD gaps.\n"
+        "- Do NOT invent new experience or project entries.\n"
+        "- Do NOT write fabricated bullets claiming candidate experience with JD-only technologies.\n\n"
         
         "════════════════════════════════════════════════════════\n"
         "RULE 8 — METRIC FORMATTING\n"
@@ -2145,15 +2488,17 @@ async def optimize_resume(request: Request, body: OptimizeRequest, user=Depends(
         '  "optimized_skills": {\n'
         '    "Languages": ["Python", "Java"],\n'
         '    "ML & Data": ["Machine Learning", "Feature Engineering"],\n'
-        '    "Tools & Platforms": ["Docker", "Kubernetes"],\n'
+        '    "Tools & Platforms": ["Docker", "Git"],\n'
         '    "Concepts": ["Data Pipelines", "Model Training"]\n'
         '  },\n'
         
         '  "improved_bullets": [\n'
         '    {\n'
+        '      "source_id": "experience_001_bullet_001",\n'
+        '      "section": "experience",\n'
         '      "original": "exact original bullet text",\n'
-        '      "improved": "verb + technology + behavior + optional source metric",\n'
-        '      "keywords_added": ["kw1", "kw2"],\n'
+        '      "improved": "concise, technically accurate rewrite with optional source metric",\n'
+        '      "keywords_added": ["source-supported keyword"],\n'
         '      "verb_upgrade": {"from": "worked", "to": "Engineered"},\n'
         '      "metric_added": "source metric preserved from original bullet, or empty string",\n'
         '      "improvement_reason": "plain English one sentence"\n'
@@ -2168,8 +2513,8 @@ async def optimize_resume(request: Request, body: OptimizeRequest, user=Depends(
         '    }\n'
         '  ],\n'
         
-        '  "added_keywords": ["every JD keyword present in output"],\n'
-        '  "missing_keywords": ["JD keywords still not coverable"],\n'
+        '  "added_keywords": ["every source-grounded JD keyword present in output"],\n'
+        '  "missing_keywords": ["JD keywords still not coverable from candidate resume"],\n'
         
         '  "improvement_explanation": {\n'
         '    "keywords_added": ["REST API", "Docker", "Microservices"],\n'
@@ -2189,7 +2534,7 @@ async def optimize_resume(request: Request, body: OptimizeRequest, user=Depends(
         '  },\n'
         
         '  "ats_tips": [\n'
-        '    "Add microservices to summary sentence 2",\n'
+        '    "Highlight microservices in summary sentence 2",\n'
         '    "Mention CI/CD in experience bullet 3"\n'
         '  ],\n'
         
@@ -2205,6 +2550,7 @@ async def optimize_resume(request: Request, body: OptimizeRequest, user=Depends(
             body.job_description,
             body.job_title or "",
             user["user_id"],
+            doc=doc,
         )
 
         if result.get("ats_regressed"):
@@ -2222,6 +2568,7 @@ async def optimize_resume(request: Request, body: OptimizeRequest, user=Depends(
                     body.job_title or "",
                     user["user_id"],
                     _ats_regression_retry_addendum(ats_before, ats_after),
+                    doc=doc,
                 )
                 result["ats_retry_attempted"] = True
                 result["ats_retry_previous_after"] = first_attempt_after
@@ -2257,7 +2604,7 @@ async def optimize_resume(request: Request, body: OptimizeRequest, user=Depends(
         # ── Domain mismatch threshold check ─────────────────────────────
         # If the JD requires >= 3 ML skills and the original resume has 0,
         # we cannot optimize without fabrication. Block and flag.
-        # Log for debugging — KEEP THIS LINE permanently
+        # Log for debugging - KEEP THIS LINE permanently
         # ── Hallucination guard ───────────────────────────────────────────
         # A skill can only appear in output if it existed in the original
         # resume. JD presence alone is NOT enough — the candidate must
@@ -2284,6 +2631,105 @@ async def get_optimization_history(user=Depends(get_authenticated_user), premium
     return {"success": True, "history": result.data}
 
 
+# ── Section-aware truncation ──────────────────────────────────────────
+# Reuses the same section-header patterns from _summary_metric_source_lines.
+# Priority order: EXPERIENCE > PROJECTS > SUMMARY > SKILLS > CERTIFICATIONS > EDUCATION
+# When truncation is needed, the lowest-priority sections are trimmed first.
+
+_SECTION_HEADER_RE = re.compile(
+    r"^(work\s+experience|professional\s+experience|experience|employment|"
+    r"projects?|project\s+experience|academic\s+projects?|personal\s+projects?|"
+    r"education|skills|technical\s+skills|core\s+skills|certifications?|"
+    r"summary|profile|objective|contact|achievements?|awards?)\b",
+    re.IGNORECASE,
+)
+
+# Higher number = trimmed first when over budget.
+_SECTION_PRIORITY = {
+    "education": 6,
+    "certifications": 5,
+    "certification": 5,
+    "awards": 5,
+    "achievements": 5,
+    "contact": 5,
+    "objective": 4,
+    "skills": 4,
+    "technical skills": 4,
+    "core skills": 4,
+    "summary": 3,
+    "profile": 3,
+    "projects": 2,
+    "project": 2,
+    "project experience": 2,
+    "academic projects": 2,
+    "personal projects": 2,
+    "work experience": 1,
+    "professional experience": 1,
+    "experience": 1,
+    "employment": 1,
+}
+
+
+def _smart_truncate_resume(text: str, max_chars: int = 8000) -> str:
+    """Split resume into sections, truncate lowest-priority sections first."""
+    lines = text.splitlines(keepends=True)
+    sections: list[tuple[str, list[str]]] = []
+    current_name = "__header__"
+    current_lines: list[str] = []
+
+    for line in lines:
+        stripped = line.strip()
+        match = _SECTION_HEADER_RE.match(stripped)
+        if match:
+            sections.append((current_name, current_lines))
+            current_name = match.group(1).lower().strip()
+            current_lines = [line]
+        else:
+            current_lines.append(line)
+    sections.append((current_name, current_lines))
+
+    total = sum(sum(len(l) for l in s_lines) for _, s_lines in sections)
+    if total <= max_chars:
+        return text
+
+    # Sort sections by priority (highest trim-priority first) but keep
+    # order stable within same priority.
+    indexed = [(i, name, s_lines) for i, (name, s_lines) in enumerate(sections)]
+    trim_order = sorted(
+        indexed,
+        key=lambda t: (-_SECTION_PRIORITY.get(t[1], 0), -t[0]),
+    )
+
+    excess = total - max_chars
+    for idx, name, s_lines in trim_order:
+        if excess <= 0:
+            break
+        section_len = sum(len(l) for l in s_lines)
+        # Keep at least the header line
+        header_len = len(s_lines[0]) if s_lines else 0
+        removable = section_len - header_len
+        if removable <= 0:
+            continue
+        if removable <= excess:
+            # Remove all body lines, keep header only
+            sections[idx] = (name, [s_lines[0]] if s_lines else [])
+            excess -= removable
+        else:
+            # Trim from the end of this section
+            keep = section_len - excess
+            kept: list[str] = []
+            acc = 0
+            for line in s_lines:
+                if acc + len(line) > keep:
+                    break
+                kept.append(line)
+                acc += len(line)
+            sections[idx] = (name, kept)
+            excess = 0
+
+    return "".join(l for _, s_lines in sections for l in s_lines)
+
+
 @router.post("/analyse")
 @limiter.limit("15/hour")  # AI-calling endpoint — prevent abuse
 async def analyse_resume(
@@ -2306,7 +2752,7 @@ async def analyse_resume(
         raise HTTPException(status_code=400, detail="Resume text is required.")
 
     if len(resume_text) > 8000:
-        resume_text = resume_text[:8000]
+        resume_text = _smart_truncate_resume(resume_text, 8000)
 
     has_job_description = bool(job_description.strip())
     jd_section = (
