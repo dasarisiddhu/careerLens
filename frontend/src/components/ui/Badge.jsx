@@ -1,42 +1,41 @@
 import React from 'react'
-import { cva } from 'class-variance-authority'
-import { cn } from '../../lib/utils'
+import { Sparkles } from 'lucide-react'
 
-const badgeVariants = cva(
-  'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold tracking-wide transition-colors uppercase font-display',
-  {
-    variants: {
-      variant: {
-        default:
-          'bg-primary/15 text-primary-light border border-primary/30 shadow-[0_0_12px_rgba(255,107,0,0.18)]',
-        accent:
-          'bg-accent/15 text-accent-light border border-accent/30 shadow-[0_0_12px_rgba(255,167,38,0.2)]',
-        glass:
-          'bg-white/[0.05] text-slate-300 border border-white/[0.1] backdrop-blur-md',
-        success:
-          'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30',
-        danger:
-          'bg-rose-500/15 text-rose-400 border border-rose-500/30',
-        outline:
-          'border border-white/20 text-slate-300',
-      },
-      size: {
-        sm: 'px-2 py-0.5 text-[10px]',
-        md: 'px-3 py-1 text-xs',
-        lg: 'px-4 py-1.5 text-sm',
-      },
-    },
-    defaultVariants: {
-      variant: 'default',
-      size: 'md',
-    },
+export function Badge({
+  children,
+  variant = 'blue', // 'blue', 'neutral', 'success', 'warning', 'danger'
+  size = 'md', // 'sm', 'md'
+  icon: Icon,
+  className = '',
+  sparkle = false,
+  ...props
+}) {
+  const baseStyles =
+    'inline-flex items-center font-medium rounded-pill border select-none transition-colors'
+
+  const sizeStyles = {
+    sm: 'text-[11px] px-2.5 py-0.5 gap-1.5',
+    md: 'text-xs px-3.5 py-1 gap-2',
   }
-)
 
-function Badge({ className, variant, size, ...props }) {
+  const variantStyles = {
+    blue: 'bg-blue-50/90 text-[#2563EB] border-blue-200/70 shadow-sm',
+    neutral: 'bg-white/80 text-[#475569] border-slate-200/80 shadow-sm',
+    success: 'bg-emerald-50 text-[#16A34A] border-emerald-200/70',
+    warning: 'bg-amber-50 text-[#D97706] border-amber-200/70',
+    danger: 'bg-rose-50 text-[#E11D48] border-rose-200/70',
+  }
+
   return (
-    <span className={cn(badgeVariants({ variant, size }), className)} {...props} />
+    <span
+      className={`${baseStyles} ${sizeStyles[size]} ${variantStyles[variant]} ${className}`}
+      {...props}
+    >
+      {sparkle && <Sparkles size={size === 'sm' ? 11 : 13} className="text-[#2563EB] shrink-0" />}
+      {Icon && <Icon size={size === 'sm' ? 11 : 13} className="shrink-0" />}
+      <span>{children}</span>
+    </span>
   )
 }
 
-export { Badge, badgeVariants }
+export default Badge

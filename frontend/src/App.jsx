@@ -27,6 +27,7 @@ const InterviewPredictor = lazy(() => import('./pages/dashboard/interviewpredict
 const ResumeOptimizer = lazy(() => import('./pages/dashboard/ResumeOptimizer'))
 const JobMatch = lazy(() => import('./pages/dashboard/JobMatch'))
 const Portfolio = lazy(() => import('./pages/dashboard/Portfolio'))
+const UIDevShowcase = lazy(() => import('./pages/dev/UIDevShowcase'))
 
 const PageLoader = () => (
   <div style={{
@@ -102,6 +103,15 @@ export default function App() {
           <Route path="optimizer" element={<ResumeOptimizer />} />
         </Route>
       </Route>
+
+      <Route
+        path="/_dev/ui"
+        element={
+          <Suspense fallback={<PageLoader />}>
+            <UIDevShowcase />
+          </Suspense>
+        }
+      />
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

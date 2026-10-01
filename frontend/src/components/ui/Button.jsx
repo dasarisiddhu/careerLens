@@ -1,52 +1,67 @@
-import React from 'react'
-import { cva } from 'class-variance-authority'
-import { Slot } from '@radix-ui/react-slot'
-import { cn } from '../../lib/utils'
+import React, { forwardRef } from 'react'
+import { motion } from 'framer-motion'
+import { Loader2 } from 'lucide-react'
 
-const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl text-sm font-semibold transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 disabled:pointer-events-none disabled:opacity-40 select-none active:scale-[0.98]',
+export const Button = forwardRef(function Button(
   {
-    variants: {
-      variant: {
-        primary:
-          'bg-gradient-to-r from-primary to-primary-dark text-white shadow-[0_4px_20px_rgba(255,107,0,0.38)] hover:shadow-[0_6px_28px_rgba(255,107,0,0.55)] hover:-translate-y-0.5 border border-primary-light/20',
-        ghost:
-          'bg-white/[0.04] text-slate-300 hover:text-white hover:bg-primary/10 hover:border-primary/30 border border-white/[0.08]',
-        glow:
-          'bg-gradient-to-r from-primary via-accent to-primary text-white shadow-[0_0_28px_rgba(255,107,0,0.5)] hover:shadow-[0_0_45px_rgba(255,107,0,0.75)] hover:scale-[1.02] border border-amber-300/30',
-        outline:
-          'border border-primary/40 bg-transparent text-primary hover:bg-primary/10 hover:border-primary',
-        secondary:
-          'bg-surface-elevated text-slate-200 hover:bg-surface-elevated/80 border border-white/10 hover:text-white',
-        danger:
-          'bg-rose-600/80 text-white hover:bg-rose-600 border border-rose-500/30 shadow-[0_4px_16px_rgba(225,29,72,0.3)]',
-      },
-      size: {
-        sm: 'h-8 px-3 text-xs rounded-lg',
-        md: 'h-10 px-4 py-2',
-        lg: 'h-12 px-6 text-base rounded-2xl',
-        icon: 'h-9 w-9 p-0',
-      },
-    },
-    defaultVariants: {
-      variant: 'primary',
-      size: 'md',
-    },
-  }
-)
+    children,
+    variant = 'primary', // 'primary' (dark black pill), 'blue' (solid blue pill), 'secondary' (white glass pill), 'ghost', 'destructive'
+    size = 'md', // 'sm', 'md', 'lg'
+    className = '',
+    icon: Icon,
+    trailingIcon: TrailingIcon,
+    loading = false,
+    disabled = false,
+    type = 'button',
+    onClick,
+    ...props
+  },
+  ref
+) {
+  const baseStyles =
+    'relative inline-flex items-center justify-center font-semibold rounded-pill transition-all duration-200 focus-ring select-none disabled:opacity-50 disabled:pointer-events-none'
 
-const Button = React.forwardRef(
-  ({ className, variant, size, asChild = false, ...props }, ref) => {
-    const Comp = asChild ? Slot : 'button'
-    return (
-      <Comp
-        className={cn(buttonVariants({ variant, size, className }))}
-        ref={ref}
-        {...props}
-      />
-    )
+  const sizeStyles = {
+    sm: 'text-xs px-3.5 py-1.5 gap-1.5 h-8',
+    md: 'text-sm px-5 py-2.5 gap-2 h-11',
+    lg: 'text-base px-7 py-3.5 gap-2.5 h-[52px]',
   }
-)
-Button.displayName = 'Button'
 
-export { Button, buttonVariants }
+  const variantStyles = {
+    primary:
+      'bg-[#0B0F19] text-white hover:bg-[#1E293B] shadow-[0_4px_14px_rgba(11,15,25,0.18)] border border-black/10 active:bg-black',
+    blue:
+      'bg-[#2563EB] text-white hover:bg-[#1D4ED8] shadow-[0_4px_16px_rgba(37,99,235,0.25)] border border-blue-600/20 active:bg-blue-800',
+    secondary:
+      'bg-white/80 hover:bg-white text-[#0B0F19] border border-slate-200/80 shadow-[0_2px_8px_rgba(0,0,0,0.04)] backdrop-blur-md active:bg-slate-100',
+    ghost:
+      'bg-transparent text-[#475569] hover:text-[#0B0F19] hover:bg-slate-100/70',
+    destructive:
+      'bg-[#E11D48] text-white hover:bg-[#BE123C] shadow-[0_4px_14px_rgba(225,29,72,0.2)]',
+  }
+
+  return (
+    <motion.button
+      ref={ref}
+      type={type}
+      onClick={onClick}
+      disabled={disabled || loading}
+      whileHover={disabled || loading ? undefined : { y: -1 }}
+      whileTap={disabled || loading ? undefined : { scale: 0.98 }}
+      className={`${baseStyles} ${sizeStyles[size]} ${variantStyles[variant]} ${className}`}
+      {...props}
+    >
+      {loading ? (
+        <Loader2 size={size === 'sm' ? 14 : 18} className="animate-spin text-current" />
+      ) : (
+        <>
+          {Icon && <Icon size={size === 'sm' ? 14 : 18} className="shrink-0" />}
+          <span>{children}</span>
+          {TrailingIcon && <TrailingIcon size={size === 'sm' ? 14 : 18} className="shrink-0" />}
+        </>
+      )}
+    </motion.button>
+  )
+})
+
+export default Button

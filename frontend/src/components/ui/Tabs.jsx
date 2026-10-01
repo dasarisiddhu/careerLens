@@ -1,43 +1,46 @@
 import React from 'react'
-import * as TabsPrimitive from '@radix-ui/react-tabs'
-import { cn } from '../../lib/utils'
+import { motion } from 'framer-motion'
 
-const Tabs = TabsPrimitive.Root
+export function Tabs({
+  tabs = [], // [{ id, label, icon: Icon }]
+  activeTab,
+  onChange,
+  className = '',
+}) {
+  return (
+    <div
+      role="tablist"
+      className={`inline-flex items-center p-1 bg-slate-100/90 rounded-pill border border-slate-200/80 backdrop-blur-sm ${className}`}
+    >
+      {tabs.map((tab) => {
+        const isActive = activeTab === tab.id
+        const Icon = tab.icon
 
-const TabsList = React.forwardRef(({ className, ...props }, ref) => (
-  <TabsPrimitive.List
-    ref={ref}
-    className={cn(
-      'inline-flex h-11 items-center justify-center rounded-xl bg-white/[0.04] p-1 text-slate-400 border border-white/[0.08] backdrop-blur-md',
-      className
-    )}
-    {...props}
-  />
-))
-TabsList.displayName = TabsPrimitive.List.displayName
+        return (
+          <button
+            key={tab.id}
+            role="tab"
+            aria-selected={isActive}
+            tabIndex={isActive ? 0 : -1}
+            onClick={() => onChange?.(tab.id)}
+            className={`relative px-4 py-1.5 text-xs font-semibold rounded-pill transition-colors duration-200 select-none focus-ring flex items-center gap-2 ${
+              isActive ? 'text-[#0B0F19]' : 'text-[#64748B] hover:text-[#0B0F19]'
+            }`}
+          >
+            {isActive && (
+              <motion.div
+                layoutId="activeTabPill"
+                transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                className="absolute inset-0 bg-white rounded-pill shadow-sm border border-slate-200/60"
+              />
+            )}
+            {Icon && <Icon size={14} className="relative z-10 shrink-0" />}
+            <span className="relative z-10">{tab.label}</span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
 
-const TabsTrigger = React.forwardRef(({ className, ...props }, ref) => (
-  <TabsPrimitive.Trigger
-    ref={ref}
-    className={cn(
-      'inline-flex items-center justify-center whitespace-nowrap rounded-lg px-3.5 py-1.5 text-xs font-semibold tracking-wide transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-[0_2px_12px_rgba(255,107,0,0.4)]',
-      className
-    )}
-    {...props}
-  />
-))
-TabsTrigger.displayName = TabsPrimitive.Trigger.displayName
-
-const TabsContent = React.forwardRef(({ className, ...props }, ref) => (
-  <TabsPrimitive.Content
-    ref={ref}
-    className={cn(
-      'mt-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40',
-      className
-    )}
-    {...props}
-  />
-))
-TabsContent.displayName = TabsPrimitive.Content.displayName
-
-export { Tabs, TabsList, TabsTrigger, TabsContent }
+export default Tabs

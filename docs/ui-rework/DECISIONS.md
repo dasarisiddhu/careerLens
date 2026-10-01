@@ -14,3 +14,9 @@
 - **Decision**: Introduce non-destructive adapter normalizers in `src/services/adapters/` that sanitize and validate API outputs without modifying the underlying HTTP service signatures or backend expectations.
 - **Alternative**: Modify `services/api.js` directly or let UI handle undefined fields ad-hoc.
 - **Reason**: Prevents crashes from malformed/partial LLM responses while strictly respecting the frozen backend constraint.
+
+### Decision 004: Self-Hosted Font & Zod Boundaries
+- **Decision**: Added `@fontsource-variable/plus-jakarta-sans` and `zod` as authorized in Section 2 of the prompt.
+- **Alternative**: Rely on external Google Fonts CDN (render-blocking) and manual prop validation.
+- **Reason**: Guarantees zero layout shift, offline stability, and typed runtime safety against malformed LLM responses.
+
