@@ -1,20 +1,21 @@
-// frontend/src/pages/dashboard/HiringNews.jsx
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { pageTransition, staggerContainer, staggerItem } from '../../utils/animations'
 import { api } from '../../services/api'
 import toast from 'react-hot-toast'
-import { Briefcase, ExternalLink, Loader2, TrendingUp } from 'lucide-react'
+import { Briefcase, ExternalLink, Loader2 } from 'lucide-react'
+import { GlassCard, Badge } from '../../components/ui'
 
-const stripHtml = (html) => {
-  if (!html) return ''
-  return html
-    .replace(/<[^>]*>/g, '')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .trim()
+const cleanSnippet = (rawHtml) => {
+  if (!rawHtml) return ''
+  try {
+    const doc = new DOMParser().parseFromString(rawHtml, 'text/html')
+    doc.querySelectorAll('script, style').forEach((el) => el.remove())
+    let text = doc.body.textContent || ''
+    text = text.replace(/https?:\/\/[^\s)]+/g, '').replace(/[<>[\]]/g, '').trim()
+    return text.replace(/\s+/g, ' ')
+  } catch {
+    return String(rawHtml).replace(/<[^>]*>/g, '').replace(/https?:\/\/[^\s)]+/g, '').trim()
+  }
 }
 
 export default function HiringNews() {
@@ -34,82 +35,75 @@ export default function HiringNews() {
   }, [])
 
   return (
-    <motion.div variants={pageTransition} initial="hidden" animate="visible" exit="exit" style={{ width: '100%' }}>
-      <div className="max-w-4xl mx-auto space-y-6">
+    <div className="w-full max-w-6xl mx-auto space-y-6 pb-16">
+      {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold text-white flex items-center gap-3"><Briefcase size={28} className="text-primary" /> Hiring News</h1>
-        <p className="text-[#78716c]">Companies hiring, startup jobs, and market trends</p>
+        <Badge sparkle size="sm" className="mb-2">
+          Market Movements
+        </Badge>
+        <h1 className="text-2xl sm:text-3xl font-extrabold text-[#0B0F19] tracking-tight flex items-center gap-2.5">
+          <Briefcase size={24} className="text-[#2563EB]" />
+          <span>Hiring News</span>
+        </h1>
+        <p className="text-xs sm:text-sm text-[#64748B] mt-1">
+          Hiring rounds, startup funding, expansion signals, and talent shifts.
+        </p>
       </div>
-      {loading
-        ? <div className="flex justify-center py-16"><Loader2 size={32} className="animate-spin text-primary" /></div>
-        : <motion.div
-            variants={staggerContainer}
-            initial="hidden"
-            animate="visible"
-            style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px' }}
-          >
-          {articles.map((a, i) => (
-            <motion.a key={i} href={a.link} target="_blank" rel="noopener noreferrer"
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.03 }}
-              variants={staggerItem}
-              whileHover={{
-                y: -2,
-                borderColor: 'rgba(255,107,0,0.4)',
-                background: 'rgba(255,107,0,0.04)',
-                boxShadow: '0 8px 32px rgba(0,0,0,0.4), 0 0 20px rgba(255,107,0,0.15)',
-              }}
-              style={{
-                background: 'rgba(19,18,28,0.85)',
-                border: '1px solid rgba(255,107,0,0.18)',
-                borderRadius: '14px',
-                padding: '20px 22px',
-                cursor: 'pointer',
-                transition: 'all 0.22s',
-                position: 'relative',
-                overflow: 'hidden',
-              }}
-              className="group block"
-            >
-              <div style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: '3px',
-                height: '100%',
-                background: 'linear-gradient(180deg, rgba(255,107,0,0.7), transparent)',
-                borderRadius: '14px 0 0 14px',
-              }} />
-              <div className="flex items-center justify-between text-xs text-[#44403c]">
-                <span style={{
-                  fontSize: '11px',
-                  color: 'rgba(120,113,108,0.8)',
-                  background: 'rgba(255,255,255,0.04)',
-                  padding: '2px 8px',
-                  borderRadius: '6px',
-                  border: '1px solid rgba(255,255,255,0.06)',
-                }}>{a.source}</span>
-                <ExternalLink size={12} />
-              </div>
-              <p style={{ fontSize: '15px', fontWeight: 600, color: '#fafaf9', lineHeight: 1.4, margin: '8px 0 6px' }}>
-                {a.title}
-              </p>
-              <p style={{ fontSize: '13px', color: 'rgba(120,113,108,0.85)', lineHeight: 1.5 }}>
-                {stripHtml(a.description || a.summary).slice(0, 120)}...
-              </p>
-            </motion.a>
-          ))}
-        </motion.div>
-      }
-      </div>
-    </motion.div>
+
+      {loading ? (
+        <div className="flex flex-col items-center justify-center py-20 gap-3">
+          <Loader2 size={28} className="animate-spin text-[#2563EB]" />
+          <p className="text-xs font-semibold text-[#64748B]">Fetching hiring news...</p>
+        </div>
+      ) : articles.length === 0 ? (
+        <GlassCard className="p-12 text-center text-xs text-[#64748B]">
+          No hiring news available at the moment. Check back soon.
+        </GlassCard>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {articles.map((a, i) => {
+            const snippet = cleanSnippet(a.description || a.summary)
+            return (
+              <motion.a
+                key={i}
+                href={a.link}
+                target="_blank"
+                rel="noopener noreferrer"
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.25, delay: i * 0.02 }}
+                className="group block h-full"
+              >
+                <GlassCard hoverable className="p-5 h-full flex flex-col justify-between border-white/90 shadow-glass">
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-semibold text-[#2563EB] bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-100">
+                        {a.source || 'Hiring'}
+                      </span>
+                      <ExternalLink size={13} className="text-[#94A3B8] group-hover:text-[#2563EB] transition-colors" />
+                    </div>
+
+                    <h2 className="text-sm font-bold text-[#0B0F19] group-hover:text-[#2563EB] transition-colors leading-snug">
+                      {a.title}
+                    </h2>
+
+                    {snippet && (
+                      <p className="text-xs text-[#64748B] leading-relaxed line-clamp-3">
+                        {snippet}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="pt-3 mt-4 border-t border-slate-100 flex items-center text-[11px] font-bold text-[#2563EB]">
+                    <span>Read Article</span>
+                    <span className="ml-1 transition-transform group-hover:translate-x-1">→</span>
+                  </div>
+                </GlassCard>
+              </motion.a>
+            )
+          })}
+        </div>
+      )}
+    </div>
   )
 }
-
-
-
-
-
-
-

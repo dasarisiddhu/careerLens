@@ -75,11 +75,11 @@ const COMPANIES = [
   { value: 'uber',        label: 'Uber',           icon: 'uber',           color: '#276EF1', tag: 'Real-time + Geo Systems' },
   { value: 'stripe',      label: 'Stripe',         icon: 'stripe',         color: '#635BFF', tag: 'Payments + Correctness' },
   // ── AI Companies ──
-  { value: 'openai',      label: 'OpenAI',         icon: 'openai',         color: '#412991', tag: 'LLMs + Safety + PyTorch' },
+  { value: 'openai',      label: 'OpenAI',         icon: 'openai',         color: '#10A37F', tag: 'LLMs + Safety + PyTorch' },
   { value: 'anthropic',   label: 'Anthropic',      icon: 'anthropic',      color: '#c96442', tag: 'AI Safety + Alignment' },
   { value: 'xai',         label: 'xAI',            icon: 'x',              color: '#000000', tag: 'First Principles + Frontier' },
   { value: 'deepmind',    label: 'DeepMind',       icon: 'googledeepmind', color: '#4285F4', tag: 'RL + Research Engineering' },
-  { value: 'mistral',     label: 'Mistral AI',     icon: 'mistral',        color: '#FF7000', tag: 'Efficient LLMs + MoE' },
+  { value: 'mistral',     label: 'Mistral AI',     icon: 'mistral',        color: '#EA580C', tag: 'Efficient LLMs + MoE' },
   { value: 'cohere',      label: 'Cohere',         icon: 'cohere',         color: '#39594D', tag: 'Enterprise RAG + Embeddings' },
   { value: 'huggingface', label: 'Hugging Face',   icon: 'huggingface',    color: '#FFD21E', tag: 'Open-Source ML Tooling' },
   // ── Indian Tech ──
@@ -89,7 +89,7 @@ const COMPANIES = [
   { value: 'infosys',     label: 'Infosys',        icon: 'infosys',        color: '#007CC3', tag: 'Core CS + Client Skills' },
   { value: 'tcs',         label: 'TCS',            icon: null,             color: '#0033A0', tag: 'Fundamentals + Communication' },
   // ── Other ──
-  { value: 'startup',     label: 'Startup',        icon: null,             color: '#7c3aed', tag: 'Ownership + Full Stack' },
+  { value: 'startup',     label: 'Startup',        icon: null,             color: '#0284C7', tag: 'Ownership + Full Stack' },
 ]
 
 // ─── CompanyLogo component ─────────────────────────────────────────────────────
@@ -390,33 +390,35 @@ function SetupPhase({ onStart }) {
   const selectedCompany = getCompanyMeta(config.company)
 
   return (
-    <div className="mx-auto max-w-2xl space-y-8">
-      <div className="space-y-3">
-        <span className="badge badge-red">Mock Interview</span>
-        <h1 className="gradient-text text-4xl font-black tracking-tight">Interview like it counts.</h1>
-        <p className="max-w-xl text-sm leading-7 text-[rgba(138,143,168,0.8)]">
+    <div className="mx-auto max-w-2xl space-y-8 pb-16">
+      <div className="space-y-2">
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-blue-50 text-[#2563EB] border border-blue-100">
+          <Sparkles size={12} />
+          Mock Interview Studio
+        </span>
+        <h1 className="text-3xl sm:text-4xl font-extrabold text-[#0B0F19] tracking-tight">
+          Interview like it counts.
+        </h1>
+        <p className="max-w-xl text-xs sm:text-sm leading-relaxed text-[#475569]">
           Pick a target company, choose your role, and get questions tailored to how that company
           actually interviews — powered by real interview culture profiles.
         </p>
       </div>
 
       <motion.div
-        whileHover={{ y: -3 }}
-        className="glass-glow overflow-hidden rounded-[28px] border-t-2 border-t-primary/50 p-8"
-        style={{ boxShadow: '0 25px 60px rgba(0,0,0,0.35), 0 0 40px rgba(255,107,0,0.1)' }}
+        whileHover={{ y: -2 }}
+        className="overflow-hidden rounded-[28px] border border-slate-200/90 bg-white/90 p-6 sm:p-8 shadow-glass-lg backdrop-blur-md"
       >
-        <div className="absolute inset-x-0 top-0 h-24 bg-[radial-gradient(circle_at_top,rgba(255,107,0,0.15),transparent_70%)] pointer-events-none" />
-
         <div className="relative space-y-7">
 
           {/* ── Company selector ── */}
           <div>
-            <label className="mb-3 block text-sm font-medium text-[rgba(245,245,247,0.92)]">
+            <label className="mb-3 block text-sm font-bold text-[#0B0F19]">
               Target Company
             </label>
 
             {/* Section: Big Tech */}
-            <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-[rgba(138,143,168,0.5)]">Big Tech</p>
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-[#94A3B8]">Big Tech</p>
             <div className="grid grid-cols-5 gap-2 sm:grid-cols-5 mb-4">
               {COMPANIES.filter(c => ['general','google','amazon','microsoft','meta','apple','netflix','uber','stripe'].includes(c.value)).map((co) => {
                 const isActive = config.company === co.value
@@ -427,19 +429,19 @@ function SetupPhase({ onStart }) {
                     onClick={() => setConfig((c) => ({ ...c, company: co.value }))}
                     className={`flex flex-col items-center gap-2 rounded-2xl border px-2 py-3 text-center transition-all ${
                       isActive
-                        ? 'border-primary/40 bg-primary/10 text-white shadow-[0_0_18px_rgba(255,107,0,0.2)]'
-                        : 'border-white/[0.07] bg-white/[0.02] text-slate-300 hover:border-primary/30 hover:bg-primary/[0.04] hover:text-white'
+                        ? 'border-[#2563EB] bg-blue-50/80 text-[#0B0F19] font-bold shadow-[0_4px_16px_rgba(37,99,235,0.12)]'
+                        : 'border-slate-200 bg-white/70 text-[#475569] hover:border-blue-200 hover:bg-white hover:text-[#0B0F19]'
                     }`}
                   >
                     <CompanyLogo company={co} size={34} />
-                    <span className="text-[11px] font-medium leading-tight">{co.label}</span>
+                    <span className="text-[11px] leading-tight">{co.label}</span>
                   </button>
                 )
               })}
             </div>
 
             {/* Section: AI Companies */}
-            <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-[rgba(138,143,168,0.5)]">AI Labs</p>
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-[#94A3B8]">AI Labs</p>
             <div className="grid grid-cols-4 gap-2 sm:grid-cols-7 mb-4">
               {COMPANIES.filter(c => ['openai','anthropic','xai','deepmind','mistral','cohere','huggingface'].includes(c.value)).map((co) => {
                 const isActive = config.company === co.value
@@ -450,20 +452,20 @@ function SetupPhase({ onStart }) {
                     onClick={() => setConfig((c) => ({ ...c, company: co.value }))}
                     className={`flex flex-col items-center gap-2 rounded-2xl border px-2 py-3 text-center transition-all ${
                       isActive
-                        ? 'border-primary/40 bg-primary/10 text-white shadow-[0_0_18px_rgba(255,107,0,0.18)]'
-                        : 'border-[rgba(255,255,255,0.07)] bg-[rgba(255,255,255,0.02)] text-[rgba(138,143,168,0.85)] hover:border-primary/25 hover:bg-[rgba(255,255,255,0.04)] hover:text-white'
+                        ? 'border-[#2563EB] bg-blue-50/80 text-[#0B0F19] font-bold shadow-[0_4px_16px_rgba(37,99,235,0.12)]'
+                        : 'border-slate-200 bg-white/70 text-[#475569] hover:border-blue-200 hover:bg-white hover:text-[#0B0F19]'
                     }`}
                   >
                     <CompanyLogo company={co} size={34} />
-                    <span className="text-[11px] font-medium leading-tight">{co.label}</span>
+                    <span className="text-[11px] leading-tight">{co.label}</span>
                   </button>
                 )
               })}
             </div>
 
             {/* Section: Indian Tech + Other */}
-            <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-[rgba(138,143,168,0.5)]">Indian Tech &amp; Other</p>
-            <div className="grid grid-cols-5 gap-2 sm:grid-cols-5">
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-[#94A3B8]">Indian Tech &amp; Other</p>
+            <div className="grid grid-cols-5 gap-2 sm:grid-cols-6">
               {COMPANIES.filter(c => ['flipkart','swiggy','zomato','infosys','tcs','startup'].includes(c.value)).map((co) => {
                 const isActive = config.company === co.value
                 return (
@@ -473,12 +475,12 @@ function SetupPhase({ onStart }) {
                     onClick={() => setConfig((c) => ({ ...c, company: co.value }))}
                     className={`flex flex-col items-center gap-2 rounded-2xl border px-2 py-3 text-center transition-all ${
                       isActive
-                        ? 'border-primary/40 bg-primary/10 text-white shadow-[0_0_18px_rgba(255,107,0,0.18)]'
-                        : 'border-[rgba(255,255,255,0.07)] bg-[rgba(255,255,255,0.02)] text-[rgba(138,143,168,0.85)] hover:border-primary/25 hover:bg-[rgba(255,255,255,0.04)] hover:text-white'
+                        ? 'border-[#2563EB] bg-blue-50/80 text-[#0B0F19] font-bold shadow-[0_4px_16px_rgba(37,99,235,0.12)]'
+                        : 'border-slate-200 bg-white/70 text-[#475569] hover:border-blue-200 hover:bg-white hover:text-[#0B0F19]'
                     }`}
                   >
                     <CompanyLogo company={co} size={34} />
-                    <span className="text-[11px] font-medium leading-tight">{co.label}</span>
+                    <span className="text-[11px] leading-tight">{co.label}</span>
                   </button>
                 )
               })}
@@ -486,9 +488,9 @@ function SetupPhase({ onStart }) {
 
             {/* Company focus pill */}
             {selectedCompany.value !== 'general' && (
-              <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/10 px-3 py-1.5">
-                <Sparkles size={12} className="text-accent" />
-                <span className="text-xs text-accent">
+              <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5">
+                <Sparkles size={12} className="text-[#2563EB]" />
+                <span className="text-xs text-[#2563EB] font-medium">
                   {selectedCompany.label} focuses on: <strong>{selectedCompany.tag}</strong>
                 </span>
               </div>
@@ -499,24 +501,25 @@ function SetupPhase({ onStart }) {
             <div className="space-y-5">
               {/* ── Role selector ── */}
               <div>
-                <label className="mb-2 block text-sm font-medium text-[rgba(245,245,247,0.92)]">
+                <label className="mb-2 block text-sm font-bold text-[#0B0F19]">
                   Job Role
                 </label>
                 <select
                   value={config.job_role}
                   onChange={(e) => setConfig((c) => ({ ...c, job_role: e.target.value }))}
-                  className="input-field"
-                  style={{ background: '#11131A', colorScheme: 'dark' }}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-[#0B0F19] shadow-xs focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20"
                 >
                   {ROLES.map((role) => (
-                    <option key={role} value={role}>{role}</option>
+                    <option key={role} value={role} className="text-[#0B0F19] bg-white">
+                      {role}
+                    </option>
                   ))}
                 </select>
               </div>
 
               {/* ── Mode selector ── */}
               <div>
-                <label className="mb-3 block text-sm font-medium text-[rgba(245,245,247,0.92)]">
+                <label className="mb-3 block text-sm font-bold text-[#0B0F19]">
                   Interview Mode
                 </label>
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -534,30 +537,29 @@ function SetupPhase({ onStart }) {
                         disabled={disabled}
                         className={`rounded-2xl border p-4 text-left transition-all ${
                           isActive
-                            ? 'border-primary/40 bg-primary/10 text-white shadow-[inset_0_0_0_1px_rgba(255,107,0,0.15)]'
-                            : 'border-white/[0.08] bg-white/[0.02] text-slate-300 hover:border-primary/30 hover:bg-primary/[0.04] hover:text-white'
+                            ? 'border-[#2563EB] bg-blue-50/80 text-[#0B0F19] shadow-[0_4px_16px_rgba(37,99,235,0.12)]'
+                            : 'border-slate-200 bg-white/70 text-[#475569] hover:border-blue-200 hover:bg-white hover:text-[#0B0F19]'
                         } ${disabled ? 'cursor-not-allowed opacity-50' : ''}`}
                       >
-                        <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
+                        <div className="mb-2 flex items-center gap-2 text-sm font-bold">
                           <span
-                            className="flex h-10 w-10 items-center justify-center rounded-xl border"
-                            style={{
-                              background:   isActive ? 'linear-gradient(135deg,#FF6B00,#CC4E00)' : 'rgba(255,255,255,0.04)',
-                              borderColor:  isActive ? 'rgba(255,107,0,0.3)' : 'rgba(255,255,255,0.08)',
-                              boxShadow:    isActive ? '0 0 18px rgba(255,107,0,0.3)' : 'none',
-                            }}
+                            className={`flex h-10 w-10 items-center justify-center rounded-xl border transition-colors ${
+                              isActive
+                                ? 'bg-[#2563EB] text-white border-transparent shadow-sm'
+                                : 'bg-slate-100 text-[#64748B] border-slate-200'
+                            }`}
                           >
                             <Icon size={18} />
                           </span>
                           {label}
                         </div>
-                        <p className="text-xs leading-6 text-[rgba(138,143,168,0.78)]">{description}</p>
+                        <p className="text-xs leading-relaxed text-[#64748B]">{description}</p>
                       </button>
                     )
                   })}
                 </div>
                 {!voiceSupported && (
-                  <p className="mt-3 text-xs text-[#fb7185]">
+                  <p className="mt-3 text-xs text-[#E11D48] font-medium">
                     Voice input is not supported in this browser. Chrome over HTTPS or localhost works best.
                   </p>
                 )}
@@ -565,33 +567,27 @@ function SetupPhase({ onStart }) {
             </div>
 
             {/* ── What you get panel ── */}
-            <div className="glass rounded-[24px] p-5">
-              <div className="mb-4 flex items-center gap-3">
-                <span
-                  className="flex h-12 w-12 items-center justify-center rounded-2xl"
-                  style={{
-                    background: 'linear-gradient(135deg,#FF6B00,#CC4E00)',
-                    boxShadow: '0 0 22px rgba(255,107,0,0.28)',
-                  }}
-                >
-                  <Sparkles size={20} className="text-white" />
+            <div className="rounded-[24px] border border-slate-200/90 bg-slate-50/70 p-5 space-y-4">
+              <div className="flex items-center gap-3">
+                <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#2563EB] text-white shadow-sm">
+                  <Sparkles size={18} />
                 </span>
                 <div>
-                  <p className="text-sm font-semibold text-white">What you will get</p>
-                  <p className="text-xs text-[rgba(138,143,168,0.72)]">Eight tailored questions and a scored report.</p>
+                  <p className="text-sm font-bold text-[#0B0F19]">What you will get</p>
+                  <p className="text-xs text-[#64748B]">Eight tailored questions &amp; report.</p>
                 </div>
               </div>
-              <div className="space-y-3">
+              <div className="space-y-2.5">
                 {[
                   selectedCompany.value === 'general'
                     ? 'Role-specific technical and behavioral prompts'
-                    : `Questions styled to ${selectedCompany.label}'s real interview culture`,
-                  'Instant evaluation for overall, technical, confidence, and communication',
-                  'Specific strengths, weak spots, and next-step prep tips',
+                    : `Questions styled to ${selectedCompany.label}'s interview culture`,
+                  'Instant evaluation for technical depth & communication',
+                  'Specific strengths, weak spots, and prep tips',
                 ].map((item) => (
-                  <div key={item} className="flex items-start gap-3 rounded-2xl bg-[rgba(255,255,255,0.02)] p-3">
-                    <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-[#10b981]" />
-                    <p className="text-sm leading-6 text-[rgba(245,245,247,0.82)]">{item}</p>
+                  <div key={item} className="flex items-start gap-2.5 rounded-xl bg-white border border-slate-200/70 p-2.5">
+                    <CheckCircle2 size={15} className="mt-0.5 shrink-0 text-[#16A34A]" />
+                    <p className="text-xs leading-relaxed text-[#475569]">{item}</p>
                   </div>
                 ))}
               </div>
@@ -602,7 +598,7 @@ function SetupPhase({ onStart }) {
             type="button"
             onClick={handleStart}
             disabled={loading}
-            className="btn-primary w-full justify-center py-4 text-base font-semibold"
+            className="w-full flex items-center justify-center gap-2 py-4 rounded-full bg-[#0B0F19] text-white font-bold text-sm hover:bg-[#1E293B] transition-all shadow-md disabled:opacity-50"
           >
             {loading ? (
               <>
@@ -613,7 +609,7 @@ function SetupPhase({ onStart }) {
               </>
             ) : (
               <>
-                <Play size={18} />
+                <Play size={17} />
                 {selectedCompany.value === 'general'
                   ? 'Start Interview'
                   : `Start ${selectedCompany.label} Interview`}
@@ -941,9 +937,9 @@ function InterviewPhase({ questions, sessionId, mode, jobRole, company, onComple
       </div>
 
       {/* ── Progress bar ── */}
-      <div className="overflow-hidden rounded-full bg-[rgba(255,255,255,0.04)]">
+      <div className="overflow-hidden rounded-full bg-slate-100">
         <motion.div
-          className="h-2 rounded-full bg-[linear-gradient(90deg,#FF6B00,#FFA726,#FF8533)]"
+          className="h-2 rounded-full bg-[#2563EB]"
           animate={{ width: `${progress}%` }}
           transition={{ duration: 0.45, ease: [0.4, 0, 0.2, 1] }}
         />
@@ -957,13 +953,12 @@ function InterviewPhase({ questions, sessionId, mode, jobRole, company, onComple
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: -24 }}
           transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
-          className="glass-glow overflow-hidden rounded-[28px] p-7"
-          style={{ borderLeft: '3px solid #FF6B00' }}
+          className="overflow-hidden rounded-[28px] p-7 bg-white/95 border border-slate-200/90 shadow-glass-lg"
+          style={{ borderLeft: '4px solid #2563EB' }}
         >
-          <div className="absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(255,107,0,0.45),transparent)]" />
           <div className="space-y-5">
             <div className="flex flex-wrap items-center gap-3">
-              <span className="badge badge-red">Question {currentQ + 1}</span>
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-[#2563EB] border border-blue-100">Question {currentQ + 1}</span>
               <span className={DIFFICULTY_STYLES[question?.difficulty] || 'badge badge-red'}>
                 {question?.difficulty || 'hard'}
               </span>
@@ -1083,10 +1078,10 @@ function InterviewPhase({ questions, sessionId, mode, jobRole, company, onComple
               type="button"
               onClick={toggleListen}
               disabled={!voiceSupported}
-              className={`inline-flex items-center justify-center gap-2 rounded-xl border px-5 py-3 text-sm font-medium transition-all ${
+              className={`inline-flex items-center justify-center gap-2 rounded-xl border px-5 py-3 text-sm font-semibold transition-all ${
                 listening
-                  ? 'border-primary/50 bg-primary/20 text-white shadow-[0_0_20px_rgba(255,107,0,0.3)]'
-                  : 'btn-ghost'
+                  ? 'border-[#2563EB] bg-blue-50 text-[#2563EB] shadow-[0_0_20px_rgba(37,99,235,0.25)]'
+                  : 'border border-slate-200 bg-white text-[#0B0F19] hover:bg-slate-50'
               } ${!voiceSupported ? 'cursor-not-allowed opacity-50' : ''}`}
             >
               {listening ? <><MicOff size={16} />Stop Recording</> : <><Mic size={16} />Speak Answer</>}
@@ -1097,7 +1092,7 @@ function InterviewPhase({ questions, sessionId, mode, jobRole, company, onComple
             type="button"
             onClick={submitAnswer}
             disabled={!answer.trim() || submitting}
-            className="btn-primary flex-1 justify-center py-3.5"
+            className="flex-1 inline-flex items-center justify-center gap-2 py-3.5 px-6 rounded-xl bg-[#0B0F19] text-white font-bold text-sm hover:bg-[#1E293B] shadow-sm disabled:opacity-40 transition-all"
           >
             {submitting ? (
               <><Loader2 size={16} className="animate-spin" />{isLast ? 'Evaluating...' : 'Saving answer...'}</>
@@ -1152,45 +1147,39 @@ function ResultPhase({ evaluation, jobRole, company, onRetry }) {
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <motion.div
-        whileHover={{ y: -3 }}
-        className="glass-glow overflow-hidden rounded-[30px] p-7"
-        style={{ borderTop: '2px solid rgba(255,107,0,0.4)' }}
+        whileHover={{ y: -2 }}
+        className="overflow-hidden rounded-[30px] p-7 bg-white/90 border border-slate-200/90 shadow-glass-lg"
       >
-        <div className="absolute inset-x-0 top-0 h-28 bg-[radial-gradient(circle_at_top,rgba(255,107,0,0.14),transparent_72%)] pointer-events-none" />
         <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <span className={recommendation.className}>{recommendation.label}</span>
               {companyMeta.value !== 'general' && (
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-xs text-accent">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs text-[#2563EB] font-bold">
                   <CompanyLogo company={companyMeta} size={14} />
                   {companyMeta.label} Interview
                 </span>
               )}
             </div>
             <div>
-              <h1 className="gradient-text text-3xl font-black tracking-tight">{jobRole} Evaluation</h1>
-              <p className="mt-2 max-w-2xl text-sm leading-7 text-[rgba(138,143,168,0.82)]">
+              <h1 className="text-3xl font-extrabold tracking-tight text-[#0B0F19]">{jobRole} Evaluation</h1>
+              <p className="mt-2 max-w-2xl text-xs sm:text-sm leading-relaxed text-[#475569]">
                 Your interview was scored across technical depth, clarity, and confidence. Use the
                 breakdown below to sharpen the next round.
               </p>
             </div>
           </div>
 
-          <div className="glass rounded-[24px] p-5">
+          <div className="rounded-[24px] border border-slate-200/90 bg-slate-50/70 p-5">
             <div className="flex items-center gap-4">
               <span
-                className="flex h-14 w-14 items-center justify-center rounded-2xl"
-                style={{
-                  background: 'linear-gradient(135deg,#FF6B00,#CC4E00)',
-                  boxShadow: '0 0 24px rgba(255,107,0,0.24)',
-                }}
+                className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#2563EB] text-white shadow-sm"
               >
-                <Trophy size={24} className="text-white" />
+                <Trophy size={24} />
               </span>
               <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-[rgba(138,143,168,0.68)]">Recommendation</p>
-                <p className="mt-1 text-sm font-semibold capitalize text-white">{evaluation.hire_recommendation}</p>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-[#64748B]">Recommendation</p>
+                <p className="mt-1 text-sm font-bold capitalize text-[#0B0F19]">{evaluation.hire_recommendation}</p>
               </div>
             </div>
           </div>
@@ -1340,26 +1329,25 @@ function ResultPhase({ evaluation, jobRole, company, onRetry }) {
                   type="button"
                   onClick={handleOpen}
                   disabled={!url}
-                  className="flex items-center gap-3 rounded-[20px] border border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.02)] p-4 text-left transition-all hover:border-primary/30 hover:bg-primary/5 group disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="flex items-center gap-3 rounded-[20px] border border-slate-200 bg-white/80 p-4 text-left transition-all hover:border-blue-300 hover:bg-blue-50/40 group disabled:opacity-40 disabled:cursor-not-allowed shadow-xs"
                 >
                   <span
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
-                    style={{ background: 'linear-gradient(135deg,#FF6B00,#CC4E00)', boxShadow: '0 0 14px rgba(255,107,0,0.3)' }}
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#2563EB] text-white shadow-sm"
                   >
-                    <Star size={14} className="text-white" />
+                    <Star size={14} />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-white group-hover:text-accent transition-colors">{title}</p>
+                    <p className="truncate text-sm font-bold text-[#0B0F19] group-hover:text-[#2563EB] transition-colors">{title}</p>
                     {url && (
-                      <p className="truncate text-[11px] text-[rgba(138,143,168,0.5)] mt-0.5">
+                      <p className="truncate text-[11px] text-[#64748B] mt-0.5">
                         {url.replace(/^https?:\/\/(www\.)?/, '').split('/')[0]}
                       </p>
                     )}
                     {!url && (
-                      <p className="text-[11px] text-[rgba(138,143,168,0.4)] mt-0.5">No link available</p>
+                      <p className="text-[11px] text-[#94A3B8] mt-0.5">No link available</p>
                     )}
                   </div>
-                  <ChevronRight size={14} className="shrink-0 text-[rgba(138,143,168,0.4)] group-hover:text-[#FF7070] transition-colors" />
+                  <ChevronRight size={14} className="shrink-0 text-[#94A3B8] group-hover:text-[#2563EB] transition-colors" />
                 </button>
               )
             })}
@@ -1367,13 +1355,21 @@ function ResultPhase({ evaluation, jobRole, company, onRetry }) {
         </motion.div>
       )}
 
-      <div className="flex flex-col gap-3 sm:flex-row">
-        <button type="button" onClick={onRetry} className="btn-ghost flex-1 justify-center py-3.5">
-          <RefreshCw size={16} />
+      <div className="flex flex-col gap-3 sm:flex-row pb-12">
+        <button
+          type="button"
+          onClick={onRetry}
+          className="flex-1 inline-flex items-center justify-center gap-2 py-3.5 px-6 rounded-full border border-slate-200 bg-white text-[#0B0F19] font-bold text-sm hover:bg-slate-50 transition-all shadow-xs"
+        >
+          <RefreshCw size={15} />
           Back To Setup
         </button>
-        <button type="button" onClick={onRetry} className="btn-primary flex-1 justify-center py-3.5">
-          <RefreshCw size={16} />
+        <button
+          type="button"
+          onClick={onRetry}
+          className="flex-1 inline-flex items-center justify-center gap-2 py-3.5 px-6 rounded-full bg-[#0B0F19] text-white font-bold text-sm hover:bg-[#1E293B] transition-all shadow-md"
+        >
+          <RefreshCw size={15} />
           Practice Again
         </button>
       </div>

@@ -47,3 +47,91 @@
     -webkit-backdrop-filter: blur(10px);
   }
 }
+
+/* Legacy Compatibility Overrides (Guarantees Light Theme, High Contrast, Zero Orange/Purple) */
+.glass-glow {
+  background: var(--glass-bg-strong);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow-lg);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  border-radius: var(--radius-card);
+  transition: border-color 0.25s, box-shadow 0.25s;
+}
+
+.gradient-text {
+  color: var(--ink-900);
+  background: none;
+  -webkit-text-fill-color: var(--ink-900);
+  font-weight: 800;
+}
+
+.btn-primary {
+  background: var(--btn-dark, #0B0F19);
+  color: #FFFFFF !important;
+  font-weight: 700;
+  font-size: 14px;
+  padding: 10px 22px;
+  border-radius: 9999px;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(11, 15, 25, 0.16);
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.btn-primary:hover {
+  background: var(--btn-dark-hover, #1E293B);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(11, 15, 25, 0.22);
+}
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.btn-ghost {
+  background: rgba(255, 255, 255, 0.85);
+  color: var(--ink-900);
+  border: 1px solid var(--glass-border-subtle);
+  border-radius: 9999px;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.btn-ghost:hover {
+  background: #FFFFFF;
+  border-color: var(--primary-400);
+  color: var(--primary-600);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.08);
+}
+
+.input-field {
+  width: 100%;
+  background: #FFFFFF;
+  border: 1px solid #CBD5E1;
+  border-radius: 12px;
+  padding: 10px 14px;
+  color: var(--ink-900);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.input-field:focus {
+  border-color: var(--primary-600);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+.input-field::placeholder {
+  color: var(--ink-400);
+}
+

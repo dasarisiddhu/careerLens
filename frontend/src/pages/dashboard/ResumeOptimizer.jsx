@@ -2382,7 +2382,7 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
                   <div style={{
                     fontSize: 'clamp(52px, 8vw, 80px)', fontWeight: 900,
                     letterSpacing: '-3px', lineHeight: 1,
-                    color: '#FF6B00',
+                    color: '#2563EB',
                   }}>
                     <StatNumber value={atsGain} prefix={gainPrefix} />
                   </div>
@@ -2901,71 +2901,115 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
   // ── INPUT SCREEN ─────────────────────────────────────────
   return (
     <motion.div variants={pageTransition} initial="hidden" animate="visible" exit="exit" style={{ width: '100%' }}>
-      <div className="max-w-4xl w-full mx-auto space-y-6">
-        <div className="max-w-2xl mx-auto text-center">
-          <h1 className="gradient-text text-3xl font-bold flex items-center justify-center gap-3">
-            <Sparkles size={26} className="text-primary" /> Resume Optimizer
+      <div className="max-w-4xl w-full mx-auto space-y-6 pb-16">
+        <div className="max-w-2xl mx-auto text-center space-y-1.5">
+          <Badge sparkle size="sm" className="mx-auto mb-1">ATS Engineering</Badge>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-[#0B0F19] tracking-tight flex items-center justify-center gap-2.5">
+            <Sparkles size={24} className="text-[#2563EB]" />
+            <span>Resume Optimizer</span>
           </h1>
-          <p className="text-[#78716c] mt-2">Rewrite your resume bullets to match the exact job and export the optimized version as a PDF</p>
+          <p className="text-xs sm:text-sm text-[#64748B]">
+            Rewrite your resume bullets to match the target role with full anti-hallucination grounding.
+          </p>
         </div>
 
-        {error && <div className="max-w-3xl mx-auto p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{error}</div>}
+        {error && (
+          <div className="max-w-3xl mx-auto p-4 rounded-xl bg-rose-50 border border-rose-200 text-[#E11D48] text-xs font-semibold">
+            {error}
+          </div>
+        )}
 
-        <div className="glass-glow p-6 rounded-3xl space-y-5 max-w-3xl w-full mx-auto">
+        <GlassCard className="p-6 sm:p-8 space-y-5 max-w-3xl w-full mx-auto border-white/95 shadow-glass-lg">
           <div>
-            <label className="text-xs font-semibold text-[#78716c] uppercase tracking-wide mb-2 block">Resume *</label>
+            <label className="text-xs font-bold text-[#0B0F19] uppercase tracking-wider mb-2 block">Resume *</label>
             {!resumeFile ? (
               <div
                 onDrop={(e) => { e.preventDefault(); setDragging(false); handleFile(e.dataTransfer.files[0]) }}
                 onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
                 onDragLeave={() => setDragging(false)}
                 onClick={() => fileRef.current?.click()}
-                className={`border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-all mb-2
-                ${dragging ? 'border-primary bg-primary/10 shadow-[0_0_30px_rgba(255,107,0,0.2)]' : 'border-white/10 bg-white/[0.02] hover:border-primary/30 hover:bg-primary/5'}`}>
+                className={`border-2 border-dashed rounded-2xl p-6 sm:p-8 text-center cursor-pointer transition-all mb-2 ${
+                  dragging
+                    ? 'border-[#2563EB] bg-blue-50/50'
+                    : 'border-slate-200 bg-white/50 hover:border-slate-300 hover:bg-white/80'
+                }`}
+              >
                 <input ref={fileRef} type="file" accept=".pdf" className="hidden" onChange={(e) => handleFile(e.target.files[0])} />
-                <Upload size={24} className="float text-primary mx-auto mb-2" />
-                <p className="text-[#d6d3d1] text-sm">Drop PDF or click to upload</p>
+                <div className="w-10 h-10 rounded-xl bg-blue-50 text-[#2563EB] flex items-center justify-center mx-auto mb-2 border border-blue-100">
+                  <Upload size={20} />
+                </div>
+                <p className="text-sm font-bold text-[#0B0F19]">Drop PDF or click to browse</p>
+                <p className="text-xs text-[#64748B] mt-1">We extract text from your resume automatically</p>
               </div>
             ) : (
-              <div className="flex items-center gap-3 p-3 rounded-xl bg-green-500/10 border border-green-500/20 mb-2">
+              <div className="flex items-center gap-3 p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 mb-2">
                 {extracting
-                  ? <Loader2 size={16} className="text-green-400 animate-spin" />
-                  : <CheckCircle size={16} className="text-green-400" />}
-                <span className="text-sm text-white flex-1">
+                  ? <Loader2 size={16} className="text-[#16A34A] animate-spin" />
+                  : <CheckCircle size={16} className="text-[#16A34A]" />}
+                <span className="text-xs sm:text-sm font-semibold text-[#0B0F19] flex-1 truncate">
                   {resumeFile.name}
-                  {extracting && <span className="text-[#78716c] ml-2">Reading your resume...</span>}
+                  {extracting && <span className="text-[#64748B] ml-2 font-normal">Extracting text...</span>}
                 </span>
-                <motion.button {...buttonMotion} onClick={() => { setResumeFile(null); setResumeText(''); setError(''); setExtracting(false) }}
-                  className="text-[#78716c] hover:text-white text-xs">Remove</motion.button>
+                <button
+                  type="button"
+                  onClick={() => { setResumeFile(null); setResumeText(''); setError(''); setExtracting(false) }}
+                  className="text-xs font-semibold text-rose-600 hover:underline"
+                >
+                  Remove
+                </button>
               </div>
             )}
-            <textarea value={resumeText} onChange={(e) => setResumeText(e.target.value)}
-              placeholder="Or paste your resume text here..." rows={4}
-              className="input-field resize-none w-full text-sm" />
+            <textarea
+              value={resumeText}
+              onChange={(e) => setResumeText(e.target.value)}
+              placeholder="Or paste your resume text manually here..."
+              rows={4}
+              className="w-full rounded-xl border border-slate-200 bg-white p-3.5 text-xs sm:text-sm text-[#0B0F19] shadow-xs focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 resize-none"
+            />
           </div>
 
           <div>
-            <label className="text-xs font-semibold text-[#78716c] uppercase tracking-wide mb-2 block">Job Title</label>
-            <input value={jobTitle} onChange={(e) => setJobTitle(e.target.value)}
-              placeholder="e.g. ML Engineer, Frontend Developer" className="input-field w-full" />
+            <label className="text-xs font-bold text-[#0B0F19] uppercase tracking-wider mb-2 block">Target Job Title</label>
+            <input
+              value={jobTitle}
+              onChange={(e) => setJobTitle(e.target.value)}
+              placeholder="e.g. Senior Backend Engineer, ML Systems Engineer"
+              className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-[#0B0F19] shadow-xs focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20"
+            />
           </div>
 
           <div>
-            <label className="text-xs font-semibold text-[#78716c] uppercase tracking-wide mb-2 block">Paste Job Description</label>
-            <textarea value={jobDesc} onChange={(e) => setJobDesc(e.target.value)}
-              placeholder="Paste the job description you are applying for..." rows={7}
-              className="input-field resize-none w-full" />
+            <label className="text-xs font-bold text-[#0B0F19] uppercase tracking-wider mb-2 block">Target Job Description *</label>
+            <textarea
+              value={jobDesc}
+              onChange={(e) => setJobDesc(e.target.value)}
+              placeholder="Paste the target job description or requirements here..."
+              rows={6}
+              className="w-full rounded-xl border border-slate-200 bg-white p-3.5 text-xs sm:text-sm text-[#0B0F19] shadow-xs focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 resize-none"
+            />
           </div>
 
-          <motion.button {...buttonMotion} onClick={handleOptimize} disabled={loading || extracting || !jobDesc.trim()}
-            className="btn-primary w-full flex items-center justify-center gap-3 py-4 font-bold disabled:opacity-50">
-            {loading
-              ? <><Loader2 size={17} className="animate-spin" /> Optimizing...</>
-              : extracting
-                ? <><Loader2 size={17} className="animate-spin" /> Reading resume...</>
-                : <><Zap size={17} /> Optimize My Resume</>}
-          </motion.button>
-        </div>
+          <button
+            type="button"
+            onClick={handleOptimize}
+            disabled={loading || extracting || !jobDesc.trim()}
+            className="w-full flex items-center justify-center gap-2 py-4 rounded-full bg-[#0B0F19] text-white font-bold text-sm hover:bg-[#1E293B] transition-all shadow-md disabled:opacity-50"
+          >
+            {loading ? (
+              <>
+                <Loader2 size={18} className="animate-spin" /> Optimizing resume...
+              </>
+            ) : extracting ? (
+              <>
+                <Loader2 size={18} className="animate-spin" /> Reading PDF...
+              </>
+            ) : (
+              <>
+                <Zap size={18} /> Optimize My Resume
+              </>
+            )}
+          </button>
+        </GlassCard>
       </div>
     </motion.div>
   )

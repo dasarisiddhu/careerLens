@@ -7,6 +7,7 @@ import { supabase } from '../../services/supabase'
 import { useAuth } from '../../context/AuthContext'
 import toast from 'react-hot-toast'
 import { User, Github, Briefcase, Save, Loader2, Chrome } from 'lucide-react'
+import { GlassCard, Badge } from '../../components/ui'
 
 const GITHUB_LOCK_KEY = 'careerlens:locked_github_url'
 
@@ -71,11 +72,6 @@ export default function Profile() {
   const [saved, setSaved] = useState(false)
   const [linkingProvider, setLinkingProvider] = useState('')
   const [linkError, setLinkError] = useState('')
-  const buttonMotion = {
-    whileHover: { scale: 1.03, y: -1 },
-    whileTap: { scale: 0.97 },
-    transition: { duration: 0.15, ease: 'easeOut' },
-  }
 
   useEffect(() => {
     let active = true
@@ -98,102 +94,46 @@ export default function Profile() {
           : ''
         const storedGithub = localStorage.getItem(GITHUB_LOCK_KEY) || ''
         const resolvedGithubUrl = normalizeGithubUrl(
-          meRes?.user?.github_url
-          || githubFromOAuth
-          || authIdentity.githubUrl
-          || historyGithub
-          || storedGithub
-          || '',
+          meRes?.user?.github_url || githubFromOAuth || authIdentity.githubUrl || historyGithub || storedGithub || ''
         )
 
-        if (resolvedGithubUrl) localStorage.setItem(GITHUB_LOCK_KEY, resolvedGithubUrl)
-
-        if (meRes?.user) {
-          const resolvedUser = {
-            ...meRes.user,
-            github_url: resolvedGithubUrl,
-            github_username: meRes.user.github_username || authIdentity.githubUsername || '',
-            auth_providers: Array.isArray(meRes.user.auth_providers) && meRes.user.auth_providers.length > 0
-              ? meRes.user.auth_providers
-              : authIdentity.providers,
-          }
-          setProfile(resolvedUser)
-          setForm({
-            name: resolvedUser.name || '',
-            github_url: resolvedGithubUrl,
-            desired_role: resolvedUser.desired_role || '',
-          })
-          return
+        const userObj = meRes?.user || {
+          email: authUser?.email || '',
+          name: authUser?.user_metadata?.name || '',
+          github_url: resolvedGithubUrl,
+          desired_role: '',
+          plan_type: 'free',
         }
 
-        if (authUser) {
-          const fallbackUser = {
-            name: authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'User',
-            email: authUser.email || '',
-            plan_type: 'freemium',
-            resume_analysis_count: 0,
-            mock_interview_count: 0,
-            chatbot_message_count: 0,
-            portfolio_gen_count: 0,
-            auth_providers: authIdentity.providers,
-            github_username: authIdentity.githubUsername,
-            github_url: resolvedGithubUrl,
-            desired_role: '',
-          }
-          setProfile(fallbackUser)
-          setForm({
-            name: fallbackUser.name,
-            github_url: fallbackUser.github_url || '',
-            desired_role: fallbackUser.desired_role || '',
-          })
-          setLoadError('Profile details could not be fully loaded. Showing basic account info.')
-          return
+        const effectiveUser = {
+          ...userObj,
+          github_url: resolvedGithubUrl,
         }
 
-        setLoadError('Could not load profile. Please refresh the page.')
+        setProfile(effectiveUser)
+        setForm({
+          name: effectiveUser.name || '',
+          github_url: resolvedGithubUrl,
+          desired_role: effectiveUser.desired_role || '',
+        })
       } catch (err) {
-        if (!active) return
-        if (authUser) {
-          const authIdentity = resolveAuthGithubIdentity(authUser)
-          const fallbackUser = {
-            name: authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'User',
-            email: authUser.email || '',
-            plan_type: 'freemium',
-            resume_analysis_count: 0,
-            mock_interview_count: 0,
-            chatbot_message_count: 0,
-            portfolio_gen_count: 0,
-            auth_providers: authIdentity.providers,
-            github_username: authIdentity.githubUsername,
-            github_url: normalizeGithubUrl(authIdentity.githubUrl || localStorage.getItem(GITHUB_LOCK_KEY) || ''),
-            desired_role: '',
-          }
-          setProfile(fallbackUser)
-          setForm({
-            name: fallbackUser.name,
-            github_url: fallbackUser.github_url || '',
-            desired_role: fallbackUser.desired_role || '',
-          })
-        }
-        setLoadError(err?.message || 'Could not load profile. Please refresh the page.')
-      } finally {
-        if (active) setLoading(false)
+        setLoadError(err?.message || 'Failed to load profile')
       }
+      setLoading(false)
     }
+
     load()
-    return () => { active = false }
+    return () => {
+      active = false
+    }
   }, [authUser])
 
-  const handle = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
+  const authIdentity = resolveAuthGithubIdentity(authUser)
+  const authProviders = authIdentity.providers
+  const githubLinked = authProviders.includes('github') || Boolean(profile?.github_username)
+  const githubLocked = Boolean(profile?.github_url) || githubLinked
 
-  const authProviders = Array.isArray(profile?.auth_providers) ? profile.auth_providers : []
-  const githubLinked = authProviders.includes('github')
-  const resolvedGithubUrl = (
-    profile?.github_url
-    || (profile?.github_username ? `https://github.com/${profile.github_username}` : '')
-    || ''
-  ).trim()
-  const githubLocked = githubLinked || !!resolvedGithubUrl
+  const handle = (key) => (e) => setForm((prev) => ({ ...prev, [key]: e.target.value }))
 
   const handleSave = async () => {
     setSaving(true)
@@ -214,8 +154,7 @@ export default function Profile() {
       setSaved(true)
       toast.success('Profile updated!', { id: toastId })
       setTimeout(() => setSaved(false), 2000)
-    }
-    catch (err) {
+    } catch (err) {
       const msg = err.message || 'Failed to save profile.'
       toast.error(msg, { id: toastId })
     }
@@ -243,136 +182,152 @@ export default function Profile() {
 
   if (loading) {
     return (
-      <motion.div variants={pageTransition} initial="hidden" animate="visible" exit="exit" style={{ width: '100%' }}>
-        <div className="flex justify-center py-16"><Loader2 size={28} className="animate-spin text-primary" /></div>
-      </motion.div>
+      <div className="flex justify-center py-24">
+        <Loader2 size={32} className="animate-spin text-[#2563EB]" />
+      </div>
     )
   }
 
   if (!profile) {
     return (
-      <motion.div variants={pageTransition} initial="hidden" animate="visible" exit="exit" style={{ width: '100%' }}>
-        <div className="max-w-xl mx-auto">
-          <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
-            {loadError || 'Could not load profile.'}
-          </div>
+      <div className="max-w-xl mx-auto py-12">
+        <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-[#E11D48] text-xs font-semibold">
+          {loadError || 'Could not load profile.'}
         </div>
-      </motion.div>
+      </div>
     )
   }
 
   return (
     <motion.div variants={pageTransition} initial="hidden" animate="visible" exit="exit" style={{ width: '100%' }}>
-    <div className="max-w-xl mx-auto space-y-6">
-      <h1 className="text-3xl font-bold text-white">Profile</h1>
-      {loadError && (
-        <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-sm">
-          {loadError}
-        </div>
-      )}
-
-      {/* Avatar */}
-      <div className="glass p-6 rounded-2xl flex items-center gap-5">
-        <div className="w-16 h-16 rounded-2xl border border-primary/25 bg-[#151924] text-accent flex items-center justify-center text-2xl font-bold shadow-[0_0_16px_rgba(255,107,0,0.15)]">
-          {profile.name?.[0]?.toUpperCase() || '?'}
-        </div>
+      <div className="max-w-xl mx-auto space-y-6 pb-16">
         <div>
-          <p className="text-xl font-bold text-white">{profile.name}</p>
-          <p className="text-[#78716c] text-sm">{profile.email}</p>
-          <span className={`text-xs px-2 py-0.5 rounded-full mt-1 inline-block ${profile.plan_type === 'premium' ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' : 'bg-[#1c1917] text-[#78716c]'}`}>
-            {profile.plan_type === 'premium' ? '⭐ Premium' : 'Free Plan'}
-          </span>
+          <Badge sparkle size="sm" className="mb-1">Account</Badge>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-[#0B0F19] tracking-tight">Profile &amp; Settings</h1>
         </div>
-      </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {[['Analyses', profile.resume_analysis_count], ['Interviews', profile.mock_interview_count], ['Messages', profile.chatbot_message_count], ['Portfolios', profile.portfolio_gen_count || 0]].map(([l, v]) => (
-          <div key={l} className="glass p-4 rounded-xl text-center">
-            <p className="text-2xl font-bold text-white">{v}</p>
-            <p className="text-xs text-[#78716c]">{l}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Edit form */}
-      <div className="glass p-6 rounded-2xl space-y-4">
-        <h2 className="text-lg font-bold text-white">Edit Profile</h2>
-        {[
-          { key: 'name', label: 'Full Name', icon: User, type: 'text', ph: 'Your name' },
-          { key: 'github_url', label: 'GitHub URL', icon: Github, type: 'url', ph: 'https://github.com/username' },
-          { key: 'desired_role', label: 'Desired Role', icon: Briefcase, type: 'text', ph: 'e.g. Full Stack Developer' },
-        ].map(({ key, label, icon: Icon, type, ph }) => (
-          <div key={key}>
-            <label className="block text-sm font-medium text-[#d6d3d1] mb-1.5 flex items-center gap-2">
-              <Icon size={13} /> {label}
-            </label>
-            <input
-              type={type}
-              value={form[key]}
-              onChange={handle(key)}
-              placeholder={ph}
-              disabled={key === 'github_url' && githubLocked}
-              className={`input-field ${key === 'github_url' && githubLocked ? 'opacity-70 cursor-not-allowed' : ''}`}
-            />
-            {key === 'github_url' && (
-              <p className="mt-1 text-xs text-[#78716c]">
-                {githubLocked
-                  ? 'GitHub URL is locked for this account and cannot be changed.'
-                  : githubLinked
-                    ? `Linked GitHub account detected${profile?.github_username ? `: ${profile.github_username}` : ''}.`
-                    : 'Set this once to lock your analysis profile.'}
-              </p>
-            )}
-          </div>
-        ))}
-        <motion.button {...buttonMotion} onClick={handleSave} disabled={saving}
-          className="btn-primary w-full flex items-center justify-center gap-2">
-          {saving ? <><Loader2 size={16} className="animate-spin" /> Saving...</>
-            : saved ? '✓ Saved!'
-            : <><Save size={16} /> Save Changes</>}
-        </motion.button>
-      </div>
-
-      <div className="glass p-6 rounded-2xl space-y-4">
-        <h2 className="text-lg font-bold text-white">Connected Accounts</h2>
-        <p className="text-xs text-[#78716c]">Link providers to secure identity verification for analysis.</p>
-        {linkError && (
-          <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
-            {linkError}
+        {loadError && (
+          <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold">
+            {loadError}
           </div>
         )}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <motion.button {...buttonMotion}
-            type="button"
-            disabled={githubLinked || !!linkingProvider}
-            onClick={() => handleLinkProvider('github')}
-            className="btn-ghost w-full flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            {linkingProvider === 'github' ? <Loader2 size={16} className="animate-spin" /> : <Github size={16} />}
-            {githubLinked ? 'GitHub Linked' : 'Link GitHub'}
-          </motion.button>
-          <motion.button {...buttonMotion}
-            type="button"
-            disabled={authProviders.includes('google') || !!linkingProvider}
-            onClick={() => handleLinkProvider('google')}
-            className="btn-ghost w-full flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            {linkingProvider === 'google' ? <Loader2 size={16} className="animate-spin" /> : <Chrome size={16} />}
-            {authProviders.includes('google') ? 'Google Linked' : 'Link Google'}
-          </motion.button>
+
+        {/* User Card */}
+        <GlassCard className="p-6 border-white/95 shadow-glass flex items-center gap-4">
+          <div className="w-14 h-14 rounded-2xl bg-blue-50 border border-blue-100 text-[#2563EB] flex items-center justify-center text-xl font-black shrink-0">
+            {profile.name?.[0]?.toUpperCase() || '?'}
+          </div>
+          <div className="space-y-0.5 min-w-0">
+            <p className="text-base sm:text-lg font-bold text-[#0B0F19] truncate">{profile.name || 'User'}</p>
+            <p className="text-xs text-[#64748B] truncate">{profile.email}</p>
+            <span
+              className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-block mt-1 ${
+                profile.plan_type === 'premium'
+                  ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                  : 'bg-slate-100 text-[#64748B]'
+              }`}
+            >
+              {profile.plan_type === 'premium' ? '⭐ Pro Tier' : 'Free Tier'}
+            </span>
+          </div>
+        </GlassCard>
+
+        {/* Stats */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+          {[
+            ['Scans', profile.resume_analysis_count || 0],
+            ['Interviews', profile.mock_interview_count || 0],
+            ['Messages', profile.chatbot_message_count || 0],
+            ['Portfolios', profile.portfolio_gen_count || 0],
+          ].map(([l, v]) => (
+            <GlassCard key={l} className="p-3.5 text-center border-white/90">
+              <p className="text-xl font-black text-[#0B0F19]">{v}</p>
+              <p className="text-[11px] text-[#64748B] font-semibold uppercase mt-0.5">{l}</p>
+            </GlassCard>
+          ))}
         </div>
+
+        {/* Edit form */}
+        <GlassCard className="p-6 border-white/95 shadow-glass-lg space-y-4">
+          <h2 className="text-sm font-bold text-[#0B0F19] uppercase tracking-wider">Account Details</h2>
+          {[
+            { key: 'name', label: 'Full Name', icon: User, type: 'text', ph: 'Your name' },
+            { key: 'github_url', label: 'GitHub Profile', icon: Github, type: 'url', ph: 'https://github.com/username' },
+            { key: 'desired_role', label: 'Target Job Title', icon: Briefcase, type: 'text', ph: 'e.g. Senior Full Stack Engineer' },
+          ].map(({ key, label, icon: Icon, type, ph }) => (
+            <div key={key}>
+              <label className="block text-xs font-bold text-[#0B0F19] uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                <Icon size={13} className="text-[#2563EB]" /> {label}
+              </label>
+              <input
+                type={type}
+                value={form[key]}
+                onChange={handle(key)}
+                placeholder={ph}
+                disabled={key === 'github_url' && githubLocked}
+                className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-[#0B0F19] shadow-xs focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 disabled:bg-slate-50 disabled:text-[#64748B]"
+              />
+              {key === 'github_url' && (
+                <p className="mt-1 text-[11px] text-[#64748B]">
+                  {githubLocked
+                    ? 'GitHub profile is verified and locked to this account.'
+                    : 'Enter your GitHub username to link real code evidence.'}
+                </p>
+              )}
+            </div>
+          ))}
+
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="w-full flex items-center justify-center gap-2 py-3.5 rounded-full bg-[#0B0F19] text-white font-bold text-sm hover:bg-[#1E293B] transition-all shadow-md disabled:opacity-50 mt-2"
+          >
+            {saving ? (
+              <>
+                <Loader2 size={16} className="animate-spin" /> Saving...
+              </>
+            ) : saved ? (
+              '✓ Saved!'
+            ) : (
+              <>
+                <Save size={16} /> Save Changes
+              </>
+            )}
+          </button>
+        </GlassCard>
+
+        {/* Connected accounts */}
+        <GlassCard className="p-6 border-white/95 shadow-glass space-y-3">
+          <h2 className="text-sm font-bold text-[#0B0F19] uppercase tracking-wider">Connected Accounts</h2>
+          <p className="text-xs text-[#64748B]">Link identity providers for streamlined authentication.</p>
+          {linkError && (
+            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-[#E11D48] text-xs font-semibold">
+              {linkError}
+            </div>
+          )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+            <button
+              type="button"
+              disabled={githubLinked || !!linkingProvider}
+              onClick={() => handleLinkProvider('github')}
+              className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-full border border-slate-200 bg-white text-xs font-bold text-[#0B0F19] hover:bg-slate-50 transition-colors disabled:opacity-50 shadow-xs"
+            >
+              {linkingProvider === 'github' ? <Loader2 size={14} className="animate-spin" /> : <Github size={14} />}
+              <span>{githubLinked ? 'GitHub Linked' : 'Link GitHub'}</span>
+            </button>
+            <button
+              type="button"
+              disabled={authProviders.includes('google') || !!linkingProvider}
+              onClick={() => handleLinkProvider('google')}
+              className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-full border border-slate-200 bg-white text-xs font-bold text-[#0B0F19] hover:bg-slate-50 transition-colors disabled:opacity-50 shadow-xs"
+            >
+              {linkingProvider === 'google' ? <Loader2 size={14} className="animate-spin" /> : <Chrome size={14} />}
+              <span>{authProviders.includes('google') ? 'Google Linked' : 'Link Google'}</span>
+            </button>
+          </div>
+        </GlassCard>
       </div>
-    </div>
     </motion.div>
   )
 }
-
-
-
-
-
-
-
-
-

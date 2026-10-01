@@ -1,13 +1,15 @@
 // frontend/src/pages/dashboard/ATSChecker.jsx
-import { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { useAnimatedCircle, useCountUp, pageTransition } from '../../utils/animations'
 import { api } from '../../services/api'
 import toast from 'react-hot-toast'
 import {
-  Loader2, CheckCircle, XCircle, Target, Zap,
-  Upload, FileText, AlertTriangle, TrendingUp, TrendingDown
+  Loader2, CheckCircle2, XCircle, Target, Zap,
+  Upload, FileText, AlertTriangle, TrendingUp, TrendingDown,
+  ArrowRight,
 } from 'lucide-react'
+import { GlassCard, Button, Badge } from '../../components/ui'
 
 function normalizePdfText(value = '') {
   return String(value)
@@ -87,26 +89,17 @@ function buildPdfBase64FromText(text) {
 }
 
 function AnimatedScoreCircle({ score, maxScore = 100, size = 140, label }) {
-  const { radius, circumference, offset, strokeWidth } = useAnimatedCircle(score, maxScore, size, 8)
+  const { radius, circumference, offset, strokeWidth } = useAnimatedCircle(score, maxScore, size, 9)
   const count = useCountUp(score, 1400)
-  const strokeColor = score >= 70 ? '#10b981' : score >= 40 ? '#f59e0b' : '#ef4444'
+  const strokeColor = score >= 75 ? '#16A34A' : score >= 50 ? '#2563EB' : '#E11D48'
 
   return (
     <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
       <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
-        <defs>
-          <filter id={`glow-${score}`}>
-            <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
-            <feMerge>
-              <feMergeNode in="coloredBlur"/>
-              <feMergeNode in="SourceGraphic"/>
-            </feMerge>
-          </filter>
-        </defs>
         <circle
           cx={size/2} cy={size/2} r={radius}
           fill="none"
-          stroke="rgba(255,255,255,0.06)"
+          stroke="#E2E8F0"
           strokeWidth={strokeWidth}
         />
         <circle
@@ -117,7 +110,6 @@ function AnimatedScoreCircle({ score, maxScore = 100, size = 140, label }) {
           strokeLinecap="round"
           strokeDasharray={circumference}
           strokeDashoffset={offset}
-          filter={`url(#glow-${score})`}
           style={{ transition: 'stroke-dashoffset 1.4s cubic-bezier(0.22, 1, 0.36, 1)' }}
         />
       </svg>
@@ -127,14 +119,14 @@ function AnimatedScoreCircle({ score, maxScore = 100, size = 140, label }) {
         alignItems: 'center', justifyContent: 'center',
       }}>
         <span style={{
-          fontSize: size > 100 ? '28px' : '20px',
-          fontWeight: 800, color: '#fafaf9',
+          fontSize: size > 100 ? '30px' : '22px',
+          fontWeight: 800, color: '#0B0F19',
           letterSpacing: '-1px', lineHeight: 1,
         }}>
           {count}
         </span>
         {label && (
-          <span style={{ fontSize: '10px', color: 'rgba(120,113,108,0.8)', marginTop: '2px' }}>
+          <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748B', marginTop: '3px' }}>
             {label}
           </span>
         )}
@@ -143,10 +135,11 @@ function AnimatedScoreCircle({ score, maxScore = 100, size = 140, label }) {
   )
 }
 
+const STORAGE_KEY = 'careerlens_ats_cache'
+
 export default function ATSChecker() {
-  const STORAGE_KEY = 'careerlens:ats:last_result'
-  const [resumeFile,  setResumeFile]  = useState(null)
   const [resumeText,  setResumeText]  = useState('')
+  const [resumeFile,  setResumeFile]  = useState(null)
   const [jobDesc,     setJobDesc]     = useState('')
   const [result,      setResult]      = useState(null)
   const [loading,     setLoading]     = useState(false)
@@ -154,13 +147,7 @@ export default function ATSChecker() {
   const [error,       setError]       = useState('')
   const [dragging,    setDragging]    = useState(false)
   const fileRef = useRef(null)
-  const buttonMotion = {
-    whileHover: { scale: 1.03, y: -1 },
-    whileTap: { scale: 0.97 },
-    transition: { duration: 0.15, ease: 'easeOut' },
-  }
 
-  // ── Auto-fill from ResumeOptimizer via localStorage ──────
   useEffect(() => {
     const saved = localStorage.getItem('careerlens_resume_text')
     if (saved && saved.trim().length > 50) {
@@ -182,8 +169,7 @@ export default function ATSChecker() {
 
   const handleFile = async (file) => {
     if (!file) return
-    if (!file.name.toLowerCase().endsWith('.pdf') &&
-        file.type !== 'application/pdf') {
+    if (!file.name.toLowerCase().endsWith('.pdf') && file.type !== 'application/pdf') {
       setError('Please upload a PDF file.')
       return
     }
@@ -197,22 +183,15 @@ export default function ATSChecker() {
       let binary = ''
       const chunkSize = 8192
       for (let i = 0; i < uint8Array.length; i += chunkSize) {
-        binary += String.fromCharCode.apply(
-          null, uint8Array.subarray(i, i + chunkSize)
-        )
+        binary += String.fromCharCode.apply(null, uint8Array.subarray(i, i + chunkSize))
       }
       const base64 = btoa(binary)
-
       const res = await api.extractResumeText({ pdf_base64: base64 })
-
       if (res && res.text && res.text.trim().length > 20) {
         setResumeText(res.text.trim())
         setError('')
       } else {
-        setError(
-          'Could not extract text from this PDF. ' +
-          'Please paste your resume text manually.'
-        )
+        setError('Could not extract text from this PDF. Please paste your resume text manually.')
       }
     } catch (err) {
       const msg = err?.message || 'Extraction failed'
@@ -222,7 +201,11 @@ export default function ATSChecker() {
     }
   }
 
-  const handleDrop = (e) => { e.preventDefault(); setDragging(false); handleFile(e.dataTransfer.files[0]) }
+  const handleDrop = (e) => {
+    e.preventDefault()
+    setDragging(false)
+    handleFile(e.dataTransfer.files[0])
+  }
 
   const handleCheck = async () => {
     if (resumeText.length < 50 || jobDesc.length < 50) return
@@ -233,7 +216,7 @@ export default function ATSChecker() {
       const base64 = buildPdfBase64FromText(resumeText)
       const res = await api.checkATS({
         resume_pdf: base64,
-        job_description: jobDesc
+        job_description: jobDesc,
       })
       setResult(res.result)
       toast.success('ATS match calculated!', { id: toastId })
@@ -249,302 +232,300 @@ export default function ATSChecker() {
     setLoading(false)
   }
 
-  const getScoreSurface = (s) => s >= 85
-    ? 'bg-[#141822] border-green-500/20'
-    : s >= 70
-      ? 'bg-[#141822] border-red-500/20'
+  const getScoreSurface = (s) =>
+    s >= 85
+      ? 'border-emerald-200/90 bg-emerald-50/40 shadow-glass'
+      : s >= 70
+      ? 'border-blue-200/90 bg-blue-50/40 shadow-glass'
       : s >= 50
-        ? 'bg-[#141822] border-white/10'
-        : 'bg-[#141822] border-red-500/20'
-  // ── INPUT SCREEN ─────────────────────────────────────────
+      ? 'border-amber-200/90 bg-amber-50/40 shadow-glass'
+      : 'border-rose-200/90 bg-rose-50/40 shadow-glass'
+
   const getPlainStatus = (s) => {
-    if (s >= 85) return { text: 'Strong', color: 'text-green-400' }
-    if (s >= 70) return { text: 'Good', color: 'text-white' }
-    if (s >= 50) return { text: 'Average', color: 'text-[#d6d3d1]' }
-    return { text: 'Weak', color: 'text-red-400' }
+    if (s >= 85) return { text: 'Strong Match', color: 'text-[#16A34A]' }
+    if (s >= 70) return { text: 'Good Match', color: 'text-[#2563EB]' }
+    if (s >= 50) return { text: 'Average Match', color: 'text-[#D97706]' }
+    return { text: 'Weak Match', color: 'text-[#E11D48]' }
   }
 
   const hasScoreResult = result && typeof result === 'object' && !Array.isArray(result) && typeof result.ats_score === 'number'
 
-  if (!hasScoreResult) return (
-    <motion.div variants={pageTransition} initial="hidden" animate="visible" exit="exit" style={{ width: '100%' }}>
-      <div className="max-w-5xl mx-auto space-y-6">
-      <div>
-        <h1 className="gradient-text text-3xl font-bold flex items-center gap-3">
-          <Target size={28} className="text-primary" /> ATS Checker
-        </h1>
-        <p className="text-[#78716c] mt-1">
-          Upload your resume PDF + paste a job description → get a brutally honest ATS match score
-        </p>
-      </div>
-
-      {error && (
-        <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm flex items-center gap-2">
-          <AlertTriangle size={16} /> {error}
+  if (!hasScoreResult) {
+    return (
+      <div className="max-w-4xl mx-auto space-y-6 pb-16">
+        <div>
+          <Badge sparkle size="sm" className="mb-2">
+            ATS Diagnostic
+          </Badge>
+          <h1 className="text-3xl font-extrabold text-[#0B0F19] tracking-tight">
+            ATS Checker
+          </h1>
+          <p className="text-xs sm:text-sm text-[#64748B] mt-1">
+            Upload your resume PDF + paste a job description → get an honest ATS keyword and structure match.
+          </p>
         </div>
-      )}
 
-      {/* Auto-fill success notice */}
-      {resumeText.length > 100 && !resumeFile && (
-        <div className="p-3 rounded-xl bg-green-500/10 border border-green-500/20 text-green-300 text-sm flex items-center gap-2">
-          <CheckCircle size={14} /> Optimized resume text loaded automatically — paste a job description and check your score!
-        </div>
-      )}
+        {error && (
+          <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-[#E11D48] text-xs flex items-center gap-2">
+            <AlertTriangle size={16} className="shrink-0" /> <span>{error}</span>
+          </div>
+        )}
 
-      <div className="grid md:grid-cols-2 gap-5">
+        {resumeText.length > 100 && !resumeFile && (
+          <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-[#16A34A] text-xs flex items-center gap-2">
+            <CheckCircle2 size={15} /> <span>Optimized resume text loaded automatically — paste a job description and check your score!</span>
+          </div>
+        )}
 
-        {/* PDF Upload */}
-        <div className="space-y-3">
-          <label className="text-sm font-semibold text-[#d6d3d1] flex items-center gap-2">
-            <FileText size={15} className="text-primary" /> Your Resume (PDF)
-          </label>
-          <div
-            onClick={() => fileRef.current?.click()}
-            onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={handleDrop}
-            className={`relative flex flex-col items-center justify-center h-40 rounded-2xl border-2 border-dashed
-              cursor-pointer transition-all duration-200
-              ${dragging ? 'border-primary bg-primary/10 shadow-[0_0_30px_rgba(255,107,0,0.2)]' : resumeFile
-                ? 'border-green-500/50 bg-green-500/5'
-                : 'border-white/10 bg-white/[0.02] hover:border-primary/30 hover:bg-primary/5'}`}>
-            {resumeFile ? (
-              <div className="text-center px-4">
-                <div className="w-12 h-12 rounded-2xl bg-green-500/20 flex items-center justify-center mx-auto mb-2">
-                  <FileText size={22} className="text-green-400" />
+        <div className="grid md:grid-cols-2 gap-5">
+          {/* PDF Upload */}
+          <div className="space-y-3">
+            <label className="text-xs font-bold text-[#0B0F19] uppercase tracking-wider flex items-center gap-2">
+              <FileText size={14} className="text-[#2563EB]" /> Your Resume (PDF)
+            </label>
+            <div
+              onClick={() => fileRef.current?.click()}
+              onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={handleDrop}
+              className={`relative flex flex-col items-center justify-center h-44 rounded-2xl border-2 border-dashed cursor-pointer transition-all p-4 ${
+                dragging ? 'border-[#2563EB] bg-blue-50/60' : resumeFile
+                  ? 'border-emerald-300 bg-emerald-50/40'
+                  : 'border-slate-200 bg-white/70 hover:border-slate-300 hover:bg-white'
+              }`}
+            >
+              {resumeFile ? (
+                <div className="text-center px-4">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center mx-auto mb-2 text-[#16A34A]">
+                    <CheckCircle2 size={20} />
+                  </div>
+                  <p className="text-[#0B0F19] font-bold text-sm truncate max-w-xs">{resumeFile.name}</p>
+                  <p className="text-[#16A34A] text-xs font-semibold mt-0.5">✓ PDF uploaded successfully</p>
+                  <p className="text-[#94A3B8] text-[11px]">{(resumeFile.size / 1024).toFixed(0)} KB</p>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setResumeFile(null) }}
+                    className="mt-2 text-xs font-semibold text-rose-600 hover:underline"
+                  >
+                    Remove
+                  </button>
                 </div>
-                <p className="text-white font-semibold text-sm">{resumeFile.name}</p>
-                <p className="text-green-400 text-xs mt-1">✓ PDF uploaded successfully</p>
-                <p className="text-[#44403c] text-xs">{(resumeFile.size / 1024).toFixed(0)} KB</p>
-                <motion.button {...buttonMotion} onClick={(e) => { e.stopPropagation(); setResumeFile(null) }}
-                  className="mt-2 text-xs text-red-400 hover:text-red-300 underline">Remove</motion.button>
-              </div>
-            ) : (
-              <div className="text-center px-6">
-                <Upload size={22} className="float text-[#FF7070] mx-auto mb-2" />
-                <p className="text-white text-sm font-medium">Drop your resume PDF here</p>
-                <p className="text-[#44403c] text-xs mt-1">or click to browse</p>
+              ) : (
+                <div className="text-center px-6">
+                  <div className="w-10 h-10 rounded-xl bg-blue-50 text-[#2563EB] flex items-center justify-center mx-auto mb-2 border border-blue-100">
+                    <Upload size={18} />
+                  </div>
+                  <p className="text-[#0B0F19] text-sm font-bold">Drop your resume PDF here</p>
+                  <p className="text-[#64748B] text-xs mt-0.5">or click to browse</p>
+                </div>
+              )}
+              <input ref={fileRef} type="file" accept=".pdf" className="hidden"
+                onChange={e => handleFile(e.target.files[0])} />
+            </div>
+
+            {extracting && (
+              <div className="flex items-center gap-2 text-[#2563EB] text-xs font-semibold">
+                <Loader2 size={14} className="animate-spin" /> <span>Extracting text from PDF...</span>
               </div>
             )}
-            <input ref={fileRef} type="file" accept=".pdf" className="hidden"
-              onChange={e => handleFile(e.target.files[0])} />
+
+            <div>
+              <label className="text-xs font-bold text-[#0B0F19] uppercase tracking-wider mb-2 block">
+                RESUME TEXT{' '}
+                <span className="text-[#64748B] font-normal lowercase">(auto-filled or paste manually)</span>
+              </label>
+              <textarea
+                value={resumeText}
+                onChange={e => setResumeText(e.target.value)}
+                rows={6}
+                placeholder="Resume text will auto-fill from PDF upload, or paste manually here..."
+                className="w-full rounded-xl border border-slate-200 bg-white p-3 text-xs text-[#0B0F19] placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB] resize-none shadow-xs"
+              />
+              <div className="flex justify-between items-center mt-1">
+                <span className={`text-[11px] font-semibold ${resumeText.length > 50 ? 'text-[#16A34A]' : 'text-[#64748B]'}`}>
+                  {resumeText.length > 50 ? `✓ ${resumeText.length} chars ready` : `${resumeText.length} chars`}
+                </span>
+                {resumeText.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setResumeText('')}
+                    className="text-[11px] font-semibold text-slate-400 hover:text-rose-600 transition-colors"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
 
-          {extracting && (
-            <div className="flex items-center gap-2 text-[#FF7070] text-sm">
-              <Loader2 size={14} className="animate-spin" /> Extracting text from PDF...
-            </div>
-          )}
-
-          {/* Resume text — always visible */}
-          <div>
-            <label className="text-xs font-semibold text-[#78716c] uppercase tracking-wide mb-2 block">
-              RESUME TEXT{' '}
-              <span className="text-[#44403c] font-normal">(auto-filled from PDF or paste manually)</span>
+          {/* Job Description */}
+          <div className="space-y-3">
+            <label className="text-xs font-bold text-[#0B0F19] uppercase tracking-wider flex items-center gap-2">
+              💼 Job Description
             </label>
             <textarea
-              value={resumeText}
-              onChange={e => setResumeText(e.target.value)}
-              rows={6}
-              placeholder="Resume text will auto-fill from PDF upload, or paste manually here..."
-              className={`input-field resize-none w-full text-sm transition-all ${
-                resumeText.length > 100 ? 'border-green-500/50 bg-green-500/5' : ''
-              }`}
+              value={jobDesc}
+              onChange={e => setJobDesc(e.target.value)}
+              rows={11}
+              placeholder={`Paste the full job description here...\n\nInclude:\n• Job title and requirements\n• Required skills and technologies\n• Years of experience needed\n• Responsibilities`}
+              className="w-full h-80 rounded-xl border border-slate-200 bg-white p-3 text-xs leading-relaxed text-[#0B0F19] placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB] resize-none shadow-xs"
             />
-            <div className="flex justify-between items-center mt-1">
-              <span className={`text-xs ${resumeText.length > 100 ? 'text-green-400' : 'text-[#44403c]'}`}>
-                {resumeText.length > 100 ? `✓ ${resumeText.length} chars ready` : `${resumeText.length} chars`}
-              </span>
-              {resumeText.length > 0 && (
-                <motion.button {...buttonMotion} onClick={() => setResumeText('')}
-                  className="text-xs text-[#44403c] hover:text-red-400 transition-colors">Clear</motion.button>
-              )}
-            </div>
           </div>
         </div>
 
-        {/* Job Description */}
-        <div className="space-y-3">
-          <label className="text-sm font-semibold text-[#d6d3d1] flex items-center gap-2">
-            💼 Job Description
-          </label>
-          <textarea
-            value={jobDesc}
-            onChange={e => setJobDesc(e.target.value)}
-            rows={11}
-            placeholder={`Paste the full job description here...\n\nInclude:\n• Job title and requirements\n• Required skills and technologies\n• Years of experience needed\n• Responsibilities`}
-            className="input-field resize-none w-full h-64 text-sm leading-relaxed"
-          />
-        </div>
+        <button
+          type="button"
+          onClick={handleCheck}
+          disabled={loading || resumeText.length < 50 || jobDesc.length < 50}
+          className="w-full py-4 rounded-full bg-[#0B0F19] text-white font-bold text-sm hover:bg-[#1E293B] transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
+        >
+          {loading
+            ? <><Loader2 size={18} className="animate-spin" /> Analyzing your match...</>
+            : <><Zap size={18} /> Check ATS Match</>}
+        </button>
       </div>
-
-      {/* Warning */}
-      <div className="p-4 rounded-xl bg-red-500/6 border border-red-500/20 flex items-start gap-3">
-        <AlertTriangle size={16} className="text-[#FF7070] shrink-0 mt-0.5" />
-        <p className="text-[#FF7070] text-sm">
-          <strong>Brutally honest mode ON.</strong> This tool will not sugarcoat results.
-          If your resume is weak for this role, it will tell you exactly why.
-        </p>
-      </div>
-
-      <motion.button {...buttonMotion}
-        onClick={handleCheck}
-        disabled={loading || resumeText.length < 50 || jobDesc.length < 50}
-        className="btn-primary w-full py-4 flex items-center justify-center gap-2 text-base disabled:opacity-50 disabled:cursor-not-allowed">
-        {loading
-          ? <><Loader2 size={18} className="animate-spin" /> Analyzing your match...</>
-          : <><Zap size={18} /> Check ATS Match</>}
-      </motion.button>
-    </div>
-  </motion.div>
-  )
+    )
+  }
 
   // ── RESULT SCREEN ─────────────────────────────────────────
   const verdict = getPlainStatus(result.ats_score)
 
   return (
-    <motion.div variants={pageTransition} initial="hidden" animate="visible" exit="exit" style={{ width: '100%' }}>
-      <div className="max-w-5xl mx-auto space-y-5">
-
+    <div className="max-w-4xl mx-auto space-y-6 pb-16">
       {/* Score Header */}
-      <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }}
-        className={`relative overflow-hidden glass-glow rounded-2xl p-6 border ${getScoreSurface(result.ats_score)}`}>
+      <div className={`relative overflow-hidden rounded-[24px] p-6 sm:p-8 border ${getScoreSurface(result.ats_score)}`}>
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
           <div className="flex flex-col sm:flex-row sm:items-center gap-6">
-            <AnimatedScoreCircle score={result.ats_score} size={140} label="ATS Match" />
+            <AnimatedScoreCircle score={result.ats_score} size={130} label="ATS Match" />
             <div>
-              <div className="mb-2">
-                <span className={`text-lg font-bold ${verdict.color}`}>{verdict.text}</span>
+              <div className="mb-1">
+                <span className={`text-xl font-extrabold ${verdict.color}`}>{verdict.text}</span>
               </div>
-              <p className="text-[#78716c] text-sm">ATS Match Score</p>
+              <p className="text-xs text-[#64748B]">ATS Match Score out of 100</p>
             </div>
           </div>
-          <div className="space-y-3 text-right">
-            <div className="glass px-4 py-3 rounded-xl">
-              <p className="text-xs text-[#78716c] mb-0.5">Keywords Matched</p>
-              <p className="text-2xl font-bold text-green-400">{result.matched_keywords?.length || 0}</p>
+          <div className="flex items-center gap-3">
+            <div className="bg-white/90 border border-slate-200/90 px-4 py-3 rounded-xl shadow-xs">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-[#64748B] mb-0.5">Matched</p>
+              <p className="text-2xl font-black text-[#16A34A]">{result.matched_keywords?.length || 0}</p>
             </div>
-            <div className="glass px-4 py-3 rounded-xl">
-              <p className="text-xs text-[#78716c] mb-0.5">Keywords Missing</p>
-              <p className="text-2xl font-bold text-red-400">{result.missing_keywords?.length || 0}</p>
+            <div className="bg-white/90 border border-slate-200/90 px-4 py-3 rounded-xl shadow-xs">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-[#64748B] mb-0.5">Missing</p>
+              <p className="text-2xl font-black text-[#E11D48]">{result.missing_keywords?.length || 0}</p>
             </div>
           </div>
         </div>
         {result.honest_verdict && (
-          <div className="mt-4 p-3 rounded-xl bg-black/20 border border-white/5">
-            <p className="text-sm text-[#d6d3d1] leading-relaxed">
-              <span className="text-white font-semibold">Honest Assessment: </span>
+          <div className="mt-4 p-3.5 rounded-xl bg-white/80 border border-slate-200/70">
+            <p className="text-xs text-[#475569] leading-relaxed">
+              <span className="font-bold text-[#0B0F19]">Assessment: </span>
               {result.honest_verdict}
             </p>
           </div>
         )}
-      </motion.div>
+      </div>
 
       {/* Keywords Grid */}
       <div className="grid md:grid-cols-2 gap-4">
-        <motion.div initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1 }}
-          className="glass-glow p-5 rounded-2xl">
-          <h3 className="font-bold text-white mb-3 flex items-center gap-2">
-            <CheckCircle size={16} className="text-green-400" /> Matched Keywords
-          </h3>
+        <GlassCard className="p-5 shadow-glass">
+          <h2 className="font-bold text-sm text-[#0B0F19] mb-3 flex items-center gap-2">
+            <CheckCircle2 size={16} className="text-[#16A34A]" /> Matched Keywords
+          </h2>
           {result.matched_keywords?.length > 0 ? (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-1.5">
               {result.matched_keywords.map((k, i) => (
-                <span key={i} className="badge badge-green normal-case tracking-normal">
+                <span key={i} className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-[#16A34A] border border-emerald-200">
                   ✓ {k}
                 </span>
               ))}
             </div>
           ) : (
-            <p className="text-[#44403c] text-sm">No keywords matched — this is a serious problem.</p>
+            <p className="text-[#94A3B8] text-xs">No keywords matched.</p>
           )}
-        </motion.div>
+        </GlassCard>
 
-        <motion.div initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.15 }}
-          className="glass-glow p-5 rounded-2xl">
-          <h3 className="font-bold text-white mb-3 flex items-center gap-2">
-            <XCircle size={16} className="text-red-400" /> Missing Keywords
-          </h3>
+        <GlassCard className="p-5 shadow-glass">
+          <h2 className="font-bold text-sm text-[#0B0F19] mb-3 flex items-center gap-2">
+            <XCircle size={16} className="text-[#E11D48]" /> Missing Keywords
+          </h2>
           {result.missing_keywords?.length > 0 ? (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-1.5">
               {result.missing_keywords.map((k, i) => (
-                <span key={i} className="badge badge-red normal-case tracking-normal">
+                <span key={i} className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-50 text-[#E11D48] border border-rose-200">
                   ✗ {k}
                 </span>
               ))}
             </div>
           ) : (
-            <p className="text-green-400 text-sm">No critical keywords missing!</p>
+            <p className="text-[#16A34A] text-xs font-semibold">No critical keywords missing!</p>
           )}
-        </motion.div>
+        </GlassCard>
       </div>
 
       {/* Skills Match */}
       <div className="grid md:grid-cols-2 gap-4">
         {result.matched_skills?.length > 0 && (
-          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
-            className="glass-glow p-5 rounded-2xl">
-            <h3 className="font-bold text-white mb-3 flex items-center gap-2">
-              <TrendingUp size={16} className="text-green-400" /> Skills You Have
-            </h3>
+          <GlassCard className="p-5 shadow-glass">
+            <h2 className="font-bold text-sm text-[#0B0F19] mb-3 flex items-center gap-2">
+              <TrendingUp size={16} className="text-[#16A34A]" /> Skills You Have
+            </h2>
             <ul className="space-y-1.5">
               {result.matched_skills.map((s, i) => (
-                <li key={i} className="text-sm text-[#d6d3d1] flex items-center gap-2">
-                  <span className="text-green-400 shrink-0">✓</span> {s}
+                <li key={i} className="text-xs text-[#475569] flex items-center gap-2">
+                  <span className="text-[#16A34A] font-bold">✓</span> {s}
                 </li>
               ))}
             </ul>
-          </motion.div>
+          </GlassCard>
         )}
         {result.missing_skills?.length > 0 && (
-          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}
-            className="glass-glow p-5 rounded-2xl">
-            <h3 className="font-bold text-white mb-3 flex items-center gap-2">
-              <TrendingDown size={16} className="text-red-400" /> Skills You're Missing
-            </h3>
+          <GlassCard className="p-5 shadow-glass">
+            <h2 className="font-bold text-sm text-[#0B0F19] mb-3 flex items-center gap-2">
+              <TrendingDown size={16} className="text-[#E11D48]" /> Skills You're Missing
+            </h2>
             <ul className="space-y-1.5">
               {result.missing_skills.map((s, i) => (
-                <li key={i} className="text-sm text-[#d6d3d1] flex items-center gap-2">
-                  <span className="text-red-400 shrink-0">✗</span> {s}
+                <li key={i} className="text-xs text-[#475569] flex items-center gap-2">
+                  <span className="text-[#E11D48] font-bold">✗</span> {s}
                 </li>
               ))}
             </ul>
-          </motion.div>
+          </GlassCard>
         )}
       </div>
 
-      {/* Brutal Suggestions */}
-      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
-        className="glass-glow p-6 rounded-2xl border border-red-500/20 bg-red-500/5">
-        <h3 className="font-bold text-white mb-4 flex items-center gap-2">
-          <AlertTriangle size={16} className="text-primary-light" /> What You Must Fix (Brutally Honest)
-        </h3>
-        <ul className="space-y-3">
-          {result.suggestions?.map((s, i) => (
-            <li key={i} className="flex items-start gap-3 p-3 rounded-xl bg-black/20">
-              <span className="text-primary font-bold shrink-0 mt-0.5">{i + 1}.</span>
-              <p className="text-sm text-[#e7e5e4]">{s}</p>
-            </li>
-          ))}
-        </ul>
-      </motion.div>
+      {/* Suggestions */}
+      {result.suggestions?.length > 0 && (
+        <GlassCard className="p-6 border-blue-200/80 bg-blue-50/40 shadow-glass">
+          <h2 className="font-bold text-sm text-[#0B0F19] mb-4 flex items-center gap-2">
+            <Zap size={16} className="text-[#2563EB]" /> Actionable Fixes
+          </h2>
+          <ul className="space-y-2.5">
+            {result.suggestions.map((s, i) => (
+              <li key={i} className="flex items-start gap-2.5 p-3 rounded-xl bg-white border border-slate-200/70 text-xs text-[#475569]">
+                <span className="text-[#2563EB] font-bold shrink-0 mt-0.5">{i + 1}.</span>
+                <p className="leading-relaxed">{s}</p>
+              </li>
+            ))}
+          </ul>
+        </GlassCard>
+      )}
 
       {/* Bottom actions */}
       <div className="flex gap-3 pb-6">
-        <motion.button {...buttonMotion} onClick={() => {
-          setResult(null); setResumeFile(null); setJobDesc('')
-          localStorage.removeItem(STORAGE_KEY)
-        }} className="btn-ghost flex-1">
+        <button
+          type="button"
+          onClick={() => {
+            setResult(null)
+            setResumeFile(null)
+            setJobDesc('')
+            localStorage.removeItem(STORAGE_KEY)
+          }}
+          className="flex-1 py-3.5 rounded-full border border-slate-200 bg-white text-[#0B0F19] font-bold text-xs hover:bg-slate-50 transition-all shadow-xs"
+        >
           Check Another Job
-        </motion.button>
+        </button>
       </div>
     </div>
-  </motion.div>
   )
 }
-
-
-
-
-
-

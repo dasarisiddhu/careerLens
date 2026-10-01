@@ -4,12 +4,12 @@ import { EffectComposer, Bloom } from '@react-three/postprocessing'
 import * as THREE from 'three'
 import { NovaStaticFallback } from './NovaFallback'
 
-// Palette A values
-const COLOR_CREAM = '#F5EFE6'
-const COLOR_DARK = '#0D0C14'
-const COLOR_ACCENT = '#FFA726'
-const COLOR_PRIMARY = '#FF6B00'
-const COLOR_GOLD = '#FFB74D'
+// Palette values (Light 3D Glassmorphism - Blue accents)
+const COLOR_CREAM = '#F8FAFC'
+const COLOR_DARK = '#0B0F19'
+const COLOR_ACCENT = '#3B82F6'
+const COLOR_PRIMARY = '#2563EB'
+const COLOR_GOLD = '#60A5FA'
 
 // Expression configurations
 const EXPRESSIONS = {
@@ -149,7 +149,7 @@ function NovaModel({ expression = 'idle', size = 'hero' }) {
   const goldAccentMat = useMemo(
     () =>
       new THREE.MeshStandardMaterial({
-        color: '#FFA726',
+        color: '#60A5FA',
         metalness: 0.6,
         roughness: 0.25,
       }),
@@ -324,8 +324,8 @@ export default function Nova({ expression = 'idle', size = 'hero', className = '
       >
         <ambientLight intensity={0.9} color="#FFF8F0" />
         <directionalLight position={[4, 5, 5]} intensity={1.6} color="#FFFFFF" />
-        <directionalLight position={[-4, 2, -2]} intensity={1.4} color="#FFA726" />
-        <pointLight position={[0, -1.8, 0]} intensity={4.5} distance={5} color="#FF6B00" />
+        <directionalLight position={[-4, 2, -2]} intensity={1.4} color="#60A5FA" />
+        <pointLight position={[0, -1.8, 0]} intensity={4.5} distance={5} color="#2563EB" />
 
         <NovaModel expression={expression} size={size} />
 

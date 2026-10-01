@@ -19,30 +19,24 @@ import {
   Code2,
   ChevronDown,
   ChevronUp,
-  Tag,
 } from 'lucide-react'
+import { GlassCard, Badge } from '../../components/ui'
 
 const POST_TYPES = [
-  { value: 'all', label: 'All Posts', icon: Globe, iconClass: 'text-[#8A8FA8]' },
-  { value: 'project', label: 'Projects', icon: Code2, iconClass: 'text-[#FF7070]' },
-  { value: 'job', label: 'Job Seeking', icon: Briefcase, iconClass: 'text-blue-300' },
-  { value: 'funding', label: 'Funding', icon: DollarSign, iconClass: 'text-green-300' },
-  { value: 'blog', label: 'Blog / Tips', icon: BookOpen, iconClass: 'text-amber-300' },
-  { value: 'hiring', label: 'Hiring', icon: Users, iconClass: 'text-[#FF8C42]' },
+  { value: 'all', label: 'All Posts', icon: Globe, iconClass: 'text-[#64748B]' },
+  { value: 'project', label: 'Projects', icon: Code2, iconClass: 'text-[#2563EB]' },
+  { value: 'job', label: 'Job Seeking', icon: Briefcase, iconClass: 'text-[#0284C7]' },
+  { value: 'funding', label: 'Funding', icon: DollarSign, iconClass: 'text-[#16A34A]' },
+  { value: 'blog', label: 'Blog / Tips', icon: BookOpen, iconClass: 'text-[#D97706]' },
+  { value: 'hiring', label: 'Hiring', icon: Users, iconClass: 'text-[#2563EB]' },
 ]
 
 const TYPE_STYLES = {
-  project: { className: 'badge badge-red normal-case tracking-normal', icon: 'Project' },
-  job: { className: 'badge badge-blue normal-case tracking-normal', icon: 'Job' },
-  funding: { className: 'badge badge-green normal-case tracking-normal', icon: 'Funding' },
-  blog: { className: 'badge badge-amber normal-case tracking-normal', icon: 'Blog' },
-  hiring: { className: 'inline-flex items-center gap-1 rounded-full border border-[rgba(255,140,66,0.25)] bg-[rgba(255,140,66,0.12)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#FF8C42]', icon: 'Hiring' },
-}
-
-const buttonMotion = {
-  whileHover: { scale: 1.03, y: -1 },
-  whileTap: { scale: 0.97 },
-  transition: { duration: 0.15, ease: 'easeOut' },
+  project: { className: 'text-[11px] font-bold text-[#2563EB] bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-100', label: 'Project' },
+  job: { className: 'text-[11px] font-bold text-[#0284C7] bg-sky-50 px-2.5 py-0.5 rounded-full border border-sky-100', label: 'Job Seeking' },
+  funding: { className: 'text-[11px] font-bold text-[#16A34A] bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-100', label: 'Funding' },
+  blog: { className: 'text-[11px] font-bold text-[#D97706] bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-100', label: 'Blog' },
+  hiring: { className: 'text-[11px] font-bold text-[#2563EB] bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-100', label: 'Hiring' },
 }
 
 const formatTime = (iso) => {
@@ -67,11 +61,11 @@ const getInitials = (name) => {
 }
 
 const avatarPalette = [
-  'linear-gradient(135deg,#FF6B00,#CC4E00)',
-  'linear-gradient(135deg,#FFA726,#FF6B00)',
-  'linear-gradient(135deg,#10b981,#0f9f6e)',
-  'linear-gradient(135deg,#1a1824,#FF6B00)',
-  'linear-gradient(135deg,#FF8533,#FFA726)',
+  'linear-gradient(135deg,#2563EB,#1D4ED8)',
+  'linear-gradient(135deg,#0284C7,#0369A1)',
+  'linear-gradient(135deg,#10B981,#047857)',
+  'linear-gradient(135deg,#0F172A,#334155)',
+  'linear-gradient(135deg,#0D9488,#0F766E)',
 ]
 
 const getAvatarColor = (name) => avatarPalette[(name?.charCodeAt(0) || 0) % avatarPalette.length]
@@ -104,143 +98,130 @@ function CreatePostModal({ onClose, onCreated }) {
       onCreated()
       onClose()
     } catch (requestError) {
-      setError(requestError.message)
+      setError(requestError.message || 'Failed to publish post.')
     }
     setLoading(false)
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-[14px]"
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm"
       onClick={(event) => event.target === event.currentTarget && onClose()}
     >
-      <motion.div
-        initial={{ scale: 0.94, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.94, opacity: 0 }}
-        className="glass-glow w-full max-w-xl rounded-3xl p-6"
-        style={{ borderTop: '2px solid rgba(255,107,0,0.45)' }}
-      >
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-xl font-bold text-white">Create Post</h2>
-          <button onClick={onClose} className="rounded-xl p-2 text-[#8A8FA8] transition hover:bg-white/5 hover:text-white">
-            <X size={20} />
+      <GlassCard className="w-full max-w-xl p-6 sm:p-8 space-y-4 border-white/95 shadow-glass-lg relative">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-bold text-[#0B0F19]">Create Community Post</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full p-1.5 text-[#64748B] hover:bg-slate-100 hover:text-[#0B0F19] transition-colors"
+          >
+            <X size={18} />
           </button>
         </div>
 
-        {error && <div className="mb-4 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-300">{error}</div>}
+        {error && (
+          <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-[#E11D48]">
+            {error}
+          </div>
+        )}
 
-        <div className="mb-4">
-          <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-[#8A8FA8]">Post Type</label>
+        <div>
+          <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-[#0B0F19]">Category</label>
           <div className="flex flex-wrap gap-2">
-            {POST_TYPES.filter((type) => type.value !== 'all').map(({ value, label, icon: Icon, iconClass }) => (
-              <motion.button
-                key={value}
-                {...buttonMotion}
-                onClick={() => handle('post_type', value)}
-                className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-medium transition ${
-                  form.post_type === value
-                    ? 'border-red-500/25 bg-red-500/10 text-white'
-                    : 'border-white/10 text-[#8A8FA8] hover:border-red-500/20 hover:bg-red-500/5 hover:text-white'
-                }`}
-              >
-                <Icon size={12} className={form.post_type === value ? 'text-[#FF7070]' : iconClass} />
-                {label}
-              </motion.button>
-            ))}
+            {POST_TYPES.filter((type) => type.value !== 'all').map(({ value, label, icon: Icon, iconClass }) => {
+              const isSelected = form.post_type === value
+              return (
+                <button
+                  type="button"
+                  key={value}
+                  onClick={() => handle('post_type', value)}
+                  className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-all ${
+                    isSelected
+                      ? 'border-[#2563EB] bg-blue-50 text-[#2563EB]'
+                      : 'border-slate-200 bg-white text-[#475569] hover:bg-slate-50 hover:text-[#0B0F19]'
+                  }`}
+                >
+                  <Icon size={13} className={isSelected ? 'text-[#2563EB]' : iconClass} />
+                  <span>{label}</span>
+                </button>
+              )
+            })}
           </div>
         </div>
 
-        <div className="mb-4">
-          <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-[#8A8FA8]">Title *</label>
+        <div>
+          <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-[#0B0F19]">Title *</label>
           <input
             value={form.title}
-            onChange={(event) => handle('title', event.target.value)}
-            placeholder="e.g. Built a full-stack AI resume analyzer..."
-            className="input-field"
-            maxLength={100}
+            onChange={(e) => handle('title', e.target.value)}
+            placeholder="What are you building or sharing?"
+            className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-[#0B0F19] shadow-xs focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20"
           />
         </div>
 
-        <div className="mb-4">
-          <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-[#8A8FA8]">Content *</label>
+        <div>
+          <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-[#0B0F19]">Content *</label>
           <textarea
             value={form.content}
-            onChange={(event) => handle('content', event.target.value)}
-            placeholder="Share your project, story, or opportunity..."
+            onChange={(e) => handle('content', e.target.value)}
             rows={4}
-            className="input-field resize-none"
-            maxLength={1000}
+            placeholder="Share details, context, questions, or opportunities..."
+            className="w-full rounded-xl border border-slate-200 bg-white p-3.5 text-xs sm:text-sm text-[#0B0F19] shadow-xs focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 resize-none"
           />
-          <p className="mt-1 text-right text-xs text-[#8A8FA8]">{form.content.length}/1000</p>
         </div>
 
-        <div className="mb-4 grid gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className="mb-2 flex items-center gap-1 text-xs font-semibold uppercase tracking-[0.18em] text-[#8A8FA8]">
-              <Globe size={10} />
-              Demo URL
-            </label>
+            <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-[#0B0F19]">Live URL (optional)</label>
             <input
               value={form.demo_url}
-              onChange={(event) => handle('demo_url', event.target.value)}
-              placeholder="https://yourapp.com (shows as Demo button)"
-              className="input-field text-sm"
+              onChange={(e) => handle('demo_url', e.target.value)}
+              placeholder="https://..."
+              className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs text-[#0B0F19] shadow-xs focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20"
             />
-            <p style={{ fontSize: 10, color: '#475569', marginTop: 3 }}>
-              Will appear as a clickable "Demo" button on your post
-            </p>
           </div>
           <div>
-            <label className="mb-2 flex items-center gap-1 text-xs font-semibold uppercase tracking-[0.18em] text-[#8A8FA8]">
-              <Github size={10} />
-              GitHub URL
-            </label>
+            <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-[#0B0F19]">GitHub URL (optional)</label>
             <input
               value={form.github_url}
-              onChange={(event) => handle('github_url', event.target.value)}
+              onChange={(e) => handle('github_url', e.target.value)}
               placeholder="https://github.com/..."
-              className="input-field text-sm"
+              className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs text-[#0B0F19] shadow-xs focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20"
             />
           </div>
         </div>
 
-        <div className="mb-5">
-          <label className="mb-2 flex items-center gap-1 text-xs font-semibold uppercase tracking-[0.18em] text-[#8A8FA8]">
-            <Tag size={10} />
-            Tags
-          </label>
+        <div>
+          <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-[#0B0F19]">Tags (comma separated)</label>
           <input
             value={form.tags}
-            onChange={(event) => handle('tags', event.target.value)}
-            placeholder="React, AI, Open Source, Hiring..."
-            className="input-field text-sm"
+            onChange={(e) => handle('tags', e.target.value)}
+            placeholder="react, python, fast-api, ai"
+            className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs text-[#0B0F19] shadow-xs focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20"
           />
         </div>
 
-        <div className="flex gap-3">
-          <button onClick={onClose} className="btn-ghost flex-1">
+        <div className="flex justify-end gap-3 pt-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="py-2.5 px-5 rounded-full border border-slate-200 bg-white text-xs font-bold text-[#475569] hover:bg-slate-50 transition-colors"
+          >
             Cancel
           </button>
-          <button onClick={handleSubmit} disabled={loading} className="btn-primary flex-1">
-            {loading ? (
-              <>
-                <Loader2 size={16} className="animate-spin" />
-                Posting...
-              </>
-            ) : (
-              <>
-                <Send size={16} />
-                Post
-              </>
-            )}
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={loading}
+            className="flex items-center gap-2 py-2.5 px-6 rounded-full bg-[#0B0F19] text-white font-bold text-xs hover:bg-[#1E293B] transition-all shadow-md disabled:opacity-50"
+          >
+            {loading ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+            <span>Publish Post</span>
           </button>
         </div>
-      </motion.div>
-    </motion.div>
+      </GlassCard>
+    </div>
   )
 }
 
@@ -268,7 +249,9 @@ function CommentSection({ postId, currentUser }) {
     setLoading(true)
     try {
       const response = await api.addComment({ post_id: postId, content: newComment })
-      setComments((current) => [...current, response.comment])
+      if (response?.comment) {
+        setComments((current) => [...current, response.comment])
+      }
       setNewComment('')
     } catch {}
     setLoading(false)
@@ -282,35 +265,41 @@ function CommentSection({ postId, currentUser }) {
   }
 
   return (
-    <div className="mt-4 space-y-3 border-t border-white/5 pt-4">
+    <div className="mt-4 space-y-3 border-t border-slate-100 pt-4">
       {fetching ? (
         <div className="flex justify-center py-3">
-          <Loader2 size={16} className="animate-spin text-[#8A8FA8]" />
+          <Loader2 size={16} className="animate-spin text-[#2563EB]" />
         </div>
       ) : (
-        <div className="max-h-64 space-y-3 overflow-y-auto pr-1">
-          {comments.length === 0 && <p className="py-2 text-center text-xs text-[#8A8FA8]">No comments yet. Be the first.</p>}
+        <div className="max-h-64 space-y-2.5 overflow-y-auto pr-1">
+          {comments.length === 0 && (
+            <p className="py-2 text-center text-xs text-[#64748B]">No comments yet. Start the conversation.</p>
+          )}
           {comments.map((comment) => (
-            <div key={comment.id} className="flex items-start gap-3">
+            <div key={comment.id} className="flex items-start gap-2.5">
               <div
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white mt-0.5"
                 style={{ background: getAvatarColor(comment.author_name) }}
               >
                 {getInitials(comment.author_name)}
               </div>
-              <div className="glass flex-1 rounded-2xl px-3 py-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-white">{comment.author_name || 'Anonymous'}</span>
+              <div className="flex-1 rounded-xl bg-slate-50/80 border border-slate-200/60 px-3 py-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-bold text-[#0B0F19]">{comment.author_name || 'Anonymous'}</span>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-[#8A8FA8]">{formatTime(comment.created_at)}</span>
+                    <span className="text-[10px] text-[#64748B]">{formatTime(comment.created_at)}</span>
                     {comment.user_id === currentUser && (
-                      <button onClick={() => handleDelete(comment.id)} className="text-[#8A8FA8] transition hover:text-red-400">
-                        <Trash2 size={10} />
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(comment.id)}
+                        className="text-[#94A3B8] transition hover:text-rose-600"
+                      >
+                        <Trash2 size={11} />
                       </button>
                     )}
                   </div>
                 </div>
-                <p className="mt-1 text-xs text-[#F5F5F7]">{comment.content}</p>
+                <p className="mt-1 text-xs text-[#334155] leading-relaxed">{comment.content}</p>
               </div>
             </div>
           ))}
@@ -323,9 +312,14 @@ function CommentSection({ postId, currentUser }) {
           onChange={(event) => setNewComment(event.target.value)}
           onKeyDown={(event) => event.key === 'Enter' && handleComment()}
           placeholder="Write a comment..."
-          className="input-field flex-1 py-2 text-sm"
+          className="flex-1 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs text-[#0B0F19] shadow-xs focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20"
         />
-        <button onClick={handleComment} disabled={loading || !newComment.trim()} className="btn-primary px-3 py-2">
+        <button
+          type="button"
+          onClick={handleComment}
+          disabled={loading || !newComment.trim()}
+          className="flex items-center justify-center rounded-xl bg-[#0B0F19] text-white px-3 py-2 text-xs font-bold hover:bg-[#1E293B] disabled:opacity-50 shadow-xs"
+        >
           {loading ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
         </button>
       </div>
@@ -340,186 +334,111 @@ function PostCard({ post, likedPosts, currentUser, onLike, onDelete }) {
   const isOwner = post.user_id === currentUser
 
   return (
-    <motion.div variants={staggerItem} whileHover={{ y: -2 }} className="glass-glow rounded-3xl p-6">
-      <div className="mb-4 flex items-start justify-between gap-3">
+    <GlassCard className="p-5 sm:p-6 border-white/95 shadow-glass space-y-3.5">
+      <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
           <div
-            className="flex h-11 w-11 items-center justify-center rounded-2xl text-sm font-bold text-white"
+            className="flex h-10 w-10 items-center justify-center rounded-xl text-xs font-bold text-white shadow-xs"
             style={{ background: getAvatarColor(post.author_name) }}
           >
             {getInitials(post.author_name)}
           </div>
           <div>
-            <p className="text-sm font-semibold text-white">{post.author_name || 'Anonymous'}</p>
-            <p className="text-xs text-[#8A8FA8]">{formatTime(post.created_at)}</p>
+            <p className="text-xs sm:text-sm font-bold text-[#0B0F19]">{post.author_name || 'Anonymous'}</p>
+            <p className="text-[11px] text-[#64748B]">{formatTime(post.created_at)}</p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          <span className={typeStyle.className}>{typeStyle.icon}</span>
+          <span className={typeStyle.className}>{typeStyle.label}</span>
           {isOwner && (
-            <button onClick={() => onDelete(post.id)} className="rounded-xl p-1 text-[#8A8FA8] transition hover:text-red-400">
-              <Trash2 size={14} />
+            <button
+              type="button"
+              onClick={() => onDelete(post.id)}
+              className="rounded-lg p-1 text-[#94A3B8] transition hover:text-rose-600"
+            >
+              <Trash2 size={13} />
             </button>
           )}
         </div>
       </div>
 
-      <div className="mb-4">
-        <h3 className="mb-2 text-lg font-bold text-white">{post.title}</h3>
-        <p className="whitespace-pre-wrap text-sm leading-7 text-[#F5F5F7]">{post.content}</p>
+      <div className="space-y-1">
+        <h3 className="text-sm sm:text-base font-bold text-[#0B0F19] leading-snug">{post.title}</h3>
+        <p className="whitespace-pre-wrap text-xs sm:text-sm leading-relaxed text-[#475569]">{post.content}</p>
       </div>
 
       {(post.demo_url || post.github_url) && (
-        <div className="mb-4">
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
-            {post.demo_url && (
-              <a
-                href={post.demo_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '7px 16px',
-                  borderRadius: 10,
-                  background: 'rgba(255, 255, 255, 0.04)',
-                  border: '1px solid rgba(255, 255, 255, 0.08)',
-                  color: '#94a3b8',
-                  fontSize: 12,
-                  fontWeight: 600,
-                  textDecoration: 'none',
-                  transition: 'all 0.2s',
-                  cursor: 'pointer',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'rgba(255,255,255,0.08)'
-                  e.currentTarget.style.color = 'white'
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'rgba(255,255,255,0.04)'
-                  e.currentTarget.style.color = '#94a3b8'
-                }}
-              >
-                <Globe size={13} />
-                Demo
-              </a>
-            )}
-
-            {false && post.demo_url && (
-              <a
-                href={post.demo_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '7px 16px',
-                  borderRadius: 10,
-                  background: 'rgba(225, 29, 72, 0.1)',
-                  border: '1px solid rgba(225, 29, 72, 0.25)',
-                  color: '#fb7185',
-                  fontSize: 12,
-                  fontWeight: 600,
-                  textDecoration: 'none',
-                  transition: 'all 0.2s',
-                  cursor: 'pointer',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'rgba(225,29,72,0.18)'
-                  e.currentTarget.style.borderColor = 'rgba(225,29,72,0.4)'
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'rgba(225,29,72,0.1)'
-                  e.currentTarget.style.borderColor = 'rgba(225,29,72,0.25)'
-                }}
-              >
-                Demo
-              </a>
-            )}
-
-            {post.github_url && (
-              <a
-                href={post.github_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '7px 16px',
-                  borderRadius: 10,
-                  background: 'rgba(255, 255, 255, 0.04)',
-                  border: '1px solid rgba(255, 255, 255, 0.08)',
-                  color: '#94a3b8',
-                  fontSize: 12,
-                  fontWeight: 600,
-                  textDecoration: 'none',
-                  transition: 'all 0.2s',
-                  cursor: 'pointer',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'rgba(255,255,255,0.08)'
-                  e.currentTarget.style.color = 'white'
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'rgba(255,255,255,0.04)'
-                  e.currentTarget.style.color = '#94a3b8'
-                }}
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
-                </svg>
-                GitHub
-              </a>
-            )}
-          </div>
+        <div className="flex flex-wrap gap-2 pt-1">
+          {post.demo_url && (
+            <a
+              href={post.demo_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-[#0B0F19] hover:border-blue-200 hover:text-[#2563EB] transition-colors shadow-xs"
+            >
+              <Globe size={12} />
+              <span>Live Preview</span>
+            </a>
+          )}
+          {post.github_url && (
+            <a
+              href={post.github_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-[#0B0F19] hover:border-blue-200 hover:text-[#2563EB] transition-colors shadow-xs"
+            >
+              <Github size={12} />
+              <span>Source Code</span>
+            </a>
+          )}
         </div>
       )}
 
-      {post.tags?.length > 0 && (
-        <div className="mb-4 flex flex-wrap gap-2">
-          {post.tags.map((tag, index) => (
-            <span key={index} className="rounded-full border border-white/8 bg-white/5 px-2.5 py-1 text-xs text-[#8A8FA8]">
+      {Array.isArray(post.tags) && post.tags.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 pt-0.5">
+          {post.tags.map((tag, idx) => (
+            <span key={idx} className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-[#475569]">
               #{tag}
             </span>
           ))}
         </div>
       )}
 
-      <div className="flex items-center gap-4 border-t border-white/5 pt-3">
-        <motion.button
-          onClick={() => onLike(post.id)}
-          animate={isLiked ? { scale: [1, 1.4, 1] } : { scale: 1 }}
-          transition={{ type: 'spring', stiffness: 300, damping: 12 }}
-          className={`flex items-center gap-1.5 text-sm transition ${
-            isLiked ? 'text-primary' : 'text-[#8A8FA8] hover:text-primary'
-          }`}
-        >
-          <Heart size={16} className={isLiked ? 'fill-primary text-primary' : ''} />
-          <span>{post.likes_count || 0}</span>
-        </motion.button>
+      <div className="flex items-center justify-between border-t border-slate-100 pt-3 text-xs text-[#64748B]">
+        <div className="flex items-center gap-4">
+          <button
+            type="button"
+            onClick={() => onLike(post.id)}
+            className={`flex items-center gap-1.5 font-semibold transition-colors ${
+              isLiked ? 'text-[#E11D48]' : 'hover:text-[#0B0F19]'
+            }`}
+          >
+            <Heart size={14} className={isLiked ? 'fill-[#E11D48]' : ''} />
+            <span>{post.likes_count || 0}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowComments(!showComments)}
+            className="flex items-center gap-1.5 font-semibold hover:text-[#0B0F19] transition-colors"
+          >
+            <MessageCircle size={14} />
+            <span>{post.comments_count || 0} Comments</span>
+          </button>
+        </div>
 
-        <button onClick={() => setShowComments((current) => !current)} className="flex items-center gap-1.5 text-sm text-[#8A8FA8] transition hover:text-white">
-          <MessageCircle size={16} />
-          <span>{post.comments_count || 0}</span>
-          {showComments ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+        <button
+          type="button"
+          onClick={() => setShowComments(!showComments)}
+          className="flex items-center gap-1 font-semibold text-[#2563EB] hover:underline"
+        >
+          <span>{showComments ? 'Hide' : 'View'}</span>
+          {showComments ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
         </button>
       </div>
 
-      <AnimatePresence>
-        {showComments && (
-          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}>
-            <CommentSection postId={post.id} currentUser={currentUser} />
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </motion.div>
+      {showComments && <CommentSection postId={post.id} currentUser={currentUser} />}
+    </GlassCard>
   )
 }
 
@@ -534,44 +453,40 @@ export default function Community() {
 
   useEffect(() => {
     fetchPosts()
-    fetchLikes()
-    getCurrentUser()
+    api.getMe()
+      .then((res) => {
+        if (res?.user?.id) setCurrentUser(res.user.id)
+      })
+      .catch(() => {})
   }, [filter])
-
-  const getCurrentUser = async () => {
-    try {
-      const response = await api.getMe()
-      setCurrentUser(response.user?.user_id || response.user?.id)
-    } catch {}
-  }
 
   const fetchPosts = async () => {
     setLoading(true)
     setError('')
     try {
-      const response = await api.getPosts(filter)
+      const response = await api.getPosts(filter === 'all' ? undefined : filter)
       setPosts(Array.isArray(response?.posts) ? response.posts : [])
-    } catch (requestError) {
-      setError(requestError.message)
+      if (Array.isArray(response?.liked_post_ids)) {
+        setLikedPosts(response.liked_post_ids)
+      }
+    } catch (fetchError) {
+      setError(fetchError.message || 'Failed to load community feed.')
     }
     setLoading(false)
-  }
-
-  const fetchLikes = async () => {
-    try {
-      const response = await api.getUserLikes()
-      setLikedPosts(Array.isArray(response?.liked_post_ids) ? response.liked_post_ids : [])
-    } catch {}
   }
 
   const handleLike = async (postId) => {
     try {
       const response = await api.likePost(postId)
-      setLikedPosts((current) => (response.liked ? [...current, postId] : current.filter((id) => id !== postId)))
+      setLikedPosts((current) =>
+        response.liked ? [...current, postId] : current.filter((id) => id !== postId)
+      )
       setPosts((current) =>
         current.map((post) =>
-          post.id === postId ? { ...post, likes_count: (post.likes_count || 0) + (response.liked ? 1 : -1) } : post,
-        ),
+          post.id === postId
+            ? { ...post, likes_count: (post.likes_count || 0) + (response.liked ? 1 : -1) }
+            : post
+        )
       )
     } catch {}
   }
@@ -586,70 +501,100 @@ export default function Community() {
 
   return (
     <motion.div variants={pageTransition} initial="hidden" animate="visible" exit="exit" style={{ width: '100%' }}>
-      <div className="mx-auto max-w-3xl space-y-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="mx-auto max-w-3xl space-y-6 pb-16">
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h1 className="gradient-text flex items-center gap-3 text-3xl font-black">
-              <Users size={28} className="text-primary" />
-              Community
+            <Badge sparkle size="sm" className="mb-1">Builder Network</Badge>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#0B0F19] tracking-tight flex items-center gap-2.5">
+              <Users size={24} className="text-[#2563EB]" />
+              <span>Community</span>
             </h1>
-            <p className="mt-2 text-sm text-[#8A8FA8]">Share projects, find jobs, seek funding, and post what you are building.</p>
+            <p className="text-xs sm:text-sm text-[#64748B] mt-1">
+              Share projects, job opportunities, tech writing, and connect with peers.
+            </p>
           </div>
-          <button onClick={() => setShowCreate(true)} className="btn-primary">
+          <button
+            type="button"
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-2 py-3 px-5 rounded-full bg-[#0B0F19] text-white font-bold text-xs sm:text-sm hover:bg-[#1E293B] transition-all shadow-md"
+          >
             <Plus size={16} />
-            Create Post
+            <span>Create Post</span>
           </button>
         </div>
 
+        {/* Category Filter Pills */}
         <div className="flex gap-2 overflow-x-auto pb-1">
-          {POST_TYPES.map(({ value, label, icon: Icon, iconClass }) => (
-            <button
-              key={value}
-              onClick={() => setFilter(value)}
-              className={`flex shrink-0 items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-medium transition ${
-                filter === value
-                  ? 'border-red-500/25 bg-red-500/12 text-white'
-                  : 'border-white/10 bg-white/[0.02] text-[#8A8FA8] hover:border-red-500/20 hover:bg-red-500/5 hover:text-white'
-              }`}
-            >
-              <Icon size={12} className={filter === value ? 'text-[#FF7070]' : iconClass} />
-              {label}
-            </button>
-          ))}
+          {POST_TYPES.map(({ value, label, icon: Icon, iconClass }) => {
+            const isSelected = filter === value
+            return (
+              <button
+                type="button"
+                key={value}
+                onClick={() => setFilter(value)}
+                className={`flex shrink-0 items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-all ${
+                  isSelected
+                    ? 'border-[#2563EB] bg-blue-50 text-[#2563EB] shadow-xs'
+                    : 'border-slate-200 bg-white/80 text-[#64748B] hover:border-slate-300 hover:text-[#0B0F19]'
+                }`}
+              >
+                <Icon size={12} className={isSelected ? 'text-[#2563EB]' : iconClass} />
+                <span>{label}</span>
+              </button>
+            )
+          })}
         </div>
 
-        {error && <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-300">{error}</div>}
+        {error && (
+          <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-xs font-semibold text-[#E11D48]">
+            {error}
+          </div>
+        )}
 
         {loading ? (
           <div className="flex justify-center py-20">
-            <Loader2 size={32} className="animate-spin text-[#FF7070]" />
+            <Loader2 size={30} className="animate-spin text-[#2563EB]" />
           </div>
         ) : posts.length === 0 && filter === 'all' ? (
-          <div className="flex flex-col items-center justify-center space-y-4 py-20 text-center">
-            <div className="text-5xl">Seed</div>
-            <h3 className="text-lg font-bold text-white">No posts yet</h3>
-            <p className="text-sm text-[#8A8FA8]">Be the first to share your project or opportunity.</p>
-            <button onClick={() => setShowCreate(true)} className="btn-primary">
-              <Plus size={16} />
-              Create First Post
+          <GlassCard className="p-12 text-center space-y-3 border-white/95 shadow-glass-lg">
+            <div className="w-12 h-12 rounded-2xl bg-blue-50 text-[#2563EB] flex items-center justify-center mx-auto">
+              <Users size={24} />
+            </div>
+            <h3 className="text-base font-bold text-[#0B0F19]">No community posts yet</h3>
+            <p className="text-xs text-[#64748B] max-w-sm mx-auto">
+              Be the first to share your project, portfolio, or career updates.
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowCreate(true)}
+              className="inline-flex items-center gap-2 py-2.5 px-5 rounded-full bg-[#0B0F19] text-white font-bold text-xs hover:bg-[#1E293B] shadow-md mt-2"
+            >
+              <Plus size={14} /> Create First Post
             </button>
-          </div>
+          </GlassCard>
         ) : (
           <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="space-y-4">
             {posts.map((post) => (
-              <PostCard key={post.id} post={post} likedPosts={likedPosts} currentUser={currentUser} onLike={handleLike} onDelete={handleDelete} />
+              <PostCard
+                key={post.id}
+                post={post}
+                likedPosts={likedPosts}
+                currentUser={currentUser}
+                onLike={handleLike}
+                onDelete={handleDelete}
+              />
             ))}
 
             {posts.length === 0 && filter !== 'all' && (
-              <div className="rounded-2xl border border-dashed border-red-500/20 p-10 text-center">
-                <p className="text-base font-semibold text-white">No posts yet in this category</p>
-                <p className="mt-2 text-sm text-[#8A8FA8]">Be the first to share something here.</p>
-              </div>
+              <GlassCard className="p-10 text-center border-white/95">
+                <p className="text-sm font-bold text-[#0B0F19]">No posts yet in this category</p>
+                <p className="mt-1 text-xs text-[#64748B]">Be the first to share an update here.</p>
+              </GlassCard>
             )}
           </motion.div>
         )}
 
-        <AnimatePresence>{showCreate && <CreatePostModal onClose={() => setShowCreate(false)} onCreated={fetchPosts} />}</AnimatePresence>
+        {showCreate && <CreatePostModal onClose={() => setShowCreate(false)} onCreated={fetchPosts} />}
       </div>
     </motion.div>
   )
