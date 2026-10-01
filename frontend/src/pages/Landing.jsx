@@ -1,652 +1,738 @@
-import React, { useState, useEffect, lazy, Suspense } from 'react'
+import React, { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import {
-  Zap,
-  Target,
-  FileText,
-  Github,
-  TrendingUp,
-  CheckCircle,
-  Star,
   ArrowRight,
-  Users,
-  BarChart3,
-  Brain,
-  ShieldCheck,
   Play,
-  X,
-  Compass,
   Sparkles,
+  Briefcase,
+  CheckCircle2,
+  XCircle,
+  TrendingUp,
+  FileText,
+  Compass,
+  Layers,
+  ChevronRight,
+  ShieldCheck,
+  Send,
+  Star,
+  Users,
+  Award,
+  Zap,
 } from 'lucide-react'
-import { Button } from '../components/ui/Button'
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/ui/Card'
-import { Badge } from '../components/ui/Badge'
-import { NovaStaticFallback, NovaErrorBoundary } from '../components/companion/NovaFallback'
-
-// Lazy load 3D Nova for the hero centerpiece
-const Nova3D = lazy(() => import('../components/companion/Nova'))
-
-const NAV_LINKS = [
-  { label: 'Features', href: '#features' },
-  { label: 'How It Works', href: '#how-it-works' },
-  { label: 'Pricing', href: '#pricing' },
-  { label: 'Success Stories', href: '#testimonials' },
-]
-
-const STAT_PILLS = [
-  {
-    title: 'Resume Analysis',
-    value: '98/100',
-    icon: ShieldCheck,
-    color: 'from-amber-500/20 to-primary/20 border-primary/40 text-primary-light',
-    badgeBg: 'bg-primary/20 text-primary-light',
-  },
-  {
-    title: 'Skill Gap',
-    value: '3 areas',
-    icon: Target,
-    color: 'from-orange-500/20 to-amber-500/20 border-accent/40 text-accent-light',
-    badgeBg: 'bg-accent/20 text-accent-light',
-  },
-  {
-    title: 'Job Match',
-    value: '92%',
-    icon: Sparkles,
-    color: 'from-primary/20 to-orange-400/20 border-primary-light/40 text-amber-300',
-    badgeBg: 'bg-amber-400/20 text-amber-300',
-  },
-]
-
-const FEATURES = [
-  {
-    icon: FileText,
-    title: 'AI Resume Analysis',
-    desc: 'Brutally honest scoring and line-by-line improvements instead of vague generalities.',
-  },
-  {
-    icon: Target,
-    title: 'Interview Probability',
-    desc: 'Know your odds before you apply so you can invest effort where it actually pays off.',
-  },
-  {
-    icon: BarChart3,
-    title: 'ATS Scanner & Checker',
-    desc: 'Catch hidden formatting and keyword gaps that cause resumes to get silently rejected.',
-  },
-  {
-    icon: Zap,
-    title: 'Smart Resume Optimizer',
-    desc: 'Rewrite bullet points tailored to target job descriptions with quantified impact.',
-  },
-  {
-    icon: Brain,
-    title: 'AI Mock Interviews',
-    desc: 'Practice interactive role-specific technical and behavioral interviews anytime.',
-  },
-  {
-    icon: Github,
-    title: 'GitHub & Portfolio Insights',
-    desc: 'Evaluate real public projects, commit quality, and codebase structure automatically.',
-  },
-  {
-    icon: TrendingUp,
-    title: 'Career Roadmap Engine',
-    desc: 'Bridge missing skills into an actionable month-by-month sprint plan.',
-  },
-  {
-    icon: Users,
-    title: 'Peer Community',
-    desc: 'Connect with driven engineers, compare milestone scores, and share interview experiences.',
-  },
-]
-
-const STEPS = [
-  {
-    step: '01',
-    title: 'Upload your resume',
-    desc: 'Drop in your PDF resume for instant ATS breakdown and structural parsing.',
-    icon: FileText,
-  },
-  {
-    step: '02',
-    title: 'Connect GitHub & target role',
-    desc: 'CareerLens evaluates what you have actually built, not just what you claim.',
-    icon: Github,
-  },
-  {
-    step: '03',
-    title: 'See your interview probability',
-    desc: 'Get a blunt, data-backed percentage score before submitting your application.',
-    icon: Target,
-  },
-  {
-    step: '04',
-    title: 'Follow the guided roadmap',
-    desc: 'Use the optimizer, skill roadmaps, and mock interview drills to bridge every gap.',
-    icon: TrendingUp,
-  },
-]
-
-const PRICING = [
-  {
-    name: 'Free',
-    price: '$0',
-    period: 'forever',
-    features: [
-      'Resume Analysis (3/month)',
-      'Basic ATS Score',
-      'Interview Probability (3 checks)',
-      'Honest Career Coach (20 messages)',
-      'Community Feed Access',
-    ],
-    cta: 'Get Started Free',
-    variant: 'ghost',
-    popular: false,
-  },
-  {
-    name: 'Premium',
-    price: '$5.00',
-    period: '/month',
-    features: [
-      'Unlimited Resume Analysis',
-      'Unlimited Interview Probability',
-      'Full ATS Keyword Scanner',
-      'Interactive Mock Interviews',
-      'Portfolio & Cover Letter Gen',
-      'Job Match Engine',
-      'Priority AI Mentor Response',
-    ],
-    cta: 'Upgrade to Premium',
-    variant: 'glow',
-    popular: true,
-  },
-]
-
-const TESTIMONIALS = [
-  {
-    name: 'Rahul S.',
-    role: 'Now at Amazon (ML Intern)',
-    avatar: 'RS',
-    quote:
-      'My interview probability moved from 35% to 72% in three weeks. Nova and CareerLens showed me the exact gaps in my GitHub repos.',
-  },
-  {
-    name: 'Ananya K.',
-    role: 'Frontend Dev at Unicorn Startup',
-    avatar: 'AK',
-    quote:
-      'The ATS checker showed me why my resume was being silently filtered out. I revised my bullets and received recruiter calls within a week.',
-  },
-  {
-    name: 'Siddharth M.',
-    role: 'Full Stack Engineer',
-    avatar: 'SM',
-    quote:
-      'Seeing an honest, unvarnished score gave me a real action plan. Practiced the mock interview questions and landed my target offer.',
-  },
-]
+import { Navbar } from '../components/layout/Navbar'
+import { Footer } from '../components/layout/Footer'
+import { Button, Badge, GlassCard, ScoreRing, StatCard, Dialog } from '../components/ui'
+import { Mascot } from '../mascot/Mascot'
+import { useMascotState } from '../mascot/useMascotState'
+import { MARKETING_CONFIG } from '../config/marketing'
 
 export default function Landing() {
-  const [demoModalOpen, setDemoModalOpen] = useState(false)
   const navigate = useNavigate()
+  const [demoOpen, setDemoOpen] = useState(false)
+  const [askInput, setAskInput] = useState('')
+  const [companionReply, setCompanionReply] = useState(null)
+  const [dashboardTab, setDashboardTab] = useState('overview')
+
+  const {
+    state: mascotState,
+    setState: setMascotState,
+    bubbleOpen,
+    setBubbleOpen,
+    mouseOffset,
+    prefersReducedMotion,
+  } = useMascotState({ initial: 'greeting', autoNudge: true, nudgeDelayMs: 6000 })
+
+  const handleAskSubmit = (e) => {
+    e.preventDefault()
+    if (!askInput.trim()) return
+    setCompanionReply(
+      `"I've tailored a custom roadmap for ${askInput.trim()}! Upload your resume and I'll highlight the highest-impact improvements for you."`
+    )
+    setAskInput('')
+  }
 
   return (
-    <div className="relative min-h-screen bg-[#0B0A10] text-[#F5F5F7] overflow-x-hidden selection:bg-primary/30 selection:text-white">
-      {/* Background glow ambiance */}
-      <div
-        className="pointer-events-none fixed inset-0 z-0 opacity-40"
-        style={{
-          backgroundImage:
-            'radial-gradient(circle at 50% 0%, rgba(255,107,0,0.18) 0%, transparent 60%), radial-gradient(circle at 85% 35%, rgba(255,167,38,0.08) 0%, transparent 50%)',
-        }}
-      />
+    <div className="min-h-screen bg-base overflow-x-hidden selection:bg-blue-500 selection:text-white">
+      {/* Top Sticky Navigation */}
+      <Navbar />
 
-      {/* ============================================================
-          TOP NAVIGATION BAR
-      ============================================================ */}
-      <header className="sticky top-0 z-50 w-full border-b border-white/[0.06] bg-[#0B0A10]/80 backdrop-blur-xl">
-        <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-6 lg:px-12">
-          {/* Logo */}
-          <Link to="/" className="flex items-center gap-3 group">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-tr from-primary to-accent shadow-[0_0_20px_rgba(255,107,0,0.45)] group-hover:scale-105 transition-transform duration-300">
-              <Zap size={20} className="text-white fill-white" />
-            </div>
-            <span className="font-display text-2xl font-bold tracking-tight text-white">
-              Career<span className="gradient-text">Lens</span>
-            </span>
-          </Link>
+      {/* ============================================================ */}
+      {/* HERO SECTION (Faithful reproduction of REF-1) */}
+      {/* ============================================================ */}
+      <section className="relative pt-6 pb-20 px-4 sm:px-8 max-w-7xl mx-auto">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center">
+          {/* Left Column: Headline, sub-copy, CTAs, Social Proof */}
+          <div className="lg:col-span-6 space-y-6 sm:space-y-8 z-10 text-left">
+            {/* Pill Badge */}
+            <motion.div
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              <Badge sparkle size="md" className="cursor-pointer hover:bg-blue-100/80 transition-colors">
+                AI Powered Career Guidance →
+              </Badge>
+            </motion.div>
 
-          {/* Desktop Nav Links */}
-          <nav className="hidden md:flex items-center gap-8">
-            {NAV_LINKS.map((link) => (
-              <a
-                key={link.label}
-                href={link.href}
-                className="text-sm font-medium text-slate-300 transition-colors hover:text-white hover:text-primary"
+            {/* Two-Tone H1 */}
+            <motion.h1
+              initial={{ opacity: 0, y: 18 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.05 }}
+              className="text-4xl sm:text-5xl lg:text-[56px] font-extrabold text-[#0B0F19] tracking-tight leading-[1.08]"
+            >
+              Your Resume Today. <br />
+              <span className="text-[#0B0F19]">A Better Tomorrow.</span>
+            </motion.h1>
+
+            {/* Sub-copy */}
+            <motion.p
+              initial={{ opacity: 0, y: 18 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.1 }}
+              className="text-base sm:text-lg text-[#475569] leading-relaxed max-w-lg"
+            >
+              Get personalized feedback, skill-gap analysis and a clear roadmap to land internships and your dream job — all in one place.
+            </motion.p>
+
+            {/* CTA Row */}
+            <motion.div
+              initial={{ opacity: 0, y: 18 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.15 }}
+              className="flex flex-wrap items-center gap-3.5 pt-2"
+            >
+              <Button
+                variant="primary"
+                size="lg"
+                trailingIcon={ArrowRight}
+                onClick={() => navigate('/dashboard/optimizer')}
               >
-                {link.label}
-              </a>
-            ))}
-          </nav>
-
-          {/* Actions */}
-          <div className="flex items-center gap-4">
-            <Link to="/login">
-              <Button variant="ghost" size="md" className="rounded-full px-5">
-                Login
+                Analyze My Resume
               </Button>
-            </Link>
-            <Link to="/signup">
-              <Button variant="primary" size="md" className="rounded-full px-6 shadow-glow">
-                Get Started
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </header>
-
-      {/* ============================================================
-          HERO SECTION (Image 1 Option 1 + Nova Mascot Centerpiece)
-      ============================================================ */}
-      <section className="relative z-10 mx-auto max-w-7xl px-6 pt-12 pb-24 lg:px-12 lg:pt-16">
-        <div className="grid grid-cols-1 items-center gap-12 lg:grid-cols-12">
-          {/* Left Column: Benefit-driven headline & CTA */}
-          <motion.div
-            initial={{ opacity: 0, x: -30 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-            className="lg:col-span-6 flex flex-col items-start"
-          >
-            {/* Pill Tag */}
-            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5 backdrop-blur-md">
-              <Sparkles size={14} className="text-primary" />
-              <span className="text-xs font-semibold uppercase tracking-wider text-primary-light font-display">
-                AI Powered Career Guidance
-              </span>
-            </div>
-
-            {/* Headline */}
-            <h1 className="font-display text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight leading-[1.08] text-white mb-6">
-              Turn Your <br />
-              Resume into <br />
-              <span className="gradient-text">Real Opportunities</span>
-            </h1>
-
-            {/* Subtitle */}
-            <p className="max-w-xl text-base sm:text-lg text-slate-300 leading-relaxed mb-8">
-              Get AI-powered feedback, personalized roadmaps, and job-ready guidance — all in one
-              place.
-            </p>
-
-            {/* CTAs */}
-            <div className="flex flex-wrap items-center gap-4 mb-10">
-              <Link to="/signup">
-                <Button
-                  variant="primary"
-                  size="lg"
-                  className="rounded-full px-8 py-4 text-base font-bold shadow-[0_0_30px_rgba(255,107,0,0.5)] hover:shadow-[0_0_45px_rgba(255,107,0,0.7)] group"
-                >
-                  Analyze My Resume
-                  <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
-                </Button>
-              </Link>
 
               <Button
-                variant="ghost"
+                variant="secondary"
                 size="lg"
-                onClick={() => setDemoModalOpen(true)}
-                className="rounded-full px-7 py-4 text-base font-medium border border-white/10 hover:border-primary/40 bg-white/[0.03]"
+                icon={Play}
+                onClick={() => setDemoOpen(true)}
               >
-                <Play size={16} className="text-primary fill-primary mr-1" />
                 Watch Demo
               </Button>
-            </div>
+            </motion.div>
 
-            {/* Social Proof */}
-            <div className="flex items-center gap-4 pt-2 border-t border-white/[0.08] w-full max-w-md">
-              <div className="flex -space-x-2 overflow-hidden">
-                {['RS', 'AK', 'SM', 'DP', 'NK'].map((initials, i) => (
-                  <div
-                    key={i}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border-2 border-[#0B0A10] bg-gradient-to-tr from-surface-elevated to-primary/40 text-xs font-bold text-white shadow"
-                  >
-                    {initials}
+            {/* Social Proof Row */}
+            {MARKETING_CONFIG.SHOW_SOCIAL_PROOF && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.4, delay: 0.2 }}
+                className="flex items-center gap-3.5 pt-2"
+              >
+                <div className="flex -space-x-2.5 overflow-hidden">
+                  {MARKETING_CONFIG.TESTIMONIALS.map((t, i) => (
+                    <img
+                      key={t.name}
+                      src={t.avatar}
+                      alt=""
+                      width={34}
+                      height={34}
+                      className="inline-block h-8 w-8 sm:h-9 sm:w-9 rounded-full ring-2 ring-white object-cover shadow-sm"
+                    />
+                  ))}
+                  <div className="inline-flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-full bg-[#0B0F19] text-[10px] font-bold text-white ring-2 ring-white">
+                    +10k
                   </div>
-                ))}
-              </div>
-              <p className="text-xs text-slate-400 font-medium">
-                Trusted by <span className="font-bold text-white">10,000+</span> students & engineers
-              </p>
-            </div>
-          </motion.div>
+                </div>
+                <p className="text-xs sm:text-sm font-semibold text-[#475569]">
+                  Trusted by{' '}
+                  <span className="text-[#0B0F19] font-bold">
+                    {MARKETING_CONFIG.STUDENT_COUNT_LABEL}
+                  </span>
+                </p>
+              </motion.div>
+            )}
+          </div>
 
-          {/* Right Column: Nova 3D Centerpiece + Floating Stat Pills */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.8, delay: 0.15, ease: [0.16, 1, 0.3, 1] }}
-            className="lg:col-span-6 relative flex items-center justify-center"
-          >
-            {/* Center Background Orbit Glow */}
+          {/* Right Column: 3D Centerpiece Mascot + Floating 3D Stat Cards */}
+          <div className="lg:col-span-6 relative flex items-center justify-center min-h-[460px] sm:min-h-[520px]">
+            {/* Soft Ambient Radial Bloom (Clean Sky Blue, NO PURPLE) */}
             <div
-              className="absolute h-[380px] w-[380px] sm:h-[460px] sm:w-[460px] rounded-full border border-primary/20 bg-gradient-to-b from-primary/10 via-transparent to-transparent pointer-events-none"
-              style={{
-                boxShadow: '0 0 80px rgba(255,107,0,0.18), inset 0 0 60px rgba(255,107,0,0.08)',
-              }}
+              className="absolute -top-10 -right-10 w-96 h-96 rounded-full pointer-events-none blur-3xl opacity-70"
+              style={{ background: 'radial-gradient(circle, rgba(219, 234, 254, 0.75) 0%, transparent 70%)' }}
             />
 
-            {/* 3D Nova Hero Character */}
-            <div className="relative z-10 w-full flex items-center justify-center">
-              <NovaErrorBoundary size="hero" expression="idle">
-                <Suspense fallback={<NovaStaticFallback size="hero" expression="idle" />}>
-                  <Nova3D size="hero" expression="idle" />
-                </Suspense>
-              </NovaErrorBoundary>
+            {/* Centerpiece 3D Mascot */}
+            <div className="relative z-10">
+              <Mascot
+                state={mascotState}
+                bubbleOpen={bubbleOpen}
+                onBubbleClose={() => setBubbleOpen(false)}
+                onMascotClick={() => setMascotState('wave', 1200)}
+                mouseOffset={mouseOffset}
+                prefersReducedMotion={prefersReducedMotion}
+                size={440}
+              />
             </div>
 
-            {/* Floating Stat Pills (Stacked on the right, matching Image 1 Option 1) */}
-            <div className="absolute right-0 sm:right-4 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-3 pointer-events-auto">
-              {STAT_PILLS.map((pill, idx) => {
-                const Icon = pill.icon
-                return (
-                  <motion.div
-                    key={pill.title}
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.3 + idx * 0.15, duration: 0.5 }}
-                    whileHover={{ scale: 1.04, x: -4 }}
-                    className="flex items-center gap-3 rounded-2xl border border-white/10 bg-[#13121C]/85 px-4 py-3 shadow-[0_10px_30px_rgba(0,0,0,0.65),0_0_20px_rgba(255,107,0,0.12)] backdrop-blur-xl"
-                  >
-                    <div
-                      className={`flex h-10 w-10 items-center justify-center rounded-xl border ${pill.color} bg-gradient-to-br shadow-inner`}
-                    >
-                      <Icon size={18} />
-                    </div>
-                    <div>
-                      <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider font-display">
-                        {pill.title}
-                      </p>
-                      <p className="text-base font-bold text-white tracking-tight">{pill.value}</p>
-                    </div>
-                  </motion.div>
-                )
-              })}
-            </div>
-          </motion.div>
-        </div>
-      </section>
-
-      {/* ============================================================
-          FEATURES GRID (Using Phase 0 Card Primitives)
-      ============================================================ */}
-      <section id="features" className="relative z-10 border-t border-white/[0.06] bg-[#0E0D14]/60 py-24 px-6 lg:px-12">
-        <div className="mx-auto max-w-7xl">
-          <div className="text-center max-w-2xl mx-auto mb-16">
-            <Badge variant="default" className="mb-4">
-              Comprehensive Toolkit
-            </Badge>
-            <h2 className="font-display text-3xl sm:text-4xl font-extrabold text-white tracking-tight mb-4">
-              Everything You Need to Get Hired
-            </h2>
-            <p className="text-slate-400 text-sm sm:text-base leading-relaxed">
-              Designed from real industry feedback to eliminate blind spots in your resume, GitHub,
-              and interview prep.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {FEATURES.map((feature, i) => {
-              const Icon = feature.icon
-              return (
-                <Card
-                  key={feature.title}
-                  variant="glass"
-                  className="group hover:-translate-y-1 transition-all duration-300"
-                >
-                  <CardHeader className="p-6">
-                    <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl border border-primary/30 bg-primary/10 text-primary shadow-[0_0_20px_rgba(255,107,0,0.15)] group-hover:scale-110 group-hover:bg-primary group-hover:text-white transition-all duration-300">
-                      <Icon size={22} />
-                    </div>
-                    <CardTitle className="text-lg mb-2 group-hover:text-primary-light transition-colors">
-                      {feature.title}
-                    </CardTitle>
-                    <CardDescription className="text-xs leading-relaxed text-slate-400">
-                      {feature.desc}
-                    </CardDescription>
-                  </CardHeader>
-                </Card>
-              )
-            })}
-          </div>
-        </div>
-      </section>
-
-      {/* ============================================================
-          HOW IT WORKS
-      ============================================================ */}
-      <section id="how-it-works" className="relative z-10 py-24 px-6 lg:px-12">
-        <div className="mx-auto max-w-7xl">
-          <div className="text-center max-w-2xl mx-auto mb-16">
-            <Badge variant="accent" className="mb-4">
-              Step-by-Step Flow
-            </Badge>
-            <h2 className="font-display text-3xl sm:text-4xl font-extrabold text-white tracking-tight mb-4">
-              How CareerLens Works
-            </h2>
-            <p className="text-slate-400 text-sm sm:text-base leading-relaxed">
-              From an unoptimized resume to confident interview readiness in 4 simple steps.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {STEPS.map((s, index) => {
-              const Icon = s.icon
-              return (
-                <div
-                  key={s.step}
-                  className="relative rounded-2xl border border-white/[0.08] bg-surface-card/60 p-6 backdrop-blur-xl"
-                >
-                  <div className="flex items-center justify-between mb-6">
-                    <span className="font-display text-3xl font-extrabold text-primary/40">
-                      {s.step}
-                    </span>
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/[0.05] border border-white/10 text-primary">
-                      <Icon size={18} />
-                    </div>
-                  </div>
-                  <h3 className="font-display text-base font-bold text-white mb-2">{s.title}</h3>
-                  <p className="text-xs text-slate-400 leading-relaxed">{s.desc}</p>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      </section>
-
-      {/* ============================================================
-          PRICING SECTION (Using Phase 0 Card Primitives)
-      ============================================================ */}
-      <section id="pricing" className="relative z-10 border-t border-white/[0.06] bg-[#0E0D14]/70 py-24 px-6 lg:px-12">
-        <div className="mx-auto max-w-5xl">
-          <div className="text-center max-w-2xl mx-auto mb-16">
-            <Badge variant="default" className="mb-4">
-              Simple Pricing
-            </Badge>
-            <h2 className="font-display text-3xl sm:text-4xl font-extrabold text-white tracking-tight mb-4">
-              Invest in Your Career
-            </h2>
-            <p className="text-slate-400 text-sm sm:text-base leading-relaxed">
-              Start free with no credit card required. Upgrade when you are ready to accelerate.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-3xl mx-auto">
-            {PRICING.map((plan) => (
-              <Card
-                key={plan.name}
-                variant={plan.popular ? 'elevated-glow' : 'glass'}
-                className="relative flex flex-col justify-between p-8"
-              >
-                {plan.popular && (
-                  <div className="absolute top-0 right-0 rounded-bl-xl bg-gradient-to-l from-primary to-accent px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-white shadow-md">
-                    Most Popular
-                  </div>
-                )}
-                <div>
-                  <h3 className="font-display text-2xl font-bold text-white mb-2">{plan.name}</h3>
-                  <div className="flex items-baseline gap-2 mb-6">
-                    <span className="font-display text-4xl font-extrabold text-white">{plan.price}</span>
-                    <span className="text-sm text-slate-400 font-medium">{plan.period}</span>
-                  </div>
-
-                  <ul className="space-y-3 mb-8">
-                    {plan.features.map((feat) => (
-                      <li key={feat} className="flex items-center gap-2.5 text-xs text-slate-300">
-                        <CheckCircle size={15} className="text-primary shrink-0" />
-                        <span>{feat}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                <Link to={plan.popular ? '/dashboard/upgrade' : '/signup'} className="w-full">
-                  <Button
-                    variant={plan.variant}
-                    size="lg"
-                    className="w-full rounded-xl font-bold"
-                  >
-                    {plan.cta}
-                  </Button>
-                </Link>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ============================================================
-          TESTIMONIALS
-      ============================================================ */}
-      <section id="testimonials" className="relative z-10 py-24 px-6 lg:px-12">
-        <div className="mx-auto max-w-7xl">
-          <div className="text-center max-w-2xl mx-auto mb-16">
-            <Badge variant="accent" className="mb-4">
-              Student Results
-            </Badge>
-            <h2 className="font-display text-3xl sm:text-4xl font-extrabold text-white tracking-tight mb-4">
-              Real Offers. Real Feedback.
-            </h2>
-            <p className="text-slate-400 text-sm sm:text-base leading-relaxed">
-              See how developers turned low initial match scores into top-tier tech offers.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {TESTIMONIALS.map((t) => (
-              <Card key={t.name} variant="glass" className="p-6 flex flex-col justify-between">
-                <div className="flex items-center gap-1 text-primary mb-4">
-                  {[...Array(5)].map((_, idx) => (
-                    <Star key={idx} size={14} className="fill-primary" />
-                  ))}
-                </div>
-                <p className="text-xs sm:text-sm text-slate-200 leading-relaxed mb-6 italic">
-                  "{t.quote}"
-                </p>
-                <div className="flex items-center gap-3 pt-4 border-t border-white/[0.08]">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-tr from-primary to-accent font-bold text-xs text-white">
-                    {t.avatar}
-                  </div>
-                  <div>
-                    <p className="font-display text-sm font-bold text-white">{t.name}</p>
-                    <p className="text-[11px] text-slate-400">{t.role}</p>
-                  </div>
-                </div>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ============================================================
-          BOTTOM CTA BANNER
-      ============================================================ */}
-      <section className="relative z-10 py-20 px-6 lg:px-12">
-        <div className="mx-auto max-w-5xl rounded-3xl border border-primary/30 bg-gradient-to-b from-[#181724] to-[#0B0A10] p-10 sm:p-14 text-center shadow-[0_20px_60px_rgba(0,0,0,0.8),0_0_40px_rgba(255,107,0,0.18)]">
-          <Badge variant="default" className="mb-4">
-            Instant Access
-          </Badge>
-          <h2 className="font-display text-3xl sm:text-5xl font-extrabold text-white tracking-tight mb-4">
-            Stop Guessing. <span className="gradient-text">Start Getting Interviews.</span>
-          </h2>
-          <p className="max-w-xl mx-auto text-slate-300 text-sm sm:text-base leading-relaxed mb-8">
-            Upload your resume now to see your match score, fix hidden ATS filters, and follow a
-            concrete improvement plan.
-          </p>
-          <Link to="/signup">
-            <Button
-              variant="glow"
-              size="lg"
-              className="rounded-full px-10 py-4 text-base font-bold shadow-[0_0_35px_rgba(255,107,0,0.6)]"
-            >
-              Analyze Your Resume Now →
-            </Button>
-          </Link>
-        </div>
-      </section>
-
-      {/* ============================================================
-          FOOTER
-      ============================================================ */}
-      <footer className="relative z-10 border-t border-white/[0.06] bg-[#07060A] py-12 px-6 lg:px-12 text-slate-500 text-xs">
-        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-6 sm:flex-row">
-          <div className="flex items-center gap-2">
-            <Zap size={16} className="text-primary fill-primary" />
-            <span className="font-display text-sm font-bold text-white">CareerLens</span>
-            <span>— Dark 3D AI Career Guidance</span>
-          </div>
-          <p>© {new Date().getFullYear()} CareerLens. All rights reserved.</p>
-        </div>
-      </footer>
-
-      {/* ============================================================
-          DEMO MODAL
-      ============================================================ */}
-      <AnimatePresence>
-        {demoModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+            {/* Floating Glass Stat Card 1: Resume Analysis (Top Right) */}
             <motion.div
-              initial={{ opacity: 0, scale: 0.92 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.92 }}
-              className="relative w-full max-w-2xl rounded-2xl border border-primary/30 bg-[#13121C] p-6 shadow-2xl"
+              animate={
+                prefersReducedMotion
+                  ? {}
+                  : {
+                      y: [0, -8, 0],
+                      transition: { duration: 5.4, repeat: Infinity, ease: 'easeInOut' },
+                    }
+              }
+              className="absolute -top-2 right-2 sm:right-6 z-20"
             >
-              <div className="flex items-center justify-between pb-4 border-b border-white/10 mb-4">
-                <h3 className="font-display text-lg font-bold text-white">CareerLens Walkthrough Demo</h3>
-                <button
-                  onClick={() => setDemoModalOpen(false)}
-                  className="rounded-lg p-1.5 text-slate-400 hover:text-white hover:bg-white/10"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-              <div className="aspect-video w-full rounded-xl bg-black/60 border border-white/[0.08] flex flex-col items-center justify-center p-6 text-center">
-                <Play size={44} className="text-primary fill-primary mb-3" />
-                <p className="text-sm font-semibold text-white mb-1">CareerLens Interactive Demo</p>
-                <p className="text-xs text-slate-400 max-w-md">
-                  Experience full end-to-end ATS score breakdown, interview probability prediction,
-                  and resume bullet rewrites directly inside the dashboard.
-                </p>
-                <Link to="/signup" className="mt-5">
-                  <Button variant="primary" size="sm" className="rounded-full">
-                    Try Dashboard Free
-                  </Button>
-                </Link>
-              </div>
+              <GlassCard className="p-3.5 sm:p-4 flex items-center gap-3.5 shadow-glass-lg border-white/95 backdrop-blur-md">
+                <ScoreRing score={98} max={100} size={54} strokeWidth={5} color="#2563EB" />
+                <div>
+                  <p className="text-[11px] font-medium text-[#64748B]">Resume Analysis</p>
+                  <p className="text-sm sm:text-base font-extrabold text-[#0B0F19] tracking-tight">
+                    98/100
+                  </p>
+                  <p className="text-[10px] font-semibold text-[#2563EB]">Great Score!</p>
+                </div>
+              </GlassCard>
+            </motion.div>
+
+            {/* Floating Glass Stat Card 2: Skill Gap (Mid Left) */}
+            <motion.div
+              animate={
+                prefersReducedMotion
+                  ? {}
+                  : {
+                      y: [0, 8, 0],
+                      transition: { duration: 6.2, repeat: Infinity, ease: 'easeInOut', delay: 0.8 },
+                    }
+              }
+              className="absolute top-1/3 -left-2 sm:left-4 z-20"
+            >
+              <GlassCard className="p-3 sm:p-3.5 flex items-center gap-3 shadow-glass border-white/90">
+                <div className="w-10 h-10 rounded-xl bg-blue-50 text-[#2563EB] flex items-center justify-center shrink-0 border border-blue-100">
+                  <Layers size={18} />
+                </div>
+                <div>
+                  <p className="text-[11px] font-medium text-[#64748B]">Skill Gap</p>
+                  <p className="text-sm font-bold text-[#0B0F19]">3 areas</p>
+                </div>
+              </GlassCard>
+            </motion.div>
+
+            {/* Floating Glass Stat Card 3: Job Match (Mid Right) */}
+            <motion.div
+              animate={
+                prefersReducedMotion
+                  ? {}
+                  : {
+                      y: [0, -6, 0],
+                      transition: { duration: 5.8, repeat: Infinity, ease: 'easeInOut', delay: 1.4 },
+                    }
+              }
+              className="absolute bottom-16 -right-2 sm:right-4 z-20"
+            >
+              <GlassCard className="p-3 sm:p-3.5 flex items-center gap-3 shadow-glass border-white/90">
+                <div className="w-10 h-10 rounded-xl bg-orange-50 text-[#EA580C] flex items-center justify-center shrink-0 border border-orange-100">
+                  <Briefcase size={18} />
+                </div>
+                <div>
+                  <p className="text-[11px] font-medium text-[#64748B]">Job Match</p>
+                  <p className="text-sm font-bold text-[#0B0F19]">92%</p>
+                </div>
+              </GlassCard>
             </motion.div>
           </div>
-        )}
-      </AnimatePresence>
+        </div>
+      </section>
+
+      {/* ============================================================ */}
+      {/* SECTION: WHY CAREERLENS? (More Than a Resume Checker) */}
+      {/* ============================================================ */}
+      <section id="features" className="py-20 px-4 sm:px-8 max-w-7xl mx-auto">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
+          <div>
+            <p className="text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-2">
+              Why CareerLens?
+            </p>
+            <h2 className="text-3xl sm:text-4xl font-extrabold text-[#0B0F19] tracking-tight max-w-xl">
+              More Than a Resume Checker. <br />
+              <span className="text-[#0B0F19]">A Complete Career OS.</span>
+            </h2>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              aria-label="Previous"
+              className="w-9 h-9 rounded-full bg-white border border-slate-200 text-[#475569] flex items-center justify-center hover:bg-slate-50 transition-colors shadow-sm"
+            >
+              ←
+            </button>
+            <button
+              aria-label="Next"
+              className="w-9 h-9 rounded-full bg-white border border-slate-200 text-[#475569] flex items-center justify-center hover:bg-slate-50 transition-colors shadow-sm"
+            >
+              →
+            </button>
+          </div>
+        </div>
+
+        {/* 4 Feature Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <GlassCard hoverable className="p-6 space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-blue-50 text-[#2563EB] flex items-center justify-center border border-blue-100 shadow-sm">
+              <FileText size={22} />
+            </div>
+            <h3 className="text-lg font-bold text-[#0B0F19]">AI Resume Analysis</h3>
+            <p className="text-xs text-[#64748B] leading-relaxed">
+              Get detailed feedback with actionable suggestions, keyword density and recruiter diagnosis.
+            </p>
+          </GlassCard>
+
+          <GlassCard hoverable className="p-6 space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-[#4F46E5] flex items-center justify-center border border-indigo-100 shadow-sm">
+              <Compass size={22} />
+            </div>
+            <h3 className="text-lg font-bold text-[#0B0F19]">Personalized Roadmap</h3>
+            <p className="text-xs text-[#64748B] leading-relaxed">
+              Step by step plan based on your skills, target roles, career switch goals and timeline.
+            </p>
+          </GlassCard>
+
+          <GlassCard hoverable className="p-6 space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-orange-50 text-[#EA580C] flex items-center justify-center border border-orange-100 shadow-sm">
+              <Layers size={22} />
+            </div>
+            <h3 className="text-lg font-bold text-[#0B0F19]">Skill Gap Detection</h3>
+            <p className="text-xs text-[#64748B] leading-relaxed">
+              Know what to learn next to become job ready with curated open-source projects and topics.
+            </p>
+          </GlassCard>
+
+          <GlassCard hoverable className="p-6 space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-sky-50 text-[#0284C7] flex items-center justify-center border border-sky-100 shadow-sm">
+              <Briefcase size={22} />
+            </div>
+            <h3 className="text-lg font-bold text-[#0B0F19]">Job & Internship Match</h3>
+            <p className="text-xs text-[#64748B] leading-relaxed">
+              Find the right opportunities tailored specifically to your verified skills and resume profile.
+            </p>
+          </GlassCard>
+        </div>
+      </section>
+
+      {/* ============================================================ */}
+      {/* SECTION: FROM CONFUSION TO CLARITY (Comparison) */}
+      {/* ============================================================ */}
+      <section className="py-20 px-4 sm:px-8 max-w-7xl mx-auto">
+        <div className="text-center max-w-xl mx-auto mb-14">
+          <h2 className="text-3xl sm:text-4xl font-extrabold text-[#0B0F19] tracking-tight">
+            From Confusion to Clarity.
+          </h2>
+          <p className="text-sm text-[#64748B] mt-2">
+            See the transformative difference an AI career companion brings to your job search.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          {/* Left: Before CareerLens */}
+          <div className="lg:col-span-5 p-7 sm:p-8 rounded-[24px] bg-slate-100/80 border border-slate-200/90 shadow-sm space-y-5">
+            <div className="flex items-center gap-3 pb-3 border-b border-slate-200">
+              <div className="w-9 h-9 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center font-bold">
+                :(
+              </div>
+              <h3 className="text-base font-bold text-[#0B0F19]">Before CareerLens</h3>
+            </div>
+
+            <ul className="space-y-3.5">
+              {[
+                'No idea what to do next',
+                'Unclear resume feedback',
+                'Random learning resources',
+                'Missed opportunities',
+              ].map((item) => (
+                <li key={item} className="flex items-center gap-3 text-sm text-[#64748B]">
+                  <XCircle size={18} className="text-slate-400 shrink-0" />
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Center Connector Arrow */}
+          <div className="lg:col-span-2 flex items-center justify-center">
+            <div className="w-12 h-12 rounded-full bg-white border border-slate-200 shadow-sm flex items-center justify-center text-[#2563EB] font-bold">
+              →
+            </div>
+          </div>
+
+          {/* Right: After CareerLens */}
+          <div className="lg:col-span-5 p-7 sm:p-8 rounded-[24px] bg-white border border-blue-200 shadow-glass-lg space-y-5">
+            <div className="flex items-center gap-3 pb-3 border-b border-blue-100">
+              <div className="w-9 h-9 rounded-full bg-[#0B0F19] text-white flex items-center justify-center font-bold">
+                :)
+              </div>
+              <h3 className="text-base font-bold text-[#0B0F19]">After CareerLens</h3>
+            </div>
+
+            <ul className="space-y-3.5">
+              {[
+                'Clear career direction',
+                'AI-powered resume improvements',
+                'Personalized learning plan',
+                'Relevant jobs & internships',
+              ].map((item) => (
+                <li key={item} className="flex items-center gap-3 text-sm font-semibold text-[#0B0F19]">
+                  <CheckCircle2 size={18} className="text-[#16A34A] shrink-0" />
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      {/* ============================================================ */}
+      {/* SECTION: HOW IT WORKS? (Get Started in Minutes) */}
+      {/* ============================================================ */}
+      <section id="how-it-works" className="py-20 px-4 sm:px-8 max-w-7xl mx-auto">
+        <div className="mb-12">
+          <p className="text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-2">
+            How It Works?
+          </p>
+          <h2 className="text-3xl sm:text-4xl font-extrabold text-[#0B0F19] tracking-tight">
+            Get Started in Minutes.
+          </h2>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 relative">
+          {[
+            {
+              step: '01',
+              title: 'Upload Your Resume',
+              desc: 'Upload your resume in PDF format with one click.',
+              icon: FileText,
+            },
+            {
+              step: '02',
+              title: 'Get AI Analysis',
+              desc: 'Receive detailed feedback, ATS checks and skill gap insights.',
+              icon: Sparkles,
+            },
+            {
+              step: '03',
+              title: 'Explore Your Roadmap',
+              desc: 'Get a personalized learning plan tailored to target roles.',
+              icon: Compass,
+            },
+            {
+              step: '04',
+              title: 'Find Opportunities',
+              desc: 'Discover jobs and internships that fit your validated profile.',
+              icon: Briefcase,
+            },
+          ].map((item, idx) => {
+            const Icon = item.icon
+            return (
+              <GlassCard key={item.step} className="p-6 relative space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-[#64748B] bg-slate-100 px-2.5 py-1 rounded-md">
+                    {item.step}
+                  </span>
+                  <div className="w-10 h-10 rounded-xl bg-blue-50 text-[#2563EB] flex items-center justify-center border border-blue-100 shadow-sm">
+                    <Icon size={18} />
+                  </div>
+                </div>
+
+                <h3 className="text-base font-bold text-[#0B0F19]">{item.title}</h3>
+                <p className="text-xs text-[#64748B] leading-relaxed">{item.desc}</p>
+              </GlassCard>
+            )
+          })}
+        </div>
+      </section>
+
+      {/* ============================================================ */}
+      {/* SECTION: NOT JUST A TOOL. A CAREER COMPANION. */}
+      {/* ============================================================ */}
+      <section className="py-20 px-4 sm:px-8 max-w-7xl mx-auto">
+        <GlassCard className="p-8 sm:p-12 lg:p-14 overflow-hidden relative">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+            {/* Left: Copy & Interactive Prompt Bar */}
+            <div className="lg:col-span-7 space-y-6">
+              <h2 className="text-3xl sm:text-4xl font-extrabold text-[#0B0F19] tracking-tight">
+                Not Just a Tool. <br />
+                <span className="text-[#0B0F19]">A Career Companion.</span>
+              </h2>
+              <p className="text-sm text-[#475569] leading-relaxed max-w-md">
+                Get guidance, ask questions, explore roles and stay on track — anytime, anywhere.
+              </p>
+
+              {/* Search / Chat Input Box */}
+              <form onSubmit={handleAskSubmit} className="relative max-w-md">
+                <input
+                  type="text"
+                  value={askInput}
+                  onChange={(e) => setAskInput(e.target.value)}
+                  placeholder="Ask something... (e.g. How to break into AI engineering?)"
+                  className="w-full h-13 pl-5 pr-14 py-3.5 bg-white border border-slate-300/80 rounded-pill text-sm text-[#0B0F19] placeholder:text-slate-400 focus-ring shadow-sm"
+                />
+                <button
+                  type="submit"
+                  aria-label="Send query"
+                  className="absolute right-2 top-1.5 w-10 h-10 rounded-full bg-[#0B0F19] text-white flex items-center justify-center hover:bg-slate-800 transition-colors shadow-sm"
+                >
+                  <ArrowRight size={18} />
+                </button>
+              </form>
+
+              {companionReply && (
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="p-4 rounded-2xl bg-blue-50/80 border border-blue-200 text-xs text-[#1E293B] leading-relaxed max-w-md shadow-sm"
+                >
+                  <p className="font-semibold text-[#2563EB] mb-1">Lens AI Companion:</p>
+                  <p>{companionReply}</p>
+                </motion.div>
+              )}
+            </div>
+
+            {/* Right: Mascot with Speech Bubble */}
+            <div className="lg:col-span-5 relative flex items-center justify-center">
+              <Mascot
+                state="greeting"
+                bubbleText="Hey! 👋 Ask me anything about your career, skills or resume."
+                bubbleOpen={true}
+                size={340}
+              />
+            </div>
+          </div>
+        </GlassCard>
+      </section>
+
+      {/* ============================================================ */}
+      {/* SECTION: DASHBOARD PREVIEW TABLET (REF-1 Bottom Left) */}
+      {/* ============================================================ */}
+      <section className="py-20 px-4 sm:px-8 max-w-7xl mx-auto text-center">
+        <div className="max-w-2xl mx-auto mb-12">
+          <Badge variant="blue" size="md">Interactive Dashboard</Badge>
+          <h2 className="text-3xl sm:text-4xl font-extrabold text-[#0B0F19] tracking-tight mt-3">
+            Designed for Instant Impact.
+          </h2>
+          <p className="text-sm text-[#64748B] mt-2">
+            Every analysis, metric, and bullet rewrite rendered in a high-clarity workspace.
+          </p>
+        </div>
+
+        {/* 3D Glass Tablet Mockup */}
+        <div className="max-w-5xl mx-auto p-4 sm:p-6 rounded-[32px] bg-slate-200/50 border border-white/90 shadow-2xl backdrop-blur-xl">
+          <div className="rounded-[24px] bg-white border border-slate-200/90 shadow-lg overflow-hidden text-left p-6 sm:p-8 space-y-6">
+            {/* Tablet Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-[#0B0F19] text-white flex items-center justify-center font-bold">
+                  CL
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-[#0B0F19]">Resume Analysis</h3>
+                  <p className="text-xs text-[#64748B]">Software Engineer • ATS Targeted</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button variant="secondary" size="sm">
+                  Re-Analyze
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => navigate('/dashboard/optimizer')}
+                >
+                  Open in App →
+                </Button>
+              </div>
+            </div>
+
+            {/* Score Ring Banner */}
+            <div className="p-6 rounded-2xl bg-blue-50/50 border border-blue-100 flex flex-col sm:flex-row items-center justify-between gap-6">
+              <div className="flex items-center gap-5">
+                <ScoreRing score={98} max={100} size={74} strokeWidth={7} color="#2563EB" />
+                <div>
+                  <h4 className="text-lg font-extrabold text-[#0B0F19]">Excellent Resume!</h4>
+                  <p className="text-xs text-[#64748B] max-w-sm mt-0.5">
+                    Your resume is well structured and grounded in factual metrics.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="text-xs font-semibold px-3 py-1.5 bg-emerald-50 text-[#16A34A] rounded-pill border border-emerald-200">
+                  7 Strengths
+                </span>
+                <span className="text-xs font-semibold px-3 py-1.5 bg-amber-50 text-[#D97706] rounded-pill border border-amber-200">
+                  3 Improvements
+                </span>
+              </div>
+            </div>
+
+            {/* Metric Tiles */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                <p className="text-xs font-medium text-[#64748B]">Work Experience</p>
+                <p className="text-sm font-bold text-[#0B0F19] mt-1">Looks great!</p>
+              </div>
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                <p className="text-xs font-medium text-[#64748B]">Skills</p>
+                <p className="text-sm font-bold text-[#0B0F19] mt-1">3 new to add</p>
+              </div>
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                <p className="text-xs font-medium text-[#64748B]">Projects</p>
+                <p className="text-sm font-bold text-[#0B0F19] mt-1">Well presented!</p>
+              </div>
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                <p className="text-xs font-medium text-[#64748B]">ATS Compliance</p>
+                <p className="text-sm font-bold text-[#16A34A] mt-1">98% Passed</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ============================================================ */}
+      {/* SECTION: TRUSTED BY STUDENTS LIKE YOU (Testimonials) */}
+      {/* ============================================================ */}
+      <section className="py-20 px-4 sm:px-8 max-w-7xl mx-auto">
+        <div className="text-center max-w-xl mx-auto mb-14">
+          <p className="text-xs font-bold text-[#2563EB] uppercase tracking-wider mb-2">
+            Real Experiences
+          </p>
+          <h2 className="text-3xl sm:text-4xl font-extrabold text-[#0B0F19] tracking-tight">
+            Trusted by Students Like You.
+          </h2>
+        </div>
+
+        {/* Metrics Banner */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-14">
+          {MARKETING_CONFIG.METRICS.map((m) => (
+            <GlassCard key={m.label} className="p-6 text-center space-y-1">
+              <p className="text-3xl sm:text-4xl font-extrabold text-[#0B0F19]">{m.value}</p>
+              <p className="text-xs font-bold text-[#64748B]">{m.label}</p>
+              <p className="text-[11px] text-[#94A3B8]">{m.detail}</p>
+            </GlassCard>
+          ))}
+        </div>
+
+        {/* Testimonials */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {MARKETING_CONFIG.TESTIMONIALS.map((t) => (
+            <GlassCard key={t.name} className="p-6 space-y-4">
+              <span className="text-3xl text-blue-300 font-serif leading-none">“</span>
+              <p className="text-sm text-[#475569] leading-relaxed italic">
+                "{t.quote}"
+              </p>
+              <div className="flex items-center gap-3 pt-3 border-t border-slate-100">
+                <img
+                  src={t.avatar}
+                  alt={t.name}
+                  width={38}
+                  height={38}
+                  className="w-9 h-9 rounded-full object-cover ring-2 ring-blue-100"
+                />
+                <div>
+                  <p className="text-xs font-bold text-[#0B0F19]">{t.name}</p>
+                  <p className="text-[11px] text-[#94A3B8]">{t.role}</p>
+                </div>
+              </div>
+            </GlassCard>
+          ))}
+        </div>
+      </section>
+
+      {/* ============================================================ */}
+      {/* FINAL CTA BANNER */}
+      {/* ============================================================ */}
+      <section className="py-20 px-4 sm:px-8 max-w-7xl mx-auto">
+        <GlassCard className="p-8 sm:p-14 bg-gradient-to-r from-blue-50/70 via-white/90 to-sky-50/70 text-center relative overflow-hidden">
+          <div className="max-w-2xl mx-auto space-y-6 relative z-10">
+            <h2 className="text-3xl sm:text-4xl font-extrabold text-[#0B0F19] tracking-tight">
+              Ready to Upgrade Your Career?
+            </h2>
+            <p className="text-sm sm:text-base text-[#475569]">
+              Join 10,000+ students who are building a better future with CareerLens.
+            </p>
+            <div className="pt-2">
+              <Button
+                variant="primary"
+                size="lg"
+                trailingIcon={ArrowRight}
+                onClick={() => navigate('/signup')}
+              >
+                Get Started Free
+              </Button>
+            </div>
+          </div>
+        </GlassCard>
+      </section>
+
+      {/* Footer */}
+      <Footer />
+
+      {/* Scripted "Watch Demo" Dialog (Section 5.1) */}
+      <Dialog
+        isOpen={demoOpen}
+        onClose={() => setDemoOpen(false)}
+        title="CareerLens Product Walkthrough"
+        description="Scripted preview of resume analysis & ATS optimization"
+        maxWidth="max-w-2xl"
+      >
+        <div className="space-y-6 py-4">
+          <div className="p-6 rounded-2xl bg-blue-50/40 border border-blue-100 text-center space-y-4">
+            <div className="w-16 h-16 rounded-2xl bg-blue-100/80 text-[#2563EB] mx-auto flex items-center justify-center">
+              <FileText size={32} />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-[#0B0F19]">Demo Resume: Software_Engineer.pdf</p>
+              <p className="text-xs text-[#64748B]">Simulating ATS scanning & LLM recruiter lens</p>
+            </div>
+
+            {/* Stepper simulation */}
+            <div className="max-w-md mx-auto space-y-2 text-left pt-2">
+              <div className="flex items-center gap-2 text-xs font-semibold text-emerald-600">
+                <CheckCircle2 size={14} />
+                <span>Extracted 1,480 characters</span>
+              </div>
+              <div className="flex items-center gap-2 text-xs font-semibold text-emerald-600">
+                <CheckCircle2 size={14} />
+                <span>Compared keywords against Job Description</span>
+              </div>
+              <div className="flex items-center gap-2 text-xs font-semibold text-[#2563EB]">
+                <ScoreRing score={98} max={100} size={28} showLabel={false} strokeWidth={4} />
+                <span>Generated 98/100 ATS Score + 3 bullet improvements</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3">
+            <Button variant="secondary" size="sm" onClick={() => setDemoOpen(false)}>
+              Close Demo
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              trailingIcon={ArrowRight}
+              onClick={() => {
+                setDemoOpen(false)
+                navigate('/dashboard/optimizer')
+              }}
+            >
+              Try Optimizer Now
+            </Button>
+          </div>
+        </div>
+      </Dialog>
     </div>
   )
 }
