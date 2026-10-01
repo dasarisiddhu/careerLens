@@ -28,7 +28,7 @@ async function getToken() {
   return null
 }
 
-async function request(method, url, data, isBlob = false) {
+async function request(method, url, data, isBlob = false, externalSignal = null) {
   const token = await getToken()
   const isFormData = typeof FormData !== 'undefined' && data instanceof FormData
   const headers = {}
@@ -36,35 +36,57 @@ async function request(method, url, data, isBlob = false) {
   if (!isFormData) headers['Content-Type'] = 'application/json'
   if (token) headers.Authorization = `Bearer ${token}`
 
-  let res
-  try {
-    res = await fetch(`${API_BASE}${url}`, {
-      method,
-      headers,
-      body: data ? (isFormData ? data : JSON.stringify(data)) : undefined,
-    })
-  } catch {
-    throw new Error('Network error: cannot reach API server')
-  }
+  const execute = async (attempt = 1) => {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 15000)
 
-  if (!res.ok) {
-    let detail = `Request failed: ${res.status}`
-    try {
-      const err = await res.json()
-      detail = err.detail || err.message || detail
-    } catch {
-      try {
-        const text = await res.text()
-        if (text) detail = text
-      } catch {
-        // ignore body parse failures
-      }
+    if (externalSignal) {
+      externalSignal.addEventListener('abort', () => controller.abort())
     }
-    throw new Error(detail)
+
+    try {
+      const res = await fetch(`${API_BASE}${url}`, {
+        method,
+        headers,
+        body: data ? (isFormData ? data : JSON.stringify(data)) : undefined,
+        signal: controller.signal,
+      })
+      clearTimeout(timeoutId)
+
+      if (!res.ok) {
+        let detail = `Request failed: ${res.status}`
+        try {
+          const err = await res.json()
+          detail = err.detail || err.message || detail
+        } catch {
+          try {
+            const text = await res.text()
+            if (text) detail = text
+          } catch {
+            // ignore body parse failures
+          }
+        }
+        throw new Error(detail)
+      }
+
+      if (isBlob) return res.blob()
+      return res.json()
+    } catch (err) {
+      clearTimeout(timeoutId)
+      if (err.name === 'AbortError') {
+        throw new Error('Request timed out after 15s. Please check your connection and try again.')
+      }
+
+      // Retry once for idempotent GET requests on network failures
+      if (method === 'GET' && attempt === 1) {
+        return execute(2)
+      }
+
+      throw new Error(err.message || 'Network error: cannot reach API server')
+    }
   }
 
-  if (isBlob) return res.blob()
-  return res.json()
+  return execute(1)
 }
 
 export const api = {
