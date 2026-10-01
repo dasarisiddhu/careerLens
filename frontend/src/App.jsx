@@ -29,24 +29,11 @@ const JobMatch = lazy(() => import('./pages/dashboard/JobMatch'))
 const Portfolio = lazy(() => import('./pages/dashboard/Portfolio'))
 const UIDevShowcase = lazy(() => import('./pages/dev/UIDevShowcase'))
 const MascotDemo = lazy(() => import('./mascot/MascotDemo'))
+const NotFound = lazy(() => import('./pages/NotFound'))
 
 const PageLoader = () => (
-  <div style={{
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: '60vh',
-    flexDirection: 'column',
-    gap: 16,
-  }}>
-    <div style={{
-      width: 40, height: 40,
-      borderRadius: '50%',
-      border: '3px solid rgba(225,29,72,0.15)',
-      borderTop: '3px solid #e11d48',
-      animation: 'spin 0.8s linear infinite',
-    }} />
-    <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+  <div className="min-h-[50vh] flex flex-col items-center justify-center gap-4">
+    <div className="w-10 h-10 rounded-full border-3 border-blue-100 border-t-[#2563EB] animate-spin" />
   </div>
 )
 
@@ -62,7 +49,7 @@ function PrivateRoute({ children }) {
   const { user, loading } = useAuth()
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-transparent">
-      <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin shadow-[0_0_20px_rgba(255,107,0,0.4)]" />
+      <div className="w-8 h-8 border-2 border-blue-100 border-t-[#2563EB] rounded-full animate-spin" />
     </div>
   )
   return user ? children : <Navigate to="/login" replace />
@@ -123,7 +110,14 @@ export default function App() {
         }
       />
 
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route
+        path="*"
+        element={
+          <Suspense fallback={<PageLoader />}>
+            <NotFound />
+          </Suspense>
+        }
+      />
     </Routes>
   )
 }

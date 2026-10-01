@@ -1,19 +1,17 @@
-// frontend/src/pages/dashboard/Chatbot.jsx
-import { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { pageTransition } from '../../utils/animations'
 import { api } from '../../services/api'
 import toast from 'react-hot-toast'
-import { Send, Bot, User, Loader2, Sparkles } from 'lucide-react'
-import { Button } from '../../components/ui/Button'
-import { Input } from '../../components/ui/Input'
+import { Send, Bot, User, Sparkles, AlertCircle } from 'lucide-react'
+import { GlassCard, Button, Badge } from '../../components/ui'
+import { Mascot } from '../../mascot/Mascot'
 
 const QUICK_PROMPTS = [
   'How do I improve my resume ATS score?',
   'What skills should I learn for backend development?',
   'How to negotiate salary as a junior developer?',
   'Best way to prepare for technical interviews?',
-  'How to build a strong GitHub profile?',
+  'How to build a standout GitHub profile?',
 ]
 
 function Message({ msg }) {
@@ -22,22 +20,29 @@ function Message({ msg }) {
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`flex gap-3 ${isUser ? 'flex-row-reverse' : ''}`}
+      className={`flex gap-3 items-end ${isUser ? 'flex-row-reverse' : 'flex-row'}`}
+      role={isUser ? 'none' : 'status'}
+      aria-live={isUser ? 'off' : 'polite'}
     >
-      <div
-        className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
-          isUser
-            ? 'bg-gradient-to-tr from-primary to-accent text-white shadow-[0_0_12px_rgba(255,107,0,0.4)]'
-            : 'bg-primary/10 border border-primary/25'
-        }`}
-      >
-        {isUser ? <User size={14} /> : <Bot size={14} className="text-primary-light" />}
+      {/* Avatar */}
+      <div className="shrink-0 mb-1">
+        {isUser ? (
+          <div className="w-8 h-8 rounded-full bg-[#0B0F19] text-white flex items-center justify-center font-bold text-xs shadow-sm">
+            <User size={15} />
+          </div>
+        ) : (
+          <div className="w-8 h-8 rounded-full bg-blue-50 border border-blue-200 flex items-center justify-center overflow-hidden shadow-sm">
+            <Mascot size={32} showPodium={false} state="idle" />
+          </div>
+        )}
       </div>
+
+      {/* Bubble */}
       <div
-        className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+        className={`max-w-[80%] rounded-[20px] px-4 py-3 text-xs sm:text-sm leading-relaxed shadow-sm ${
           isUser
-            ? 'bg-gradient-to-r from-primary to-primary-dark text-white rounded-tr-sm shadow-[0_4px_16px_rgba(255,107,0,0.25)]'
-            : 'glass text-[#F5F5F7] rounded-tl-sm border-white/[0.08]'
+            ? 'bg-[#2563EB] text-white rounded-br-xs font-medium'
+            : 'bg-white/95 border border-slate-200/90 text-[#0B0F19] rounded-bl-xs backdrop-blur-md'
         }`}
       >
         {msg.content}
@@ -51,22 +56,17 @@ export default function Chatbot() {
     {
       role: 'assistant',
       content:
-        "I'm your Honest Career Coach. Ask me to evaluate your skills, roast your resume, or map out what you actually need to fix.",
+        "Hi! 👋 I'm your Honest Career Coach. Ask me anything about your resume, interview strategy, skill gaps, or career direction!",
     },
   ])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [sessionId, setSessionId] = useState(null)
   const bottomRef = useRef(null)
-  const buttonMotion = {
-    whileHover: { scale: 1.03, y: -1 },
-    whileTap: { scale: 0.97 },
-    transition: { duration: 0.15, ease: 'easeOut' },
-  }
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+  }, [messages, loading])
 
   const send = async (text) => {
     const content = text || input.trim()
@@ -81,7 +81,7 @@ export default function Chatbot() {
     } catch (err) {
       setMessages((m) => [
         ...m,
-        { role: 'assistant', content: `Sorry, I encountered an error: ${err.message}` },
+        { role: 'assistant', content: `That didn't go through. Check your connection and try again.` },
       ])
       toast.error(err.message || 'Failed to send message.')
     }
@@ -89,161 +89,90 @@ export default function Chatbot() {
   }
 
   return (
-    <motion.div variants={pageTransition} initial="hidden" animate="visible" exit="exit" style={{ width: '100%' }}>
-      <div className="flex flex-col h-[calc(100vh-140px)] max-w-3xl mx-auto w-full">
-        <div className="mb-4">
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2 font-display">
-            <Bot size={22} className="text-primary" /> Honest Career Coach
+    <div className="w-full max-w-4xl mx-auto flex flex-col h-[calc(100vh-140px)] space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between pb-1">
+        <div>
+          <Badge sparkle size="sm" className="mb-1.5">
+            AI Assistant
+          </Badge>
+          <h1 className="text-2xl font-extrabold text-[#0B0F19] tracking-tight">
+            Honest Career Coach
           </h1>
-          <p className="text-[#9499B3] text-sm">Powered by Google Gemini &amp; CareerLens AI</p>
-        </div>
-
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto glass rounded-2xl p-4 space-y-4 mb-4 border border-white/[0.08]">
-          {messages.length === 0 ? (
-            <div
-              style={{
-                flex: 1,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '48px 24px',
-                gap: '16px',
-              }}
-            >
-              <div
-                style={{
-                  width: '72px',
-                  height: '72px',
-                  borderRadius: '20px',
-                  background: 'rgba(255,107,0,0.12)',
-                  border: '1px solid rgba(255,107,0,0.25)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  marginBottom: '8px',
-                  boxShadow: '0 0 40px rgba(255,107,0,0.15)',
-                }}
-              >
-                <Bot size={32} className="text-primary-light" />
-              </div>
-              <h3 className="font-display" style={{ fontSize: '20px', fontWeight: 700, color: '#fafaf9', margin: 0, textAlign: 'center' }}>
-                Honest Career Coach
-              </h3>
-              <p
-                style={{
-                  fontSize: '14px',
-                  color: 'rgba(148,153,179,0.9)',
-                  textAlign: 'center',
-                  maxWidth: '360px',
-                  lineHeight: 1.6,
-                  margin: 0,
-                }}
-              >
-                Ask anything about resumes, interviews, salary negotiation, or career transitions.
-              </p>
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(3,1fr)',
-                  gap: '10px',
-                  width: '100%',
-                  maxWidth: '640px',
-                  marginTop: '16px',
-                }}
-              >
-                {[
-                  'How do I improve my ATS score?',
-                  'What skills are in demand for 2025?',
-                  'Help me prepare for interviews',
-                ].map((prompt) => (
-                  <motion.button
-                    {...buttonMotion}
-                    key={prompt}
-                    onClick={() => setInput(prompt)}
-                    style={{
-                      padding: '12px 14px',
-                      borderRadius: '12px',
-                      textAlign: 'left',
-                      background: 'rgba(19,18,28,0.85)',
-                      border: '1px solid rgba(255,255,255,0.08)',
-                      color: 'rgba(245,245,247,0.85)',
-                      fontSize: '12.5px',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s',
-                      lineHeight: 1.4,
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.borderColor = 'rgba(255,107,0,0.4)'
-                      e.currentTarget.style.background = 'rgba(255,107,0,0.08)'
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'
-                      e.currentTarget.style.background = 'rgba(19,18,28,0.85)'
-                    }}
-                  >
-                    {prompt}
-                  </motion.button>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <>
-              <AnimatePresence>
-                {messages.map((msg, i) => (
-                  <Message key={i} msg={msg} />
-                ))}
-              </AnimatePresence>
-              {loading && (
-                <div className="flex gap-3">
-                  <div className="w-8 h-8 rounded-xl bg-primary/10 border border-primary/25 flex items-center justify-center">
-                    <Bot size={14} className="text-primary-light" />
-                  </div>
-                  <div className="glass px-4 py-3 rounded-2xl rounded-tl-sm border-white/[0.08]">
-                    <Loader2 size={16} className="animate-spin text-primary" />
-                  </div>
-                </div>
-              )}
-              <div ref={bottomRef} />
-            </>
-          )}
-        </div>
-
-        {/* Quick prompts */}
-        <div className="flex gap-2 mb-3 overflow-x-auto pb-1">
-          {QUICK_PROMPTS.map((p, i) => (
-            <motion.button
-              {...buttonMotion}
-              key={i}
-              onClick={() => send(p)}
-              className="shrink-0 text-xs px-3 py-1.5 rounded-full bg-white/[0.04] border border-white/10 hover:border-primary/40 hover:text-primary-light hover:bg-primary/10 text-slate-300 transition-all"
-            >
-              <Sparkles size={10} className="inline mr-1 text-primary" />
-              {p}
-            </motion.button>
-          ))}
-        </div>
-
-        {/* Input */}
-        <div className="flex gap-3">
-          <Input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && send()}
-            placeholder="Ask me to evaluate your skills, roast your resume, or give you a real roadmap."
-            className="flex-1"
-          />
-          <Button
-            variant="primary"
-            onClick={() => send()}
-            disabled={!input.trim() || loading}
-            className="px-5 h-11 shrink-0"
-          >
-            <Send size={16} />
-          </Button>
+          <p className="text-xs text-[#64748B]">
+            Strategic guidance on resumes, negotiations, and technical interviews.
+          </p>
         </div>
       </div>
-    </motion.div>
+
+      {/* Messages Stream Container */}
+      <GlassCard className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 border-white/95 shadow-glass-lg rounded-[24px]">
+        <AnimatePresence>
+          {messages.map((msg, i) => (
+            <Message key={i} msg={msg} />
+          ))}
+        </AnimatePresence>
+
+        {/* Loading / Typing Indicator with Bouncing Dots */}
+        {loading && (
+          <div className="flex gap-3 items-end">
+            <div className="w-8 h-8 rounded-full bg-blue-50 border border-blue-200 flex items-center justify-center overflow-hidden shrink-0 shadow-sm mb-1">
+              <Mascot size={32} showPodium={false} state="thinking" />
+            </div>
+            <div className="bg-white/95 border border-slate-200/90 rounded-[20px] rounded-bl-xs px-4 py-3 shadow-sm flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-[#2563EB] animate-bounce [animation-delay:-0.3s]" />
+              <span className="w-2 h-2 rounded-full bg-[#2563EB] animate-bounce [animation-delay:-0.15s]" />
+              <span className="w-2 h-2 rounded-full bg-[#2563EB] animate-bounce" />
+            </div>
+          </div>
+        )}
+
+        <div ref={bottomRef} />
+      </GlassCard>
+
+      {/* Quick Prompts Strip */}
+      <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+        {QUICK_PROMPTS.map((p, i) => (
+          <button
+            key={i}
+            type="button"
+            onClick={() => send(p)}
+            className="shrink-0 text-xs px-3.5 py-1.5 rounded-full bg-white/80 border border-slate-200/80 hover:border-blue-300 hover:bg-blue-50/50 text-[#475569] font-medium transition-all shadow-xs"
+          >
+            <Sparkles size={11} className="inline mr-1.5 text-[#2563EB]" />
+            {p}
+          </button>
+        ))}
+      </div>
+
+      {/* Input Bar */}
+      <form
+        onSubmit={(e) => {
+          e.preventDefault()
+          send()
+        }}
+        className="flex gap-3"
+      >
+        <div className="relative flex-1">
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Ask me anything about your resume, career, or interviews..."
+            className="w-full h-12 px-4 rounded-xl bg-white/95 border border-slate-200/90 text-xs sm:text-sm text-[#0B0F19] placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB] shadow-sm"
+          />
+        </div>
+
+        <Button
+          type="submit"
+          variant="primary"
+          size="md"
+          disabled={!input.trim() || loading}
+          className="h-12 px-5"
+        >
+          <Send size={15} />
+        </Button>
+      </form>
+    </div>
   )
 }
