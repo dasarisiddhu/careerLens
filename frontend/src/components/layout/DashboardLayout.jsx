@@ -71,8 +71,8 @@ function Sidebar({ mobile = false, onClose }) {
           isActive
             ? 'text-[#0B0F19] font-bold'
             : hero
-            ? 'text-[#2563EB] hover:text-[#1D4ED8] hover:bg-blue-50/50'
-            : 'text-[#64748B] hover:text-[#0B0F19] hover:bg-slate-100/70'
+            ? 'text-[#2563EB] hover:text-[#1D4ED8] hover:bg-blue-50/60 font-bold'
+            : 'text-[#334155] hover:text-[#0B0F19] hover:bg-slate-100/80'
         }`
       }
     >
@@ -102,10 +102,10 @@ function Sidebar({ mobile = false, onClose }) {
                 ? 'text-[#2563EB]'
                 : hero
                 ? 'text-[#2563EB]'
-                : 'text-[#94A3B8] group-hover:text-[#475569]'
+                : 'text-[#475569] group-hover:text-[#0B0F19]'
             }`}
           />
-          <span className="relative flex-1 truncate">
+          <span className="relative flex-1 truncate font-semibold">
             {label}
           </span>
           {isActive && (
@@ -165,7 +165,7 @@ function Sidebar({ mobile = false, onClose }) {
           }}
           onWheelCapture={(event) => event.stopPropagation()}
         >
-          <p className="mb-2 pl-3 text-[10px] font-bold uppercase tracking-[0.14em] text-[#94A3B8]">
+          <p className="mb-2 pl-3 text-[10px] font-extrabold uppercase tracking-[0.14em] text-[#475569]">
             Resume Intelligence
           </p>
 
@@ -178,7 +178,7 @@ function Sidebar({ mobile = false, onClose }) {
           <button
             type="button"
             onClick={() => setMoreToolsOpen((prev) => !prev)}
-            className="mb-2 flex w-full items-center justify-between pl-3 pr-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[#94A3B8] transition hover:text-[#475569]"
+            className="mb-2 flex w-full items-center justify-between pl-3 pr-2 text-[10px] font-extrabold uppercase tracking-[0.14em] text-[#475569] transition hover:text-[#0B0F19]"
           >
             <span>More Tools</span>
             <ChevronDown
