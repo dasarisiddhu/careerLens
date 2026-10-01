@@ -20,3 +20,12 @@
 - **Alternative**: Rely on external Google Fonts CDN (render-blocking) and manual prop validation.
 - **Reason**: Guarantees zero layout shift, offline stability, and typed runtime safety against malformed LLM responses.
 
+### Decision 005: App Flow Navigation & 404 Mascot Integration
+- **Decision**: Restructured `DashboardLayout` into primary flow ("Resume Intelligence") and secondary ("More Tools"), while routing unmatched paths to a dedicated `NotFound` page featuring the mascot in error state.
+- **Alternative**: Silent redirect to `/` on 404.
+- **Reason**: Conforms strictly to Section 8.9 and improves navigation clarity for users and demo evaluators.
+
+### Decision 006: Nginx Caching & Gzip Delivery
+- **Decision**: Enhanced `docker/nginx.conf` with 1-year immutable caching for static assets and gzip compression level 6, keeping API proxy rules and SPA fallbacks untouched.
+- **Alternative**: Keep uncompressed default Nginx config.
+- **Reason**: Maximizes cache hit ratio and fulfills Section 10.2 delivery requirements without touching backend code.
