@@ -185,21 +185,9 @@ CREATE POLICY "Users can view their own profile"
     ON public.users FOR SELECT
     USING (auth.uid() = user_id);
 
-CREATE POLICY "Users can update their own profile"
-    ON public.users FOR UPDATE
-    USING (auth.uid() = user_id);
-
 -- ---------- resume_analyses ----------
 CREATE POLICY "Users can view their own analyses"
     ON public.resume_analyses FOR SELECT
-    USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can insert their own analyses"
-    ON public.resume_analyses FOR INSERT
-    WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can update their own analyses"
-    ON public.resume_analyses FOR UPDATE
     USING (auth.uid() = user_id);
 
 -- ---------- interview_sessions ----------
@@ -207,27 +195,19 @@ CREATE POLICY "Users can view their own interviews"
     ON public.interview_sessions FOR SELECT
     USING (auth.uid() = user_id);
 
-CREATE POLICY "Users can insert their own interviews"
-    ON public.interview_sessions FOR INSERT
-    WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can update their own interviews"
-    ON public.interview_sessions FOR UPDATE
-    USING (auth.uid() = user_id);
-
 -- ---------- chatbot_messages ----------
 CREATE POLICY "Users can view their own messages"
     ON public.chatbot_messages FOR SELECT
     USING (auth.uid() = user_id);
 
-CREATE POLICY "Users can insert their own messages"
-    ON public.chatbot_messages FOR INSERT
-    WITH CHECK (auth.uid() = user_id);
-
 -- ---------- payment_records ----------
 CREATE POLICY "Users can view their own payments"
     ON public.payment_records FOR SELECT
     USING (auth.uid() = user_id);
+
+-- Revoke client write access from tables modified solely by backend service_role
+REVOKE INSERT, UPDATE, DELETE ON public.users FROM anon, authenticated;
+REVOKE INSERT, UPDATE, DELETE ON public.resume_analyses, public.interview_sessions, public.chatbot_messages, public.resume_versions FROM anon, authenticated;
 
 -- ---------- github_cache ----------
 -- Allow all authenticated users to read cache (shared).
@@ -255,7 +235,7 @@ BEGIN
     );
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
 
 -- Attach trigger to Supabase auth.users
 CREATE TRIGGER on_auth_user_created
@@ -274,7 +254,10 @@ BEGIN
     SET resume_analysis_count = resume_analysis_count + 1
     WHERE user_id = p_user_id;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
+
+REVOKE EXECUTE ON FUNCTION public.increment_resume_count(UUID) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.increment_resume_count(UUID) TO service_role;
 
 CREATE OR REPLACE FUNCTION public.increment_interview_count(p_user_id UUID)
 RETURNS VOID AS $$
@@ -283,7 +266,10 @@ BEGIN
     SET mock_interview_count = mock_interview_count + 1
     WHERE user_id = p_user_id;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
+
+REVOKE EXECUTE ON FUNCTION public.increment_interview_count(UUID) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.increment_interview_count(UUID) TO service_role;
 
 CREATE OR REPLACE FUNCTION public.increment_chatbot_count(p_user_id UUID)
 RETURNS VOID AS $$
@@ -292,7 +278,10 @@ BEGIN
     SET chatbot_message_count = chatbot_message_count + 1
     WHERE user_id = p_user_id;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
+
+REVOKE EXECUTE ON FUNCTION public.increment_chatbot_count(UUID) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.increment_chatbot_count(UUID) TO service_role;
 
 CREATE OR REPLACE FUNCTION public.increment_portfolio_count(p_user_id UUID)
 RETURNS VOID AS $$
@@ -301,7 +290,10 @@ BEGIN
     SET portfolio_gen_count = portfolio_gen_count + 1
     WHERE user_id = p_user_id;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
+
+REVOKE EXECUTE ON FUNCTION public.increment_portfolio_count(UUID) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.increment_portfolio_count(UUID) TO service_role;
 
 CREATE OR REPLACE FUNCTION public.increment_interview_probability_count(p_user_id UUID)
 RETURNS void AS $$
@@ -310,7 +302,10 @@ BEGIN
   SET interview_probability_count = interview_probability_count + 1
   WHERE user_id = p_user_id;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
+
+REVOKE EXECUTE ON FUNCTION public.increment_interview_probability_count(UUID) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.increment_interview_probability_count(UUID) TO service_role;
 
 -- ============================================================
 -- FUNCTION: Upgrade user to premium after payment
@@ -323,7 +318,10 @@ BEGIN
     SET plan_type = 'premium'
     WHERE user_id = p_user_id;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
+
+REVOKE EXECUTE ON FUNCTION public.upgrade_user_to_premium(UUID) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.upgrade_user_to_premium(UUID) TO service_role;
 
 -- ============================================================
 -- STORAGE BUCKETS
@@ -449,10 +447,6 @@ ALTER TABLE public.resume_versions ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users view own resume versions"
     ON public.resume_versions FOR SELECT
     USING (auth.uid() = user_id);
-
-CREATE POLICY "Users insert own resume versions"
-    ON public.resume_versions FOR INSERT
-    WITH CHECK (auth.uid() = user_id);
 
 CREATE INDEX IF NOT EXISTS idx_resume_versions_user_id
     ON public.resume_versions(user_id);

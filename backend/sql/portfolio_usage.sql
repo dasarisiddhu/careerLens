@@ -10,4 +10,7 @@ BEGIN
     SET portfolio_gen_count = portfolio_gen_count + 1
     WHERE user_id = p_user_id;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
+
+REVOKE EXECUTE ON FUNCTION public.increment_portfolio_count(UUID) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.increment_portfolio_count(UUID) TO service_role;

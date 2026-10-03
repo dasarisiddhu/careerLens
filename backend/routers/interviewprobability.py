@@ -45,7 +45,16 @@ def normalize_github_url(url: str) -> str:
     path_parts = [p for p in (parsed.path or "").split("/") if p]
     if not path_parts:
         raise HTTPException(status_code=400, detail="GitHub URL must include a username.")
-    return f"https://github.com/{path_parts[0]}"
+    if len(path_parts) != 1:
+        raise HTTPException(status_code=422, detail="GitHub URL must be a direct profile link (e.g. https://github.com/username).")
+
+    from services.github_service import validate_github_username
+    try:
+        username = validate_github_username(path_parts[0])
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid GitHub username in URL.")
+
+    return f"https://github.com/{username}"
 
 
 # ============================================================

@@ -5,6 +5,8 @@
 
 import asyncio
 import httpx
+import re
+from urllib.parse import quote
 from config import settings
 from database import supabase
 from datetime import datetime, timezone, timedelta
@@ -13,6 +15,21 @@ import logging
 logger = logging.getLogger("careerlens.github")
 
 GITHUB_API = "https://api.github.com"
+GITHUB_USERNAME_REGEX = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$")
+
+
+def validate_github_username(username: str) -> str:
+    """
+    Validate that a username adheres to GitHub's valid username pattern:
+    ^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$
+    Prevents path traversal and URL injection.
+    """
+    if not username or not isinstance(username, str):
+        raise ValueError("GitHub username is required.")
+    cleaned = username.strip()
+    if not GITHUB_USERNAME_REGEX.match(cleaned):
+        raise ValueError("Invalid GitHub username format.")
+    return cleaned
 
 
 def _headers():
@@ -25,6 +42,9 @@ def _headers():
 
 async def fetch_github_profile(username: str) -> dict:
     """Fetch GitHub profile with caching (6hr TTL)."""
+    username = validate_github_username(username)
+    safe_username = quote(username, safe="")
+
     # Check cache
     try:
         cached = supabase.table("github_cache").select("*").eq("github_username", username).single().execute()
@@ -37,18 +57,18 @@ async def fetch_github_profile(username: str) -> dict:
 
     async with httpx.AsyncClient(headers=_headers(), timeout=10) as client:
         # Fetch profile
-        profile_res = await client.get(f"{GITHUB_API}/users/{username}")
+        profile_res = await client.get(f"{GITHUB_API}/users/{safe_username}")
         if profile_res.status_code == 404:
             raise ValueError(f"GitHub user '{username}' not found.")
         profile = profile_res.json()
 
         # Fetch repos
-        repos_res = await client.get(f"{GITHUB_API}/users/{username}/repos", params={"sort": "stars", "per_page": 30})
+        repos_res = await client.get(f"{GITHUB_API}/users/{safe_username}/repos", params={"sort": "stars", "per_page": 30})
         repos = repos_res.json() if repos_res.status_code == 200 else []
 
         readme_checked_repos = repos[:10]
         readme_results = await asyncio.gather(*[
-            client.get(f"{GITHUB_API}/repos/{username}/{repo.get('name')}/readme")
+            client.get(f"{GITHUB_API}/repos/{safe_username}/{quote(str(repo.get('name') or ''), safe='')}/readme")
             for repo in readme_checked_repos if repo.get("name")
         ], return_exceptions=True)
         readme_lookup = {}

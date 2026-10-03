@@ -10,4 +10,7 @@ BEGIN
   SET interview_probability_count = interview_probability_count + 1
   WHERE user_id = p_user_id;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
+
+REVOKE EXECUTE ON FUNCTION public.increment_interview_probability_count(UUID) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.increment_interview_probability_count(UUID) TO service_role;

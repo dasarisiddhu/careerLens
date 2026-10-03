@@ -19,4 +19,5 @@ COPY --chown=app:app . /app
 
 ENV PORT=8000
 USER app
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT}"]
+# --proxy-headers and --forwarded-allow-ips='*' allow uvicorn behind Render's edge proxy to read real client IP
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT} --proxy-headers --forwarded-allow-ips='*'"]

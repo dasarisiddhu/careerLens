@@ -70,3 +70,7 @@ docker-compose.dev.yml
 docker-compose.test.yml
 docker-compose.staging.yml
 docker-compose.local.yml
+
+# Security & Audit Artifacts
+.pip-audit-cache/
+pip-audit-requirements*.json

@@ -1967,7 +1967,8 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
   // ── Send optimized text to Job Match or ATS Checker ──────
   const sendToTool = (path) => {
     const text = buildOptimizerToolText(result, editedSummary, jobTitle)
-    localStorage.setItem('careerlens_resume_text', text)
+    try { sessionStorage.setItem('careerlens_resume_text', text) } catch {}
+    try { localStorage.setItem('careerlens_resume_text', text) } catch {}
     window.location.href = path
   }
 

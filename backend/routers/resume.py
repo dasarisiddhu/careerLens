@@ -4,7 +4,7 @@
 # ============================================================
 
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from middleware.auth import get_authenticated_user, get_user_profile
 from services.pdf_service import extract_text_from_pdf, extract_text_from_pdf_base64
 from services.github_service import fetch_github_profile
@@ -52,8 +52,15 @@ def normalize_github_url(url: str) -> str:
     path_parts = [p for p in (parsed.path or "").split("/") if p]
     if not path_parts:
         raise HTTPException(status_code=400, detail="GitHub URL must include a username.")
+    if len(path_parts) != 1:
+        raise HTTPException(status_code=422, detail="GitHub URL must be a direct profile link (e.g. https://github.com/username).")
 
-    username = path_parts[0]
+    from services.github_service import validate_github_username
+    try:
+        username = validate_github_username(path_parts[0])
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid GitHub username in URL.")
+
     return f"https://github.com/{username}"
 
 
@@ -439,11 +446,11 @@ async def analyze_resume(
 
     try:
         # ---- Validate file ----
-        if resume.content_type not in settings.ALLOWED_RESUME_TYPES:
-            raise HTTPException(status_code=400, detail="Only PDF files are accepted.")
         content = await resume.read()
         if len(content) > settings.MAX_RESUME_SIZE_MB * 1024 * 1024:
-            raise HTTPException(status_code=400, detail=f"Resume must be under {settings.MAX_RESUME_SIZE_MB}MB.")
+            raise HTTPException(status_code=413, detail=f"Resume exceeds maximum allowed size of {settings.MAX_RESUME_SIZE_MB}MB.")
+        if resume.content_type not in settings.ALLOWED_RESUME_TYPES or not content.startswith(b"%PDF-"):
+            raise HTTPException(status_code=415, detail="Invalid file format. Only valid PDF files starting with %PDF- are accepted.")
 
         # ---- Create DB record (pending) ----
         try:
@@ -590,11 +597,15 @@ async def get_analysis(analysis_id: str, user=Depends(get_authenticated_user)):
         raise HTTPException(status_code=404, detail="Analysis not found.")
     return {"success": True, "analysis": row}
 
+MAX_BASE64_PDF_LEN = int(settings.MAX_RESUME_SIZE_MB * 1024 * 1024 * 1.4) + 1000
+
 class ExtractTextRequest(BaseModel):
-    pdf_base64: str
+    pdf_base64: str = Field(..., max_length=MAX_BASE64_PDF_LEN)
 
 @router.post("/extract-text")
+@limiter.limit("15/hour")
 async def extract_resume_text(
+    request: Request,
     body: ExtractTextRequest,
     user=Depends(get_authenticated_user)
 ):
@@ -611,18 +622,18 @@ async def extract_resume_text(
                 detail="PDF text is empty. Please paste your resume text manually."
             )
         
-        # Log success for debugging
-        import logging
-        logging.getLogger("careerlens").info(
-            f"PDF extraction success: {len(text)} chars extracted"
-        )
-        
+        logger.info(f"PDF extraction success: {len(text)} chars extracted")
         return {"success": True, "text": text.strip(), "char_count": len(text.strip())}
         
     except HTTPException:
         raise
     except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        msg = str(e)
+        if "exceeds maximum limit" in msg:
+            raise HTTPException(status_code=413, detail=msg)
+        if "Invalid file format" in msg:
+            raise HTTPException(status_code=415, detail=msg)
+        raise HTTPException(status_code=422, detail=msg)
     except Exception as e:
         logger.error(f"PDF extraction error: {e}")
         raise HTTPException(
@@ -631,8 +642,8 @@ async def extract_resume_text(
         )
 
 class ATSCheckRequest(BaseModel):
-    resume_pdf: str
-    job_description: str
+    resume_pdf: str = Field(..., max_length=MAX_BASE64_PDF_LEN)
+    job_description: str = Field(..., max_length=25000)
 
 
 @router.post("/ats-check")
@@ -647,9 +658,16 @@ async def ats_check(request: Request, body: ATSCheckRequest, user=Depends(get_au
 
     try:
         resume_text = extract_text_from_pdf_base64(pdf_base64)
+    except ValueError as e:
+        msg = str(e)
+        if "exceeds maximum limit" in msg:
+            raise HTTPException(status_code=413, detail=msg)
+        if "Invalid file format" in msg:
+            raise HTTPException(status_code=415, detail=msg)
+        raise HTTPException(status_code=422, detail=msg)
     except Exception as e:
         logger.warning(f"ATS check PDF extraction failed: {e}")
-        raise HTTPException(status_code=400, detail="Could not extract text from the provided PDF.")
+        raise HTTPException(status_code=422, detail="Could not extract text from the provided PDF.")
 
     result = await run_brutal_ats_check(resume_text, body.job_description)
     return {"success": True, "result": result}

@@ -4,6 +4,7 @@
 // ============================================================
 import { createContext, useContext, useEffect, useState } from 'react'
 import { supabase } from '../services/supabase'
+import { clearLocalUserData } from '../utils/storage'
 
 const AuthContext = createContext(null)
 
@@ -43,15 +44,17 @@ export function AuthProvider({ children }) {
 
     hydrateAuth()
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (!active) return
 
-      const sessionUser = session?.user ?? null
-      if (!sessionUser) {
+      if (event === 'SIGNED_OUT' || !session?.user) {
+        clearLocalUserData()
         setUser(null)
+        setProfile(null)
         return
       }
 
+      const sessionUser = session.user
       // Keep UI responsive immediately, then enrich with full identity metadata.
       setUser(sessionUser)
       supabase.auth.getUser()
@@ -69,6 +72,7 @@ export function AuthProvider({ children }) {
   }, [])
 
   const signOut = async () => {
+    clearLocalUserData()
     await supabase.auth.signOut()
     setUser(null)
     setProfile(null)

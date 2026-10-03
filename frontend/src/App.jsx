@@ -104,23 +104,34 @@ export default function App() {
         </Route>
       </Route>
 
-      <Route
-        path="/_dev/ui"
-        element={
-          <Suspense fallback={<ContentPageSkeleton />}>
-            <UIDevShowcase />
-          </Suspense>
-        }
-      />
-
-      <Route
-        path="/mascot-demo"
-        element={
-          <Suspense fallback={<ContentPageSkeleton />}>
-            <MascotDemo />
-          </Suspense>
-        }
-      />
+      {import.meta.env.DEV && (
+        <>
+          <Route
+            path="/_dev/ui"
+            element={
+              <Suspense fallback={<ContentPageSkeleton />}>
+                <UIDevShowcase />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/dev/ui"
+            element={
+              <Suspense fallback={<ContentPageSkeleton />}>
+                <UIDevShowcase />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/mascot-demo"
+            element={
+              <Suspense fallback={<ContentPageSkeleton />}>
+                <MascotDemo />
+              </Suspense>
+            }
+          />
+        </>
+      )}
 
       <Route
         path="*"

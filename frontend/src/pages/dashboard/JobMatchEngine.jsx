@@ -52,9 +52,10 @@ export default function JobMatchEngine({ resumeText: initialResumeText = '' }) {
   const jobMatches = hasMatchResult && Array.isArray(result.job_matches) ? result.job_matches : []
 
   useEffect(() => {
-    const saved = localStorage.getItem('careerlens_resume_text')
+    const saved = sessionStorage.getItem('careerlens_resume_text') || localStorage.getItem('careerlens_resume_text')
     if (saved && saved.trim().length > 50) {
       setResumeText(saved.trim())
+      sessionStorage.removeItem('careerlens_resume_text')
       localStorage.removeItem('careerlens_resume_text')
     }
   }, [])

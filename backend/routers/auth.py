@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Depends, Request, Response, status
 from pydantic import BaseModel, EmailStr
 from database import supabase
 from middleware.auth import get_authenticated_user, get_user_profile
-from rate_limit import limiter
+from rate_limit import limiter, get_remote_address
 import logging
 from urllib.parse import urlparse
 
@@ -57,7 +57,16 @@ def normalize_github_url(url: str) -> str:
     path_parts = [p for p in (parsed.path or "").split("/") if p]
     if not path_parts:
         raise HTTPException(status_code=400, detail="GitHub URL must include a username.")
-    return f"https://github.com/{path_parts[0]}"
+    if len(path_parts) != 1:
+        raise HTTPException(status_code=422, detail="GitHub URL must be a direct profile link (e.g. https://github.com/username).")
+
+    from services.github_service import validate_github_username
+    try:
+        username = validate_github_username(path_parts[0])
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid GitHub username in URL.")
+
+    return f"https://github.com/{username}"
 
 
 def github_url_from_username(username: str | None) -> str | None:
@@ -68,7 +77,7 @@ def github_url_from_username(username: str | None) -> str | None:
 # ---- Routes ----
 
 @router.post("/signup", status_code=status.HTTP_201_CREATED)
-@limiter.limit("3/minute")
+@limiter.limit("3/minute", key_func=get_remote_address)
 async def signup(request: Request, response: Response, body: SignUpRequest):
     """Register a new user via Supabase Auth."""
     try:
@@ -88,7 +97,7 @@ async def signup(request: Request, response: Response, body: SignUpRequest):
 
 
 @router.post("/login")
-@limiter.limit("5/minute")
+@limiter.limit("5/minute", key_func=get_remote_address)
 async def login(request: Request, response: Response, body: LoginRequest):
     """Authenticate user and return Supabase session tokens."""
     try:
@@ -108,7 +117,7 @@ async def login(request: Request, response: Response, body: LoginRequest):
 
 
 @router.post("/forgot-password")
-@limiter.limit("2/minute")
+@limiter.limit("2/minute", key_func=get_remote_address)
 async def forgot_password(request: Request, response: Response, body: ForgotPasswordRequest):
     """Send password reset email via Supabase."""
     try:

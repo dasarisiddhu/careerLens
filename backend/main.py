@@ -1,4 +1,4 @@
-﻿# ============================================================
+# ============================================================
 # CareerLens -- FastAPI Backend Entry Point
 # File: backend/main.py
 # ============================================================
@@ -188,11 +188,7 @@ async def root():
 @app.get("/health", tags=["Health"])
 async def health_check():
     """Health check endpoint. Used by Docker, load balancers, and monitoring tools."""
-    return {
-        "success": True,
-        "status": "healthy",
-        "environment": settings.ENVIRONMENT,
-    }
+    return {"status": "healthy"}
 
 
 @app.get("/api", tags=["Health"])

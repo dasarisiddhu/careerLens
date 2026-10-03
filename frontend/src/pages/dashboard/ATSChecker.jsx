@@ -149,9 +149,10 @@ export default function ATSChecker() {
   const fileRef = useRef(null)
 
   useEffect(() => {
-    const saved = localStorage.getItem('careerlens_resume_text')
+    const saved = sessionStorage.getItem('careerlens_resume_text') || localStorage.getItem('careerlens_resume_text')
     if (saved && saved.trim().length > 50) {
       setResumeText(saved.trim())
+      sessionStorage.removeItem('careerlens_resume_text')
       localStorage.removeItem('careerlens_resume_text')
       return
     }

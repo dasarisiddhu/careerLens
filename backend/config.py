@@ -108,7 +108,37 @@ class Settings(BaseSettings):
 @lru_cache()
 def get_settings() -> Settings:
     """Cached settings instance – call get_settings() anywhere."""
-    return Settings()
+    try:
+        instance = Settings()
+    except Exception as e:
+        err_msg = str(e)
+        missing_vars = []
+        for var in ["SECRET_KEY", "STRIPE_WEBHOOK_SECRET"]:
+            if var in err_msg:
+                missing_vars.append(var)
+        if missing_vars:
+            names = ", ".join(missing_vars)
+            raise RuntimeError(
+                f"FATAL: Missing required environment variable(s): {names}. "
+                f"Please define {names} in your environment or .env file before starting the server."
+            ) from e
+        raise e
+
+    # In production, ensure core external secrets are defined
+    if instance.ENVIRONMENT == "production":
+        missing_prod = []
+        for var in ["SUPABASE_URL", "SUPABASE_KEY", "SUPABASE_JWT_SECRET", "GEMINI_API_KEY"]:
+            val = getattr(instance, var, None)
+            if not val or not str(val).strip():
+                missing_prod.append(var)
+        if missing_prod:
+            names = ", ".join(missing_prod)
+            raise RuntimeError(
+                f"FATAL: Production environment requires variable(s): {names}. "
+                f"Please define {names} in your deployment environment."
+            )
+
+    return instance
 
 
 # Singleton used throughout the app

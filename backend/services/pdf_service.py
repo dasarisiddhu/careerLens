@@ -1,20 +1,27 @@
 # ============================================================
-# CareerLens – PDF Service (Fixed)
+# CareerLens – PDF Service (Hardened)
 # File: backend/services/pdf_service.py
 # ============================================================
 import base64
 import io
 import logging
+from config import settings
 
 logger = logging.getLogger("careerlens.pdf")
+
+MAX_PDF_PAGES = 10
+MAX_OCR_PAGES = 5
 
 
 def extract_text_from_pdf_base64(pdf_base64: str) -> str:
     """
     Extract plain text from a base64-encoded PDF.
-    Tries PyMuPDF first (best for browser-printed PDFs),
-    then pdfplumber, PyPDF2, pypdf, pdfminer as fallbacks.
+    Validates magic bytes, bounds size, caps processed pages,
+    and falls back through PyMuPDF, pdfplumber, PyPDF2, pypdf, pdfminer, and OCR.
     """
+    if not pdf_base64 or not isinstance(pdf_base64, str):
+        raise ValueError("No PDF data provided.")
+
     # ── Clean base64 string ──────────────────────────────────
     if "," in pdf_base64:
         pdf_base64 = pdf_base64.split(",", 1)[1]
@@ -31,6 +38,14 @@ def extract_text_from_pdf_base64(pdf_base64: str) -> str:
         logger.error(f"Base64 decode failed: {e}")
         raise ValueError("Invalid base64 PDF data.")
 
+    # ── Enforce size and magic bytes ──────────────────────────
+    max_bytes = settings.MAX_RESUME_SIZE_MB * 1024 * 1024
+    if len(raw_bytes) > max_bytes:
+        raise ValueError(f"Decoded PDF size exceeds maximum limit of {settings.MAX_RESUME_SIZE_MB}MB.")
+
+    if not raw_bytes.startswith(b"%PDF-"):
+        raise ValueError("Invalid file format. File must be a valid PDF starting with %PDF- header.")
+
     ocr_unavailable_reason = ""
 
     # ── Method 1: PyMuPDF (fitz) — best for browser-printed PDFs ──
@@ -38,7 +53,10 @@ def extract_text_from_pdf_base64(pdf_base64: str) -> str:
         import fitz  # PyMuPDF
         doc = fitz.open(stream=raw_bytes, filetype="pdf")
         pages = []
-        for page in doc:
+        for idx, page in enumerate(doc):
+            if idx >= MAX_PDF_PAGES:
+                logger.info(f"PyMuPDF page cap reached ({MAX_PDF_PAGES} pages)")
+                break
             text = page.get_text("text")
             if text and text.strip():
                 pages.append(text.strip())
@@ -58,7 +76,7 @@ def extract_text_from_pdf_base64(pdf_base64: str) -> str:
         import pdfplumber
         with pdfplumber.open(io.BytesIO(raw_bytes)) as pdf:
             pages = []
-            for page in pdf.pages:
+            for page in pdf.pages[:MAX_PDF_PAGES]:
                 text = page.extract_text(x_tolerance=3, y_tolerance=3)
                 if text:
                     pages.append(text.strip())
@@ -77,7 +95,7 @@ def extract_text_from_pdf_base64(pdf_base64: str) -> str:
         import PyPDF2
         reader = PyPDF2.PdfReader(io.BytesIO(raw_bytes))
         pages = []
-        for page in reader.pages:
+        for page in reader.pages[:MAX_PDF_PAGES]:
             text = page.extract_text()
             if text:
                 pages.append(text.strip())
@@ -96,7 +114,7 @@ def extract_text_from_pdf_base64(pdf_base64: str) -> str:
         from pypdf import PdfReader
         reader = PdfReader(io.BytesIO(raw_bytes))
         pages = []
-        for page in reader.pages:
+        for page in reader.pages[:MAX_PDF_PAGES]:
             text = page.extract_text()
             if text:
                 pages.append(text.strip())
@@ -113,7 +131,7 @@ def extract_text_from_pdf_base64(pdf_base64: str) -> str:
     # ── Method 5: pdfminer ────────────────────────────────────
     try:
         from pdfminer.high_level import extract_text as pdfminer_extract
-        result = pdfminer_extract(io.BytesIO(raw_bytes)).strip()
+        result = pdfminer_extract(io.BytesIO(raw_bytes), maxpages=MAX_PDF_PAGES).strip()
         if result and len(result) > 30:
             logger.info(f"pdfminer extracted {len(result)} chars")
             return result
@@ -123,6 +141,7 @@ def extract_text_from_pdf_base64(pdf_base64: str) -> str:
     except Exception as e:
         logger.warning(f"pdfminer failed: {e}")
 
+    # ── Method 6: OCR Fallback (capped to MAX_OCR_PAGES) ───────
     try:
         import fitz  # PyMuPDF
         import pytesseract
@@ -140,6 +159,9 @@ def extract_text_from_pdf_base64(pdf_base64: str) -> str:
         doc = fitz.open(stream=raw_bytes, filetype="pdf")
         pages = []
         for page_number, page in enumerate(doc):
+            if page_number >= MAX_OCR_PAGES:
+                logger.info(f"OCR page cap reached ({MAX_OCR_PAGES} pages)")
+                break
             try:
                 pix = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
                 img = Image.open(io.BytesIO(pix.tobytes("png")))
@@ -169,8 +191,6 @@ def extract_text_from_pdf_base64(pdf_base64: str) -> str:
         "It may be a scanned/image-based or password-protected file. "
         f"{hint} Please paste your resume text manually."
     )
-
-
 
 
 # Alias for backwards compatibility
