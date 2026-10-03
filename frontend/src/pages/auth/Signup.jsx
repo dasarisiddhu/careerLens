@@ -4,7 +4,6 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '../../services/supabase'
 import { Eye, EyeOff, Loader2, Github, Chrome, Mail, Lock, User, AlertCircle, CheckCircle2, ArrowLeft } from 'lucide-react'
 import { Button, Input, GlassCard } from '../../components/ui'
-import { Mascot } from '../../mascot/Mascot'
 
 export default function Signup() {
   const [form, setForm] = useState({ name: '', email: '', password: '' })
@@ -95,9 +94,6 @@ export default function Signup() {
         transition={{ duration: 0.35, ease: [0.2, 0.8, 0.2, 1] }}
         className="relative w-full max-w-[460px] z-10"
       >
-        <div className="absolute -top-16 -right-6 z-20 pointer-events-none hidden sm:block">
-          <Mascot size={110} showPodium={false} state="wave" />
-        </div>
 
         <GlassCard strong className="p-8 sm:p-10 rounded-[28px] shadow-glass-lg border-white/95">
           <div className="mb-6">

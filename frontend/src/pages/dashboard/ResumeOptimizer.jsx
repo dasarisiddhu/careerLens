@@ -4,13 +4,14 @@ import { useAnimatedCircle, useCountUp, pageTransition } from '../../utils/anima
 import { api } from '../../services/api'
 import { supabase } from '../../services/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { Button, GlassCard, Badge } from '../../components/ui'
 import toast from 'react-hot-toast'
 import {
   Loader2, Zap, Download, CheckCircle,
-  Tag, ChevronRight, RefreshCw, Badge, Plus,
+  Tag, ChevronRight, RefreshCw, Plus,
   Upload, Sparkles, Copy, Check, CheckCircle2,
   Briefcase, Target, Shield, AlertTriangle,
-  TrendingUp, Eye, BookOpen, XCircle, ArrowRight, Info,
+  TrendingUp, Eye, BookOpen, XCircle, ArrowRight, Info, Award,
 } from 'lucide-react'
 
 const GITHUB_LOCK_KEY = 'careerlens:locked_github_url'
@@ -24,13 +25,14 @@ function CopyBtn({ text }) {
   }
   return (
     <motion.button
-      whileHover={{ scale: 1.03, y: -1 }}
-      whileTap={{ scale: 0.97 }}
+      whileHover={{ scale: 1.05, y: -1 }}
+      whileTap={{ scale: 0.95 }}
       transition={{ duration: 0.15, ease: 'easeOut' }}
       onClick={copy}
-      className="text-[#8A8FA8] hover:text-[#FF7070] transition-colors p-1"
+      className="text-slate-400 hover:text-[#2563EB] transition-colors p-1"
+      title="Copy to clipboard"
     >
-      {copied ? <Check size={13} className="text-green-400" /> : <Copy size={13} />}
+      {copied ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
     </motion.button>
   )
 }
@@ -38,36 +40,26 @@ function CopyBtn({ text }) {
 function AnimatedScoreCircle({ score, maxScore = 100, size = 120, label, color }) {
   const { radius, circumference, offset, strokeWidth } = useAnimatedCircle(score, maxScore, size, 8)
   const count = useCountUp(score, 1400)
-  const strokeColor = color || (score >= 70 ? '#10b981' : score >= 40 ? '#FF8C42' : '#FF3B3B')
+  const strokeColor = color || (score >= 70 ? '#10B981' : score >= 40 ? '#2563EB' : '#EF4444')
 
   return (
     <div className="flex flex-col items-center gap-2">
       <div style={{ width: size, height: size, position: 'relative' }}>
         <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
-          <defs>
-            <filter id={`glow-${score}`}>
-              <feGaussianBlur stdDeviation="3" result="coloredBlur" />
-              <feMerge>
-                <feMergeNode in="coloredBlur" />
-                <feMergeNode in="SourceGraphic" />
-              </feMerge>
-            </filter>
-          </defs>
-          <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={strokeWidth} />
+          <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="#E2E8F0" strokeWidth={strokeWidth} />
           <circle
             cx={size / 2} cy={size / 2} r={radius}
             fill="none" stroke={strokeColor} strokeWidth={strokeWidth} strokeLinecap="round"
             strokeDasharray={circumference}
             strokeDashoffset={offset}
-            filter={`url(#glow-${score})`}
             style={{ transition: 'stroke-dashoffset 1.4s cubic-bezier(0.22, 1, 0.36, 1)' }}
           />
         </svg>
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <span className="text-3xl font-black text-white">{count}</span>
+          <span className="text-3xl font-black text-[#0B0F19] tracking-tight">{count}</span>
         </div>
       </div>
-      <span className="text-xs text-[#78716c] text-center">{label}</span>
+      <span className="text-xs font-bold uppercase tracking-wider text-slate-500 text-center">{label}</span>
     </div>
   )
 }
@@ -1316,13 +1308,16 @@ function WhyThisIsBetterPanel({ items = [] }) {
   const bullets = Array.isArray(items) ? items : []
 
   return (
-    <section className="rounded-[10px] border border-[#1e3a5f] bg-[#0f1a2e] px-6 py-5">
-      <h3 className="text-[11px] font-bold uppercase tracking-[2px] text-[#4a90d9]">Why This Is Better</h3>
+    <section className="rounded-[22px] border border-slate-200/90 bg-white/95 p-6 shadow-sm">
+      <div className="flex items-center gap-2 mb-4">
+        <Sparkles size={16} className="text-[#2563EB]" />
+        <h3 className="text-xs font-bold uppercase tracking-wider text-[#0B0F19]">Why This Is Better</h3>
+      </div>
 
       {!bullets.length ? (
-        <p className="mt-4 text-[13px] leading-[1.8] text-[#e0e0e0]">All your bullets are already strong &#10003;</p>
+        <p className="text-xs sm:text-sm leading-relaxed text-slate-500">All your bullets are already strong &#10003;</p>
       ) : (
-        <div className="mt-4 space-y-5">
+        <div className="space-y-4">
           {bullets.map((item, idx) => {
             const verbFrom = item?.verb_upgrade?.from ?? ''
             const verbTo = item?.verb_upgrade?.to ?? ''
@@ -1331,23 +1326,23 @@ function WhyThisIsBetterPanel({ items = [] }) {
             const reason = item?.improvement_reason ?? ''
 
             return (
-              <article key={`why-better-${idx}`} className="border-b border-[#1e3a5f]/70 pb-4 last:border-b-0 last:pb-0">
+              <article key={`why-better-${idx}`} className="border-b border-slate-100 pb-4 last:border-b-0 last:pb-0 space-y-1.5">
                 {(verbFrom || verbTo) && (
-                  <p className="text-[13px] leading-[1.8] text-[#e0e0e0]">
-                    <span className="mr-2 text-[#4a90d9]">&#10022;</span>
-                    <span className="font-semibold">Stronger wording:</span>{' '}
-                    {verbFrom && <span>&quot;{verbFrom}&quot;</span>}
-                    {verbFrom && verbTo && <span> &rarr; </span>}
-                    {verbTo && <span>&quot;{verbTo}&quot;</span>}
+                  <p className="text-xs sm:text-sm leading-relaxed text-slate-700">
+                    <span className="mr-1.5 text-[#2563EB]">&#10022;</span>
+                    <span className="font-semibold text-slate-900">Stronger wording:</span>{' '}
+                    {verbFrom && <span className="text-slate-400 line-through">&quot;{verbFrom}&quot;</span>}
+                    {verbFrom && verbTo && <span className="text-[#2563EB] font-bold"> &rarr; </span>}
+                    {verbTo && <span className="font-semibold text-slate-900">&quot;{verbTo}&quot;</span>}
                   </p>
                 )}
 
                 {keywords.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-2 text-[13px] leading-[1.8] text-[#e0e0e0]">
-                    <span className="text-[#4a90d9]">&#10022;</span>
-                    <span className="font-semibold">Recruiter keywords added:</span>
+                  <div className="flex flex-wrap items-center gap-1.5 text-xs sm:text-sm leading-relaxed text-slate-700">
+                    <span className="text-[#2563EB]">&#10022;</span>
+                    <span className="font-semibold text-slate-900">Recruiter keywords added:</span>
                     {keywords.map((keyword, keyIdx) => (
-                      <span key={`${keyword}-${keyIdx}`} className="rounded bg-[#1a3a5c] px-2 py-0.5 text-[11px] text-[#7ab8f5]">
+                      <span key={`${keyword}-${keyIdx}`} className="rounded-md bg-blue-50 border border-blue-200/60 px-2 py-0.5 text-xs font-semibold text-[#2563EB]">
                         {keyword}
                       </span>
                     ))}
@@ -1355,13 +1350,14 @@ function WhyThisIsBetterPanel({ items = [] }) {
                 )}
 
                 {metric && (
-                  <p className="text-[13px] leading-[1.8] text-[#e0e0e0]">
-                    <span className="mr-2 text-[#4a90d9]">&#10022;</span>
-                    <span className="font-semibold">Measurable impact added:</span> {metric}
+                  <p className="text-xs sm:text-sm leading-relaxed text-slate-700">
+                    <span className="mr-1.5 text-emerald-600">&#10022;</span>
+                    <span className="font-semibold text-slate-900">Measurable impact added:</span>{' '}
+                    <span className="font-bold text-emerald-700">{metric}</span>
                   </p>
                 )}
 
-                {reason && <p className="mt-2 text-xs leading-5 text-[#8A8FA8]">{reason}</p>}
+                {reason && <p className="text-xs text-slate-500 italic mt-0.5">{reason}</p>}
               </article>
             )
           })}
@@ -1382,68 +1378,76 @@ function ATSMatchBreakdownPanel({ data }) {
   const keywordCoverage = totalKw > 0 ? Math.round((addedKeywords.length / totalKw) * 100) : null
 
   return (
-    <section className="rounded-[10px] border border-[#1e3a5f] bg-[#0f1a2e] px-6 py-5">
+    <section className="rounded-[22px] border border-slate-200/90 bg-white/95 p-6 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="text-[11px] font-bold uppercase tracking-[2px] text-[#4a90d9]">ATS Match Score</h3>
+          <h3 className="text-xs font-bold uppercase tracking-wider text-[#0B0F19]">ATS Match Score</h3>
           {keywordCoverage !== null && (
-            <p className="mt-1 text-[11px] text-[#8A8FA8]">
-              LLM-reported coverage (unverified): <span className="font-semibold text-[#d6d3d1]">{keywordCoverage}%</span>
+            <p className="mt-0.5 text-xs text-slate-500">
+              LLM-reported coverage (unverified): <span className="font-bold text-slate-700">{keywordCoverage}%</span>
             </p>
           )}
         </div>
-        <div className="flex items-center gap-3">
-          <span className="text-2xl font-black text-white">{score}%</span>
+        <div className="flex items-center gap-2.5">
+          <span className="text-2xl font-black text-[#0B0F19]">{score}%</span>
           <span
-            className="rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-wide"
-            style={{ backgroundColor: `${confidence.color}22`, color: confidence.color, border: `1px solid ${confidence.color}66` }}
+            className="rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+            style={{ backgroundColor: `${confidence.color}15`, color: confidence.color, border: `1px solid ${confidence.color}40` }}
           >
             {confidence.label}
           </span>
         </div>
       </div>
 
-      <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
+      <div className="mt-3.5 h-2 overflow-hidden rounded-full bg-slate-100">
         <div className="h-full rounded-full transition-all duration-700" style={{ width: `${score}%`, backgroundColor: confidence.color }} />
       </div>
 
       <div className="mt-5">
-        <h4 className="text-xs font-bold uppercase tracking-wide text-[#e0e0e0]">&#9989; Matched Keywords</h4>
+        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+          <CheckCircle2 size={13} className="text-emerald-600" />
+          <span>Matched Keywords</span>
+        </h4>
         {addedKeywords.length > 0 ? (
-          <div className="mt-3 flex flex-wrap gap-2">
+          <div className="mt-2.5 flex flex-wrap gap-1.5">
             {addedKeywords.map((keyword, idx) => (
-              <span key={`${keyword}-${idx}`} className="rounded border border-[#2d6b4a] bg-[#1a3d2b] px-2 py-1 text-xs text-[#4caf88]">
+              <span key={`${keyword}-${idx}`} className="rounded-lg border border-emerald-200 bg-emerald-50/80 px-2.5 py-1 text-xs font-semibold text-emerald-800">
                 {keyword}
               </span>
             ))}
           </div>
         ) : (
-          <p className="mt-3 text-[13px] leading-[1.8] text-[#8A8FA8]">Run optimization to see keyword matches</p>
+          <p className="mt-2 text-xs text-slate-500">Run optimization to see keyword matches</p>
         )}
       </div>
 
       {missingKeywords.length > 0 ? (
         <div className="mt-5">
-          <h4 className="text-xs font-bold uppercase tracking-wide text-[#e0e0e0]">&#10060; Still Missing</h4>
-          <div className="mt-3 flex flex-wrap gap-2">
+          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+            <XCircle size={13} className="text-rose-500" />
+            <span>Still Missing</span>
+          </h4>
+          <div className="mt-2.5 flex flex-wrap gap-1.5">
             {missingKeywords.map((keyword, idx) => (
-              <span key={`${keyword}-${idx}`} className="rounded border border-[#6b2d2d] bg-[#3d1a1a] px-2 py-1 text-xs text-[#e07070]">
+              <span key={`${keyword}-${idx}`} className="rounded-lg border border-rose-200 bg-rose-50/80 px-2.5 py-1 text-xs font-semibold text-rose-800">
                 {keyword}
               </span>
             ))}
           </div>
         </div>
       ) : (
-        <p className="mt-5 text-[13px] leading-[1.8] text-[#4caf88]">&#10003; Your resume already covers all critical ATS keywords</p>
+        <p className="mt-4 text-xs font-semibold text-emerald-700">&#10003; Your resume already covers all critical ATS keywords</p>
       )}
 
       {atsTips.length > 0 && (
         <div className="mt-5">
-          <h4 className="text-xs font-bold uppercase tracking-wide text-[#e0e0e0]">&#128161; ATS Tips</h4>
-          <ul className="mt-3 space-y-2">
+          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+            <span>&#128161; ATS Tips</span>
+          </h4>
+          <ul className="mt-2.5 space-y-1.5">
             {atsTips.map((tip, idx) => (
-              <li key={`ats-tip-${idx}`} className="flex gap-2 text-[13px] leading-[1.7] text-[#e0e0e0]">
-                <span className="text-[#4a90d9]">&bull;</span>
+              <li key={`ats-tip-${idx}`} className="flex gap-2 text-xs leading-relaxed text-slate-600">
+                <span className="text-[#2563EB] font-bold">&bull;</span>
                 <span>{tip}</span>
               </li>
             ))}
@@ -2343,82 +2347,55 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
         <div className="max-w-6xl w-full mx-auto space-y-8">
 
           {/* ── Hero impact card ─────────────────────────────── */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.96 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-            style={{
-              position: 'relative',
-              background: 'rgba(19,18,28,0.75)',
-              border: '1px solid rgba(255,107,0,0.25)',
-              borderRadius: '20px',
-              padding: '48px 40px',
-              overflow: 'hidden',
-              marginBottom: '24px',
-            }}
-            className="space-y-6"
+          <GlassCard
+            className="p-8 sm:p-10 border-white/90 bg-white/95 shadow-glass-md rounded-[24px] relative overflow-hidden mb-6 space-y-6"
           >
-            <div style={{
-              position: 'absolute', top: 0, left: '8%', right: '8%', height: '1px',
-              background: 'linear-gradient(90deg, transparent, rgba(255,107,0,0.85), rgba(204,78,0,0.7), transparent)',
-            }} />
-            <div style={{
-              position: 'absolute', top: '-60px', left: '50%', transform: 'translateX(-50%)',
-              width: '500px', height: '300px', borderRadius: '50%',
-              background: 'radial-gradient(ellipse, rgba(255,107,0,0.12) 0%, transparent 65%)',
-              pointerEvents: 'none',
-            }} />
+            <div className="absolute top-0 inset-x-8 h-px bg-gradient-to-r from-transparent via-[#2563EB]/40 to-transparent" />
+            <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-96 h-48 rounded-full bg-blue-100/40 blur-3xl pointer-events-none" />
 
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '48px', flexWrap: 'wrap' }}>
-              <div style={{ textAlign: 'center' }}>
-                <AnimatedScoreCircle score={atsBefore} size={120} label="Before" color="#FF8C42" />
+            <div className="flex items-center justify-center gap-8 sm:gap-14 flex-wrap relative z-10">
+              <div className="text-center">
+                <AnimatedScoreCircle score={atsBefore} size={120} label="Before" color="#64748B" />
               </div>
-              <div style={{ textAlign: 'center' }}>
+              <div className="text-center">
                 <motion.div
                   initial={{ opacity: 0, scale: 0.5 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: 0.4, duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
                 >
-                  <div style={{
-                    fontSize: 'clamp(52px, 8vw, 80px)', fontWeight: 900,
-                    letterSpacing: '-3px', lineHeight: 1,
-                    color: '#2563EB',
-                  }}>
+                  <div className="text-5xl sm:text-7xl font-black tracking-tight text-[#2563EB] leading-none">
                     <StatNumber value={atsGain} prefix={gainPrefix} />
                   </div>
-                  <p style={{
-                    fontSize: '11px', letterSpacing: '2px', textTransform: 'uppercase',
-                    color: 'rgba(120,113,108,0.7)', marginTop: '4px',
-                  }}>
+                  <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mt-2">
                     ATS Score Boost
                   </p>
                 </motion.div>
               </div>
-              <div style={{ textAlign: 'center' }}>
-                <AnimatedScoreCircle score={atsAfter} size={120} label="After" color="#10b981" />
+              <div className="text-center">
+                <AnimatedScoreCircle score={atsAfter} size={120} label="After" color="#10B981" />
               </div>
             </div>
 
             {result.overall_improvement && (
-              <p className="text-center text-[#d6d3d1] italic">"{result.overall_improvement}"</p>
+              <p className="text-center text-slate-600 italic font-medium max-w-2xl mx-auto">&quot;{result.overall_improvement}&quot;</p>
             )}
 
             {/* ── Action buttons row ───────────────────────── */}
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 flex-wrap">
-              <motion.button {...buttonMotion} onClick={handleStyledDownload} className="btn-primary flex items-center gap-2">
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 flex-wrap relative z-10">
+              <motion.button {...buttonMotion} onClick={handleStyledDownload} className="flex items-center gap-2 rounded-xl bg-[#2563EB] hover:bg-blue-700 text-white font-bold px-5 py-2.5 shadow-sm transition">
                 <Download size={16} /> Download Professional Resume PDF
               </motion.button>
               <motion.button
                 {...buttonMotion}
                 onClick={() => sendToTool('/dashboard/job-match')}
-                className="btn-primary flex items-center gap-2">
-                <Briefcase size={15} /> Test Job Matches
+                className="flex items-center gap-2 rounded-xl bg-white border border-slate-200/90 text-slate-700 hover:bg-slate-50 font-bold px-4 py-2.5 shadow-sm transition">
+                <Briefcase size={15} className="text-[#2563EB]" /> Test Job Matches
               </motion.button>
               <motion.button
                 {...buttonMotion}
                 onClick={() => sendToTool('/dashboard/ats-checker')}
-                className="btn-ghost flex items-center gap-2">
-                <Target size={15} /> Check ATS Score
+                className="flex items-center gap-2 rounded-xl bg-white border border-slate-200/90 text-slate-700 hover:bg-slate-50 font-bold px-4 py-2.5 shadow-sm transition">
+                <Target size={15} className="text-[#2563EB]" /> Check ATS Score
               </motion.button>
               <motion.button
                 {...buttonMotion}
@@ -2428,20 +2405,20 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
                   setResult(null); setPdfUrl(''); setShowPreview(false); setPdfError(''); setPdfNotice('')
                   setIncludeGitHubProjects(false); setGithubProjects([]); setGithubProjectsError('')
                 }}
-                className="btn-ghost flex items-center gap-2"
+                className="flex items-center gap-2 rounded-xl bg-white border border-slate-200/90 text-slate-600 hover:bg-slate-50 font-semibold px-4 py-2.5 shadow-sm transition"
               >
-                <RefreshCw size={16} /> Optimize Again
+                <RefreshCw size={15} /> Optimize Again
               </motion.button>
             </div>
 
-            <div className="mx-auto max-w-xl rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+            <div className="mx-auto max-w-xl rounded-2xl border border-slate-200/80 bg-slate-50/70 p-4 relative z-10">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <label className="flex items-center gap-3 text-sm font-semibold text-[#e7e5e4]">
+                <label className="flex items-center gap-3 text-sm font-semibold text-slate-800 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={includeGitHubProjects}
                     onChange={(event) => handleGitHubProjectsToggle(event.target.checked)}
-                    className="h-4 w-4 accent-[#4a90d9]"
+                    className="h-4 w-4 rounded text-[#2563EB] focus:ring-[#2563EB]"
                   />
                   Include GitHub Projects
                 </label>
@@ -2450,37 +2427,37 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
                   type="button"
                   onClick={handleRefreshGitHubProjects}
                   disabled={!includeGitHubProjects || githubProjectsLoading}
-                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs font-semibold text-[#d6d3d1] transition hover:border-[#4a90d9]/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 transition"
                 >
                   {githubProjectsLoading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
                   Refresh
                 </motion.button>
               </div>
               {githubProjectsLoading && (
-                <p className="mt-3 flex items-center gap-2 text-xs text-[#8A8FA8]">
-                  <Loader2 size={13} className="animate-spin" /> Fetching and matching your repos...
+                <p className="mt-3 flex items-center gap-2 text-xs text-slate-500">
+                  <Loader2 size={13} className="animate-spin text-[#2563EB]" /> Fetching and matching your repos...
                 </p>
               )}
               {githubProjectsError && !githubProjectsLoading && (
-                <p className="mt-3 text-xs text-red-300">{githubProjectsError}</p>
+                <p className="mt-3 text-xs text-rose-600">{githubProjectsError}</p>
               )}
               {includeGitHubProjects && githubProjects.length > 0 && !githubProjectsLoading && (
-                <p className="mt-3 text-xs text-[#8A8FA8]">{githubProjects.length} GitHub project{githubProjects.length === 1 ? '' : 's'} will be included in the exported resume.</p>
+                <p className="mt-3 text-xs text-slate-500">{githubProjects.length} GitHub project{githubProjects.length === 1 ? '' : 's'} will be included in the exported resume.</p>
               )}
             </div>
-          </motion.div>
+          </GlassCard>
 
           {/* ── Score Cards (Day 2 — from /analyse) ───────────── */}
           {(analysisResult || analysisLoading) && (
             <div className="space-y-6">
               {analysisLoading && !analysisResult ? (
-                <div className="flex items-center justify-center gap-3 py-8 text-[#8A8FA8]">
-                  <Loader2 size={18} className="animate-spin" />
-                  <span className="text-sm">Running deep resume analysis…</span>
+                <div className="flex items-center justify-center gap-3 py-8 text-slate-500">
+                  <Loader2 size={18} className="animate-spin text-[#2563EB]" />
+                  <span className="text-sm font-medium">Running deep resume analysis…</span>
                 </div>
               ) : analysisResult && (
                 <>
-                  {/* ── Three Score Cards ───────────────────────── */}
+                  {/* ── 3 Score Cards ───────────────────────── */}
                   <div className="grid md:grid-cols-3 gap-4">
                     {(() => {
                       const atsScore = analysisResult?.module1_ats?.ats_score ?? 0
@@ -2495,17 +2472,16 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
                         <motion.div key={card.label}
                           initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
                           transition={{ duration: 0.4 }}
-                          style={{ background: 'rgba(19,18,28,0.75)', border: `1px solid ${card.color}30`, borderRadius: 16 }}
-                          className="p-5 space-y-3">
+                          className="rounded-[22px] border border-slate-200/90 bg-white/95 p-6 shadow-sm space-y-3">
                           <div className="flex items-center gap-2">
                             <card.icon size={16} style={{ color: card.color }} />
-                            <span className="text-xs font-semibold uppercase tracking-wide text-[#9499B3]">{card.label}</span>
+                            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">{card.label}</span>
                           </div>
                           <div className="flex items-end gap-2">
                             <span style={{ fontSize: 36, fontWeight: 800, color: card.color, lineHeight: 1, letterSpacing: '-1px' }}>{card.score}</span>
-                            <span className="text-xs text-[#78716c] mb-1">/ 100</span>
+                            <span className="text-xs text-slate-400 mb-1">/ 100</span>
                           </div>
-                          <p className="text-[10px] text-[#78716c] leading-relaxed">{card.note}</p>
+                          <p className="text-xs text-slate-500 leading-relaxed">{card.note}</p>
                         </motion.div>
                       ))
                     })()}
@@ -2514,26 +2490,26 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
                   {/* ── Recruiter Lens Breakdown ────────────────── */}
                   {analysisResult?.module2_recruiter_lens?.dimensions && (
                     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                      className="rounded-2xl border border-white/10 bg-white/[0.02] p-5 space-y-4">
+                      className="rounded-[22px] border border-slate-200/90 bg-white/95 p-6 shadow-sm space-y-4">
                       <div className="flex items-center gap-2">
-                        <Eye size={16} className="text-primary" />
-                        <h3 className="text-sm font-semibold text-accent uppercase tracking-wide">Recruiter Lens Breakdown</h3>
+                        <Eye size={16} className="text-[#2563EB]" />
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">Recruiter Lens Breakdown</h3>
                       </div>
-                      <div className="grid sm:grid-cols-2 gap-3">
+                      <div className="grid sm:grid-cols-2 gap-4">
                         {Object.entries(analysisResult.module2_recruiter_lens.dimensions).map(([key, dim]) => {
                           const pct = dim.max ? Math.round((dim.score / dim.max) * 100) : 0
                           const barColor = pct >= 70 ? '#10b981' : pct >= 45 ? '#f59e0b' : '#ef4444'
                           return (
                             <div key={key} className="space-y-1.5">
                               <div className="flex items-center justify-between">
-                                <span className="text-xs text-[#d6d3d1] capitalize">{key.replace(/_/g, ' ')}</span>
-                                <span className="text-xs font-semibold" style={{ color: barColor }}>{dim.score}/{dim.max}</span>
+                                <span className="text-xs font-semibold text-slate-700 capitalize">{key.replace(/_/g, ' ')}</span>
+                                <span className="text-xs font-bold" style={{ color: barColor }}>{dim.score}/{dim.max}</span>
                               </div>
-                              <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+                              <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
                                 <motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.6, ease: 'easeOut' }}
                                   className="h-full rounded-full" style={{ background: barColor }} />
                               </div>
-                              {dim.reason && <p className="text-[10px] text-[#78716c]">{dim.reason}</p>}
+                              {dim.reason && <p className="text-[11px] text-slate-500">{dim.reason}</p>}
                             </div>
                           )
                         })}
@@ -2553,28 +2529,28 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
                       { key: 'critical', label: 'Missing (Critical)', items: sg.critical || [], color: '#ef4444', icon: XCircle, desc: 'JD requires these — your resume has zero signal' },
                       { key: 'partial', label: 'Weak (Partial Match)', items: sg.partial || [], color: '#f59e0b', icon: AlertTriangle, desc: 'Present but not prominent enough' },
                       { key: 'strengths', label: 'Proven (Strengths)', items: sg.strengths || [], color: '#10b981', icon: CheckCircle, desc: 'Resume strong, JD requires — lead with these' },
-                      { key: 'irrelevant', label: 'Deprioritize', items: sg.irrelevant || [], color: '#6b7280', icon: Info, desc: 'Resume strong but JD doesn\'t need' },
+                      { key: 'irrelevant', label: 'Deprioritize', items: sg.irrelevant || [], color: '#64748b', icon: Info, desc: 'Resume strong but JD doesn\'t need' },
                     ]
                     return (
                       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                        className="rounded-2xl border border-white/10 bg-white/[0.02] p-5 space-y-4">
+                        className="rounded-[22px] border border-slate-200/90 bg-white/95 p-6 shadow-sm space-y-4">
                         <div className="flex items-center gap-2">
-                          <BookOpen size={16} className="text-primary" />
-                          <h3 className="text-sm font-semibold text-accent uppercase tracking-wide">Skill Gap Analysis</h3>
+                          <BookOpen size={16} className="text-[#2563EB]" />
+                          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">Skill Gap Analysis</h3>
                         </div>
                         <div className="grid sm:grid-cols-2 gap-4">
                           {sections.filter(s => s.items.length > 0).map((section) => (
                             <div key={section.key} className="space-y-2">
                               <div className="flex items-center gap-2">
-                                <section.icon size={13} style={{ color: section.color }} />
-                                <span className="text-xs font-semibold" style={{ color: section.color }}>{section.label}</span>
-                                <span className="text-[10px] text-[#78716c] ml-auto">{section.items.length}</span>
+                                <section.icon size={14} style={{ color: section.color }} />
+                                <span className="text-xs font-bold" style={{ color: section.color }}>{section.label}</span>
+                                <span className="text-[11px] text-slate-400 ml-auto font-medium">{section.items.length}</span>
                               </div>
                               <div className="space-y-1.5">
                                 {section.items.map((item, i) => (
-                                  <div key={i} className="rounded-lg px-3 py-2 text-xs" style={{ background: `${section.color}08`, border: `1px solid ${section.color}20` }}>
-                                    <span className="font-medium text-[#e7e5e4]">{item.skill}</span>
-                                    {item.reason && <p className="text-[#78716c] mt-0.5">{item.reason}</p>}
+                                  <div key={i} className="rounded-xl px-3.5 py-2.5 text-xs bg-slate-50/80 border border-slate-200/70 space-y-0.5">
+                                    <span className="font-semibold text-slate-800">{item.skill}</span>
+                                    {item.reason && <p className="text-[11px] text-slate-500">{item.reason}</p>}
                                   </div>
                                 ))}
                               </div>
@@ -2588,36 +2564,36 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
                   {/* ── Rejection Diagnosis ─────────────────────── */}
                   {analysisResult?.module5_rejection_diagnosis?.length > 0 && (
                     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                      className="rounded-2xl border border-white/10 bg-white/[0.02] p-5 space-y-4">
+                      className="rounded-[22px] border border-rose-200/80 bg-white/95 p-6 shadow-sm space-y-4">
                       <div className="flex items-center gap-2">
-                        <AlertTriangle size={16} className="text-red-400" />
-                        <h3 className="text-sm font-semibold text-accent uppercase tracking-wide">Why This Gets Rejected</h3>
+                        <AlertTriangle size={16} className="text-rose-600" />
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">Why This Gets Rejected</h3>
                       </div>
                       <div className="space-y-3">
                         {analysisResult.module5_rejection_diagnosis.filter(d => d.summary).map((diag, idx) => (
                           <motion.div key={idx} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
                             transition={{ delay: idx * 0.1 }}
-                            className="rounded-xl border border-red-500/15 bg-red-500/5 p-4 space-y-2">
+                            className="rounded-xl border border-rose-100 bg-rose-50/50 p-4 space-y-2">
                             <div className="flex items-start gap-3">
-                              <span className="flex-shrink-0 w-6 h-6 rounded-full bg-red-500/20 flex items-center justify-center text-xs font-bold text-red-400">#{diag.rank}</span>
-                              <div className="flex-1 space-y-2">
-                                <p className="text-sm font-medium text-[#fafaf9]">{diag.summary}</p>
+                              <span className="shrink-0 w-6 h-6 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center text-xs font-bold">#{diag.rank}</span>
+                              <div className="flex-1 space-y-1.5">
+                                <p className="text-sm font-semibold text-slate-900">{diag.summary}</p>
                                 {diag.evidence && (
-                                  <div className="flex items-start gap-2 text-xs text-[#78716c]">
-                                    <span className="text-[#9499B3] font-semibold shrink-0">Evidence:</span>
-                                    <span className="italic">"{diag.evidence}"</span>
+                                  <div className="flex items-start gap-2 text-xs text-slate-600">
+                                    <span className="text-slate-500 font-semibold shrink-0">Evidence:</span>
+                                    <span className="italic">&quot;{diag.evidence}&quot;</span>
                                   </div>
                                 )}
                                 {diag.recruiter_thought && (
-                                  <div className="flex items-start gap-2 text-xs text-[#78716c]">
-                                    <span className="text-[#9499B3] font-semibold shrink-0">Recruiter thinks:</span>
-                                    <span>"{diag.recruiter_thought}"</span>
+                                  <div className="flex items-start gap-2 text-xs text-slate-600">
+                                    <span className="text-slate-500 font-semibold shrink-0">Recruiter thinks:</span>
+                                    <span>&quot;{diag.recruiter_thought}&quot;</span>
                                   </div>
                                 )}
                                 {diag.fix && (
-                                  <div className="flex items-start gap-2 text-xs">
-                                    <ArrowRight size={12} className="text-green-400 shrink-0 mt-0.5" />
-                                    <span className="text-green-300">{diag.fix}</span>
+                                  <div className="flex items-start gap-2 text-xs pt-1">
+                                    <ArrowRight size={12} className="text-emerald-600 shrink-0 mt-0.5" />
+                                    <span className="text-emerald-700 font-medium">{diag.fix}</span>
                                   </div>
                                 )}
                               </div>
@@ -2631,23 +2607,23 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
                   {/* ── ATS Checks ──────────────────────────────── */}
                   {analysisResult?.module1_ats?.checks?.length > 0 && (
                     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                      className="rounded-2xl border border-white/10 bg-white/[0.02] p-5 space-y-3">
+                      className="rounded-[22px] border border-slate-200/90 bg-white/95 p-6 shadow-sm space-y-3">
                       <div className="flex items-center gap-2">
-                        <Shield size={16} className="text-primary" />
-                        <h3 className="text-sm font-semibold text-accent uppercase tracking-wide">ATS Compatibility Checks</h3>
+                        <Shield size={16} className="text-[#2563EB]" />
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">ATS Compatibility Checks</h3>
                       </div>
                       <div className="space-y-2">
                         {analysisResult.module1_ats.checks.map((check, idx) => {
                           const statusColor = check.status === 'PASS' ? '#10b981' : check.status === 'WARN' ? '#f59e0b' : '#ef4444'
                           const StatusIcon = check.status === 'PASS' ? CheckCircle : check.status === 'WARN' ? AlertTriangle : XCircle
                           return (
-                            <div key={idx} className="flex items-start gap-3 rounded-lg px-3 py-2" style={{ background: `${statusColor}08` }}>
+                            <div key={idx} className="flex items-start gap-3 rounded-xl px-4 py-2.5 bg-slate-50/80 border border-slate-200/70">
                               <StatusIcon size={14} style={{ color: statusColor }} className="shrink-0 mt-0.5" />
                               <div className="flex-1">
-                                <span className="text-xs font-medium text-[#e7e5e4]">{check.item}</span>
-                                {check.reason && <p className="text-[10px] text-[#78716c] mt-0.5">{check.reason}</p>}
+                                <span className="text-xs font-semibold text-slate-800">{check.item}</span>
+                                {check.reason && <p className="text-[11px] text-slate-500 mt-0.5">{check.reason}</p>}
                               </div>
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ color: statusColor, background: `${statusColor}15` }}>{check.status}</span>
+                              <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full" style={{ color: statusColor, background: `${statusColor}15` }}>{check.status}</span>
                             </div>
                           )
                         })}
@@ -2659,29 +2635,29 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
             </div>
           )}
 
-          {/* ── Stat pills ───────────────────────────────────── */}
+          {/* ── Panels & Stat pills ──────────────────────────── */}
           <div className="grid gap-4 lg:grid-cols-2">
             <WhyThisIsBetterPanel items={improvedBullets} />
             <ATSMatchBreakdownPanel data={result} />
           </div>
 
           <div className="grid md:grid-cols-3 gap-3">
-            <div className="rounded-full px-4 py-3 text-center text-sm font-semibold bg-green-500/10 border border-green-500/30 text-green-300">
+            <div className="rounded-2xl px-5 py-3.5 text-center text-sm font-bold bg-blue-50/90 border border-blue-200/70 text-[#2563EB] shadow-xs">
               Keywords Injected: {addedKeywords.length}
             </div>
-            <div className="rounded-full px-4 py-3 text-center text-sm font-semibold bg-red-500/10 border border-red-500/25 text-[#FF7070]">
+            <div className="rounded-2xl px-5 py-3.5 text-center text-sm font-bold bg-emerald-50/90 border border-emerald-200/70 text-emerald-700 shadow-xs">
               Bullets Rewritten: {improvedBullets.length}
             </div>
-            <div className="rounded-full px-4 py-3 text-center text-sm font-semibold bg-[rgba(255,140,66,0.12)] border border-[rgba(255,140,66,0.25)] text-[#FF8C42]">
+            <div className="rounded-2xl px-5 py-3.5 text-center text-sm font-bold bg-purple-50/90 border border-purple-200/70 text-purple-700 shadow-xs">
               New Bullets Added: {newBullets.length}
             </div>
           </div>
 
           {/* ── Keywords injected ────────────────────────────── */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 text-accent">
-              <Tag size={16} className="text-primary" />
-              <h3 className="text-sm font-semibold uppercase tracking-wide">Keywords Injected From Job Description</h3>
+          <div className="rounded-[22px] border border-slate-200/90 bg-white/95 p-6 shadow-sm space-y-3">
+            <div className="flex items-center gap-2">
+              <Tag size={16} className="text-[#2563EB]" />
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">Keywords Injected From Job Description</h3>
             </div>
             <div className="flex flex-wrap gap-2">
               {addedKeywords.length > 0 ? (
@@ -2689,35 +2665,35 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
                   <motion.span key={`${keyword}-${idx}`}
                     initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: idx * 0.04 }}
-                    className="px-3 py-1 rounded-full text-xs bg-primary/10 border border-primary/20 text-accent">
+                    className="px-3 py-1 rounded-lg text-xs font-semibold bg-blue-50 border border-blue-200/70 text-[#2563EB]">
                     {keyword}
                   </motion.span>
                 ))
               ) : (
-                <p className="text-[#78716c] text-sm">No keywords were injected.</p>
+                <p className="text-slate-500 text-xs sm:text-sm">No keywords were injected.</p>
               )}
             </div>
           </div>
 
           {/* ── New bullets ──────────────────────────────────── */}
           {newBullets.length > 0 && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 text-accent">
-                <Plus size={16} className="text-primary" />
-                <h3 className="text-sm font-semibold uppercase tracking-wide">New Bullets Added to Fill JD Gaps</h3>
+            <div className="rounded-[22px] border border-slate-200/90 bg-white/95 p-6 shadow-sm space-y-4">
+              <div className="flex items-center gap-2">
+                <Plus size={16} className="text-[#2563EB]" />
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">New Bullets Added to Fill JD Gaps</h3>
               </div>
               <div className="space-y-3">
                 {newBullets.map((bullet, idx) => (
-                  <div key={idx} className="relative rounded-xl border border-primary/20 border-l-4 border-l-primary bg-primary/5 p-4 pl-5">
-                    <div className="absolute top-3 right-3 flex items-center gap-2">
-                      <span className="rounded-full border border-primary/25 bg-primary/15 px-2 py-0.5 text-[10px] font-bold text-accent">NEW</span>
+                  <div key={idx} className="relative rounded-xl border border-blue-200/70 border-l-4 border-l-[#2563EB] bg-blue-50/40 p-5 pl-6 shadow-xs">
+                    <div className="absolute top-3.5 right-3.5 flex items-center gap-2">
+                      <span className="rounded-full border border-blue-200 bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-[#2563EB]">NEW</span>
                       <CopyBtn text={bullet.text || ''} />
                     </div>
-                    <p className="text-[#fafaf9] text-sm leading-relaxed">{bullet.text}</p>
-                    {bullet.reason && <p className="text-xs text-[#78716c] mt-2">{bullet.reason}</p>}
+                    <p className="text-slate-900 text-sm font-medium leading-relaxed pr-16">{bullet.text}</p>
+                    {bullet.reason && <p className="text-xs text-slate-500 mt-2">{bullet.reason}</p>}
                     {bullet.jd_requirement && (
-                      <p className="text-[11px] text-[#9499B3] mt-1 flex items-center gap-1.5">
-                        <Target size={10} className="text-primary shrink-0" />
+                      <p className="text-xs text-slate-600 mt-1.5 flex items-center gap-1.5 font-medium">
+                        <Target size={12} className="text-[#2563EB] shrink-0" />
                         JD requirement: {bullet.jd_requirement}
                       </p>
                     )}
@@ -2734,16 +2710,16 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
 
           <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold text-[#e7e5e4] uppercase tracking-wide">
+              <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
                 Bullet Point Rewrites ({improvedBullets.length})
               </h3>
-              <div className="flex items-center gap-1 rounded-xl bg-white/5 border border-white/10 p-1">
+              <div className="flex items-center gap-1 rounded-xl bg-slate-100 border border-slate-200 p-1">
                 <motion.button {...buttonMotion} onClick={() => setComparisonView('split')}
-                  className={`px-3 py-1.5 text-xs rounded-lg transition ${comparisonView === 'split' ? 'bg-primary/20 text-accent font-medium' : 'text-[#78716c] hover:text-[#e7e5e4]'}`}>
+                  className={`px-3 py-1.5 text-xs rounded-lg font-semibold transition ${comparisonView === 'split' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-900'}`}>
                   Side by Side
                 </motion.button>
                 <motion.button {...buttonMotion} onClick={() => setComparisonView('single')}
-                  className={`px-3 py-1.5 text-xs rounded-lg transition ${comparisonView === 'single' ? 'bg-primary/20 text-accent font-medium' : 'text-[#78716c] hover:text-[#e7e5e4]'}`}>
+                  className={`px-3 py-1.5 text-xs rounded-lg font-semibold transition ${comparisonView === 'single' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-900'}`}>
                   Single Column
                 </motion.button>
               </div>
@@ -2757,65 +2733,65 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
                   return (
                     <motion.div key={idx} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: idx * 0.04 }}
-                      className="rounded-xl overflow-hidden border border-white/10">
+                      className="rounded-2xl overflow-hidden border border-slate-200/90 bg-white shadow-sm">
                       {comparisonView === 'single' ? (
                         <>
-                          <div className="p-4 bg-red-500/5 border-b border-white/10">
-                            <p className="text-xs font-semibold text-red-400 mb-2 uppercase tracking-wide">Original</p>
-                            <p className="text-sm text-[#78716c] leading-relaxed">{item.original}</p>
+                          <div className="p-5 bg-rose-50/40 border-b border-slate-100">
+                            <p className="text-xs font-bold text-rose-600 mb-1.5 uppercase tracking-wider">Original</p>
+                            <p className="text-sm text-slate-600 leading-relaxed">{item.original}</p>
                           </div>
-                          <div className="p-4 bg-green-500/5 relative">
-                            <p className="text-xs font-semibold text-green-400 mb-2 uppercase tracking-wide">
+                          <div className="p-5 bg-emerald-50/20 relative">
+                            <p className="text-xs font-bold text-emerald-700 mb-1.5 uppercase tracking-wider">
                               {isReverted ? 'Kept Original' : 'Improved'}
                             </p>
-                            <p className="text-sm text-[#fafaf9] leading-relaxed">{item.improved}</p>
+                            <p className="text-sm font-semibold text-slate-900 leading-relaxed pr-8">{item.improved}</p>
                             {isReverted && (
-                              <div className="mt-2 flex items-start gap-2 rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2">
-                                <Shield size={12} className="text-amber-400 shrink-0 mt-0.5" />
-                                <p className="text-[11px] text-amber-300">Kept original — rewrite would have added unverified details</p>
+                              <div className="mt-2.5 flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2">
+                                <Shield size={13} className="text-amber-600 shrink-0 mt-0.5" />
+                                <p className="text-xs text-amber-800">Kept original — rewrite would have added unverified details</p>
                               </div>
                             )}
                             {item.improvement_reason && !isReverted && (
-                              <p className="text-[11px] text-[#9499B3] mt-2 italic">Why: {item.improvement_reason}</p>
+                              <p className="text-xs text-slate-500 mt-2 italic">Why: {item.improvement_reason}</p>
                             )}
                             {keywords.length > 0 && (
                               <div className="flex flex-wrap gap-1.5 mt-3">
                                 {keywords.map((kw, kidx) => (
-                                  <span key={kidx} className="px-2 py-0.5 rounded-full text-[10px] bg-primary/10 border border-primary/20 text-accent">{kw}</span>
+                                  <span key={kidx} className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-blue-50 border border-blue-200/60 text-[#2563EB]">{kw}</span>
                                 ))}
                               </div>
                             )}
-                            <div className="absolute top-3 right-3"><CopyBtn text={item.improved || ''} /></div>
+                            <div className="absolute top-4 right-4"><CopyBtn text={item.improved || ''} /></div>
                           </div>
                         </>
                       ) : (
-                        <div className="grid md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-white/10">
-                          <div className="p-4 bg-red-500/5">
-                            <p className="text-xs font-semibold text-red-400 mb-2 uppercase tracking-wide">Original</p>
-                            <p className="text-sm text-[#78716c] leading-relaxed">{item.original}</p>
+                        <div className="grid md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-slate-100">
+                          <div className="p-5 bg-rose-50/40">
+                            <p className="text-xs font-bold text-rose-600 mb-1.5 uppercase tracking-wider">Original</p>
+                            <p className="text-sm text-slate-600 leading-relaxed">{item.original}</p>
                           </div>
-                          <div className="p-4 bg-green-500/5 relative">
-                            <p className="text-xs font-semibold text-green-400 mb-2 uppercase tracking-wide">
+                          <div className="p-5 bg-emerald-50/20 relative">
+                            <p className="text-xs font-bold text-emerald-700 mb-1.5 uppercase tracking-wider">
                               {isReverted ? 'Kept Original' : 'Improved'}
                             </p>
-                            <p className="text-sm text-[#fafaf9] leading-relaxed">{item.improved}</p>
+                            <p className="text-sm font-semibold text-slate-900 leading-relaxed pr-8">{item.improved}</p>
                             {isReverted && (
-                              <div className="mt-2 flex items-start gap-2 rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2">
-                                <Shield size={12} className="text-amber-400 shrink-0 mt-0.5" />
-                                <p className="text-[11px] text-amber-300">Kept original — rewrite would have added unverified details</p>
+                              <div className="mt-2.5 flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2">
+                                <Shield size={13} className="text-amber-600 shrink-0 mt-0.5" />
+                                <p className="text-xs text-amber-800">Kept original — rewrite would have added unverified details</p>
                               </div>
                             )}
                             {item.improvement_reason && !isReverted && (
-                              <p className="text-[11px] text-[#9499B3] mt-2 italic">Why: {item.improvement_reason}</p>
+                              <p className="text-xs text-slate-500 mt-2 italic">Why: {item.improvement_reason}</p>
                             )}
                             {keywords.length > 0 && (
                               <div className="flex flex-wrap gap-1.5 mt-3">
                                 {keywords.map((kw, kidx) => (
-                                  <span key={kidx} className="px-2 py-0.5 rounded-full text-[10px] bg-primary/10 border border-primary/20 text-accent">{kw}</span>
+                                  <span key={kidx} className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-blue-50 border border-blue-200/60 text-[#2563EB]">{kw}</span>
                                 ))}
                               </div>
                             )}
-                            <div className="absolute top-3 right-3"><CopyBtn text={item.improved || ''} /></div>
+                            <div className="absolute top-4 right-4"><CopyBtn text={item.improved || ''} /></div>
                           </div>
                         </div>
                       )}
@@ -2824,30 +2800,34 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
                 })}
               </div>
             ) : (
-              <div className="rounded-xl border border-white/10 bg-white/5 p-4 text-sm text-[#78716c]">
+              <div className="rounded-2xl border border-slate-200/80 bg-white p-5 text-sm text-slate-500 shadow-sm">
                 No bullet rewrites were returned.
               </div>
             )}
           </div>
 
           {/* ── Editable summary ─────────────────────────────── */}
-          <div className="relative rounded-2xl border border-white/10 border-l-4 border-l-primary bg-primary/5 p-5">
+          <div className="rounded-[22px] border border-slate-200/90 border-l-4 border-l-[#2563EB] bg-white p-6 shadow-sm">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-accent uppercase tracking-wide">Rewritten Professional Summary</h3>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">Rewritten Professional Summary</h3>
               <CopyBtn text={displaySummary} />
             </div>
-            <textarea value={displaySummary} onChange={(e) => setEditedSummary(sanitizeProfessionalSummary(e.target.value))} rows={4}
-              className="input-field resize-none" />
+            <textarea
+              value={displaySummary}
+              onChange={(e) => setEditedSummary(sanitizeProfessionalSummary(e.target.value))}
+              rows={4}
+              className="w-full mt-2 rounded-xl border border-slate-200 bg-slate-50/50 p-4 text-sm text-slate-800 leading-relaxed focus:bg-white focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/20 transition resize-none outline-none"
+            />
           </div>
 
           {/* ── Updated skills ───────────────────────────────── */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 text-accent">
-              <Badge size={16} className="text-primary" />
-              <h3 className="text-sm font-semibold uppercase tracking-wide">Updated Skills Section</h3>
+          <div className="rounded-[22px] border border-slate-200/90 bg-white p-6 shadow-sm space-y-3">
+            <div className="flex items-center gap-2">
+              <Award size={16} className="text-[#2563EB]" />
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">Updated Skills Section</h3>
             </div>
             {result?.skills_optimization_failed && (
-              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-xs text-amber-300">
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs font-medium text-amber-800">
                 Notice: Skills optimization could not safely enhance your skills list without potential inaccuracies. Original resume skills were preserved.
               </div>
             )}
@@ -2857,41 +2837,41 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
                   <motion.span key={`${skill}-${idx}`}
                     initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: idx * 0.04 }}
-                    className="px-3 py-1 rounded-full text-xs bg-primary/10 border border-primary/20 text-accent">
+                    className="px-3 py-1 rounded-lg text-xs font-semibold bg-blue-50 border border-blue-200/70 text-[#2563EB]">
                     {skill}
                   </motion.span>
                 ))
-              ) : <p className="text-[#78716c] text-sm">No skills returned.</p>}
+              ) : <p className="text-slate-500 text-sm">No skills returned.</p>}
             </div>
           </div>
 
           {/* ── ATS checklist ────────────────────────────────── */}
-          <div className="space-y-3">
-            <h3 className="text-sm font-semibold text-[#e7e5e4] uppercase tracking-wide">ATS Formatting Checklist</h3>
+          <div className="rounded-[22px] border border-slate-200/90 bg-white p-6 shadow-sm space-y-3">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">ATS Formatting Checklist</h3>
             <div className="space-y-2">
               {atsTips.length > 0 ? (
                 atsTips.map((tip, idx) => {
                   const checked = Boolean(checkedTips[idx])
                   return (
                     <motion.button {...buttonMotion} key={idx} type="button" onClick={() => toggleTip(idx)}
-                      className="w-full flex items-start gap-3 rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-left">
+                      className="w-full flex items-start gap-3 rounded-xl border border-slate-200/80 bg-slate-50/50 hover:bg-slate-50 px-4 py-3 text-left transition">
                       <span className="mt-0.5">
                         {checked
-                          ? <CheckCircle2 size={16} className="text-green-400" />
-                          : <span className="block w-4 h-4 rounded border border-[#78716c]" />}
+                          ? <CheckCircle2 size={16} className="text-emerald-600" />
+                          : <span className="block w-4 h-4 rounded border border-slate-300 bg-white" />}
                       </span>
-                      <span className={`text-sm ${checked ? 'text-[#78716c] line-through' : 'text-[#e7e5e4]'}`}>{tip}</span>
+                      <span className={`text-sm ${checked ? 'text-slate-400 line-through' : 'text-slate-700 font-medium'}`}>{tip}</span>
                     </motion.button>
                   )
                 })
-              ) : <p className="text-[#78716c] text-sm">No ATS tips were returned.</p>}
+              ) : <p className="text-slate-500 text-sm">No ATS tips were returned.</p>}
             </div>
           </div>
 
           {/* ── Bottom download button ───────────────────────── */}
           <motion.button {...buttonMotion} onClick={handleStyledDownload}
-            className="w-full flex items-center justify-center gap-2 rounded-2xl py-4 font-bold text-white bg-gradient-to-r from-primary to-primary-dark shadow-[0_4px_20px_rgba(255,107,0,0.4)] hover:shadow-[0_6px_28px_rgba(255,107,0,0.6)] transition">
-            <Download size={16} /> Download Professional Resume PDF
+            className="w-full flex items-center justify-center gap-2 rounded-2xl py-4 font-bold text-white bg-[#2563EB] hover:bg-blue-700 shadow-lg shadow-blue-500/25 transition text-base">
+            <Download size={18} /> Download Professional Resume PDF
           </motion.button>
         </div>
       </motion.div>
@@ -2993,7 +2973,7 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
             type="button"
             onClick={handleOptimize}
             disabled={loading || extracting || !jobDesc.trim()}
-            className="w-full flex items-center justify-center gap-2 py-4 rounded-full bg-[#0B0F19] text-white font-bold text-sm hover:bg-[#1E293B] transition-all shadow-md disabled:opacity-50"
+            className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl bg-[#2563EB] hover:bg-blue-700 text-white font-bold text-sm shadow-md shadow-blue-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? (
               <>

@@ -4,6 +4,7 @@ import { api } from '../../services/api'
 import toast from 'react-hot-toast'
 import { Briefcase, ExternalLink, Loader2 } from 'lucide-react'
 import { GlassCard, Badge } from '../../components/ui'
+import { CardsGridSkeleton } from '../../components/skeletons'
 
 const cleanSnippet = (rawHtml) => {
   if (!rawHtml) return ''
@@ -51,10 +52,7 @@ export default function HiringNews() {
       </div>
 
       {loading ? (
-        <div className="flex flex-col items-center justify-center py-20 gap-3">
-          <Loader2 size={28} className="animate-spin text-[#2563EB]" />
-          <p className="text-xs font-semibold text-[#64748B]">Fetching hiring news...</p>
-        </div>
+        <CardsGridSkeleton count={6} />
       ) : articles.length === 0 ? (
         <GlassCard className="p-12 text-center text-xs text-[#64748B]">
           No hiring news available at the moment. Check back soon.

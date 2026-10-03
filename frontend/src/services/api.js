@@ -28,7 +28,31 @@ async function getToken() {
   return null
 }
 
-async function request(method, url, data, isBlob = false, externalSignal = null) {
+// Generous timeouts for AI tasks, OCR scanning, and document generation
+const AI_TIMEOUT_MS = 120000 // 120 seconds (2 mins)
+const DEFAULT_TIMEOUT_MS = 45000 // 45 seconds
+
+function resolveTimeout(url, customTimeout) {
+  if (typeof customTimeout === 'number') return customTimeout
+  if (
+    url.includes('/resume/analyze') ||
+    url.includes('/resume/ats-check') ||
+    url.includes('/resume/extract-text') ||
+    url.includes('/optimizer') ||
+    url.includes('/interview') ||
+    url.includes('/career') ||
+    url.includes('/portfolio') ||
+    url.includes('/recommendations') ||
+    url.includes('/job-match') ||
+    url.includes('/beginner') ||
+    url.includes('/chatbot/message')
+  ) {
+    return AI_TIMEOUT_MS
+  }
+  return DEFAULT_TIMEOUT_MS
+}
+
+async function request(method, url, data, isBlob = false, externalSignal = null, customTimeout = null) {
   const token = await getToken()
   const isFormData = typeof FormData !== 'undefined' && data instanceof FormData
   const headers = {}
@@ -37,8 +61,9 @@ async function request(method, url, data, isBlob = false, externalSignal = null)
   if (token) headers.Authorization = `Bearer ${token}`
 
   const execute = async (attempt = 1) => {
+    const timeoutMs = resolveTimeout(url, customTimeout)
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 15000)
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
 
     if (externalSignal) {
       externalSignal.addEventListener('abort', () => controller.abort())
@@ -74,7 +99,8 @@ async function request(method, url, data, isBlob = false, externalSignal = null)
     } catch (err) {
       clearTimeout(timeoutId)
       if (err.name === 'AbortError') {
-        throw new Error('Request timed out after 15s. Please check your connection and try again.')
+        const seconds = Math.round(timeoutMs / 1000)
+        throw new Error(`Request timed out after ${seconds}s. Please check your connection and try again.`)
       }
 
       // Retry once for idempotent GET requests on network failures

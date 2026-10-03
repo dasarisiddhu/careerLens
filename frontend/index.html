@@ -70,19 +70,60 @@
     </style>
 
     <style>
-      /* Shown while app loads (Clean light canvas - no dark flash) */
-      #root:empty::before {
+      @keyframes init-shimmer {
+        0% { transform: translateX(-100%); }
+        100% { transform: translateX(100%); }
+      }
+      .init-skeleton {
+        position: relative;
+        overflow: hidden;
+        background: rgba(226, 232, 240, 0.65);
+        border-radius: 12px;
+      }
+      .init-skeleton::after {
         content: '';
-        display: block;
-        position: fixed;
+        position: absolute;
         inset: 0;
-        background: #F4F7FC;
-        z-index: 9999;
+        transform: translateX(-100%);
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.75), transparent);
+        animation: init-shimmer 1.8s infinite;
       }
     </style>
   </head>
-  <body>
-    <div id="root"></div>
+  <body style="margin: 0; background: #F4F7FC;">
+    <div id="root">
+      <!-- Instant First-Paint Skeleton (Replaced as soon as React hydrates) -->
+      <div style="min-height: 100vh; background: #F4F7FC; font-family: system-ui, -apple-system, sans-serif;">
+        <!-- Header -->
+        <div style="height: 64px; background: rgba(255, 255, 255, 0.8); border-bottom: 1px solid rgba(226, 232, 240, 0.8); display: flex; align-items: center; justify-content: space-between; padding: 0 24px; box-sizing: border-box;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div class="init-skeleton" style="width: 36px; height: 36px; border-radius: 10px;"></div>
+            <div class="init-skeleton" style="width: 110px; height: 20px;"></div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div class="init-skeleton" style="width: 80px; height: 36px; border-radius: 9999px;"></div>
+            <div class="init-skeleton" style="width: 104px; height: 36px; border-radius: 9999px;"></div>
+          </div>
+        </div>
+        <!-- Hero Content -->
+        <div style="max-width: 1120px; margin: 40px auto; padding: 0 24px; box-sizing: border-box;">
+          <div class="init-skeleton" style="width: 170px; height: 28px; border-radius: 9999px; margin-bottom: 24px;"></div>
+          <div class="init-skeleton" style="width: 80%; max-width: 600px; height: 48px; border-radius: 16px; margin-bottom: 16px;"></div>
+          <div class="init-skeleton" style="width: 55%; max-width: 420px; height: 48px; border-radius: 16px; margin-bottom: 24px;"></div>
+          <div class="init-skeleton" style="width: 65%; max-width: 500px; height: 18px; margin-bottom: 32px;"></div>
+          <div style="display: flex; gap: 14px; margin-bottom: 48px;">
+            <div class="init-skeleton" style="width: 160px; height: 46px; border-radius: 9999px;"></div>
+            <div class="init-skeleton" style="width: 130px; height: 46px; border-radius: 9999px;"></div>
+          </div>
+          <!-- Cards -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px;">
+            <div class="init-skeleton" style="height: 150px; border-radius: 20px; background: rgba(255, 255, 255, 0.7);"></div>
+            <div class="init-skeleton" style="height: 150px; border-radius: 20px; background: rgba(255, 255, 255, 0.7);"></div>
+            <div class="init-skeleton" style="height: 150px; border-radius: 20px; background: rgba(255, 255, 255, 0.7);"></div>
+          </div>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

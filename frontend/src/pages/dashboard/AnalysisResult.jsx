@@ -30,7 +30,6 @@ import {
   BookOpen,
 } from 'lucide-react'
 import { GlassCard, Button, Badge, ScoreRing } from '../../components/ui'
-import { Mascot } from '../../mascot/Mascot'
 
 const LAST_RESUME_ANALYSIS_KEY = 'careerlens:last_resume_analysis_id'
 
@@ -103,7 +102,7 @@ export default function AnalysisResult() {
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[50vh] gap-4">
-        <Mascot size={140} showPodium={false} state="thinking" />
+        <div className="w-12 h-12 rounded-full border-3 border-blue-100 border-t-[#2563EB] animate-spin" />
         <p className="text-xs font-semibold text-[#64748B]">Loading your analysis results...</p>
       </div>
     )
@@ -112,7 +111,9 @@ export default function AnalysisResult() {
   if (!analysis) {
     return (
       <div className="text-center py-16 space-y-4 max-w-md mx-auto">
-        <Mascot size={120} showPodium={false} state="error" />
+        <div className="w-14 h-14 rounded-2xl bg-rose-50 text-[#E11D48] flex items-center justify-center mx-auto border border-rose-100 shadow-xs">
+          <AlertCircle size={28} />
+        </div>
         <h2 className="text-lg font-bold text-[#0B0F19]">Analysis not found</h2>
         <p className="text-xs text-[#64748B]">We couldn't retrieve this analysis record.</p>
         <Link

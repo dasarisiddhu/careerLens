@@ -1,7 +1,14 @@
 import React, { Suspense, lazy } from 'react'
-import { Routes, Route, Navigate, Outlet } from 'react-router-dom'
+import { Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
 import DashboardLayout from './components/layout/DashboardLayout'
+import {
+  LandingSkeleton,
+  DashboardLayoutSkeleton,
+  AuthSkeleton,
+  ContentPageSkeleton,
+} from './components/skeletons'
+
 // Auth Pages
 import Login from './pages/auth/Login'
 import Signup from './pages/auth/Signup'
@@ -31,15 +38,9 @@ const UIDevShowcase = lazy(() => import('./pages/dev/UIDevShowcase'))
 const MascotDemo = lazy(() => import('./mascot/MascotDemo'))
 const NotFound = lazy(() => import('./pages/NotFound'))
 
-const PageLoader = () => (
-  <div className="min-h-[50vh] flex flex-col items-center justify-center gap-4">
-    <div className="w-10 h-10 rounded-full border-3 border-blue-100 border-t-[#2563EB] animate-spin" />
-  </div>
-)
-
 function DashboardRouteSuspense() {
   return (
-    <Suspense fallback={<PageLoader />}>
+    <Suspense fallback={<ContentPageSkeleton />}>
       <Outlet />
     </Suspense>
   )
@@ -47,17 +48,28 @@ function DashboardRouteSuspense() {
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth()
-  if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-transparent">
-      <div className="w-8 h-8 border-2 border-blue-100 border-t-[#2563EB] rounded-full animate-spin" />
-    </div>
-  )
+  if (loading) {
+    return <DashboardLayoutSkeleton />
+  }
   return user ? children : <Navigate to="/login" replace />
 }
 
 function PublicRoute({ children }) {
   const { user, loading } = useAuth()
-  if (loading) return null
+  const location = useLocation()
+
+  if (loading) {
+    const path = location.pathname.toLowerCase()
+    if (
+      path.startsWith('/login') ||
+      path.startsWith('/signup') ||
+      path.startsWith('/forgot-password')
+    ) {
+      return <AuthSkeleton />
+    }
+    return <LandingSkeleton />
+  }
+
   return !user ? children : <Navigate to="/dashboard" replace />
 }
 
@@ -95,7 +107,7 @@ export default function App() {
       <Route
         path="/_dev/ui"
         element={
-          <Suspense fallback={<PageLoader />}>
+          <Suspense fallback={<ContentPageSkeleton />}>
             <UIDevShowcase />
           </Suspense>
         }
@@ -104,7 +116,7 @@ export default function App() {
       <Route
         path="/mascot-demo"
         element={
-          <Suspense fallback={<PageLoader />}>
+          <Suspense fallback={<ContentPageSkeleton />}>
             <MascotDemo />
           </Suspense>
         }
@@ -113,7 +125,7 @@ export default function App() {
       <Route
         path="*"
         element={
-          <Suspense fallback={<PageLoader />}>
+          <Suspense fallback={<ContentPageSkeleton />}>
             <NotFound />
           </Suspense>
         }

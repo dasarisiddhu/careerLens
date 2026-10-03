@@ -18,6 +18,7 @@ import {
   Tooltip, ResponsiveContainer, ReferenceLine, Legend
 } from 'recharts'
 import { GlassCard, Badge } from '../../components/ui'
+import { ContentPageSkeleton } from '../../components/skeletons'
 
 // ============================================================
 // Helpers
@@ -155,11 +156,7 @@ export default function ProgressTracker() {
       : 0
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-32">
-        <Loader2 size={32} className="animate-spin text-[#2563EB]" />
-      </div>
-    )
+    return <ContentPageSkeleton />
   }
 
   return (

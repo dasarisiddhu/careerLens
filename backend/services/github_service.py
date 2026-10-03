@@ -17,8 +17,9 @@ GITHUB_API = "https://api.github.com"
 
 def _headers():
     h = {"Accept": "application/vnd.github.v3+json"}
-    if settings.GITHUB_TOKEN:
-        h["Authorization"] = f"token {settings.GITHUB_TOKEN}"
+    token = (settings.GITHUB_TOKEN or "").strip()
+    if token and not token.startswith("your-") and "placeholder" not in token.lower():
+        h["Authorization"] = f"token {token}"
     return h
 
 

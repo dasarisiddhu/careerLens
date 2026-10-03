@@ -2,9 +2,8 @@ import React, { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '../../services/api'
 import toast from 'react-hot-toast'
-import { Send, Bot, User, Sparkles, AlertCircle } from 'lucide-react'
+import { Send, Bot, User, Sparkles, AlertCircle, Loader2 } from 'lucide-react'
 import { GlassCard, Button, Badge } from '../../components/ui'
-import { Mascot } from '../../mascot/Mascot'
 
 const QUICK_PROMPTS = [
   'How do I improve my resume ATS score?',
@@ -31,8 +30,8 @@ function Message({ msg }) {
             <User size={15} />
           </div>
         ) : (
-          <div className="w-8 h-8 rounded-full bg-blue-50 border border-blue-200 flex items-center justify-center overflow-hidden shadow-sm">
-            <Mascot size={32} showPodium={false} state="idle" />
+          <div className="w-8 h-8 rounded-full bg-blue-50 border border-blue-200 flex items-center justify-center text-[#2563EB] shadow-sm">
+            <Sparkles size={16} />
           </div>
         )}
       </div>
@@ -116,8 +115,8 @@ export default function Chatbot() {
         {/* Loading / Typing Indicator with Bouncing Dots */}
         {loading && (
           <div className="flex gap-3 items-end">
-            <div className="w-8 h-8 rounded-full bg-blue-50 border border-blue-200 flex items-center justify-center overflow-hidden shrink-0 shadow-sm mb-1">
-              <Mascot size={32} showPodium={false} state="thinking" />
+            <div className="w-8 h-8 rounded-full bg-blue-50 border border-blue-200 flex items-center justify-center shrink-0 shadow-sm mb-1 text-[#2563EB]">
+              <Loader2 size={16} className="animate-spin" />
             </div>
             <div className="bg-white/95 border border-slate-200/90 rounded-[20px] rounded-bl-xs px-4 py-3 shadow-sm flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-[#2563EB] animate-bounce [animation-delay:-0.3s]" />

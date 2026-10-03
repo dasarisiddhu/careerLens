@@ -4,7 +4,6 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '../../services/supabase'
 import { ArrowLeft, Mail, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { Button, Input, GlassCard } from '../../components/ui'
-import { Mascot } from '../../mascot/Mascot'
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState('')

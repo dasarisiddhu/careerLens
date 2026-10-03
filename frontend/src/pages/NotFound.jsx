@@ -1,7 +1,6 @@
 import React from 'react'
 import { Link } from 'react-router-dom'
 import { GlassCard, Button } from '../components/ui'
-import { Mascot } from '../mascot/Mascot'
 import { ArrowLeft, Home, Compass } from 'lucide-react'
 
 export default function NotFound() {
@@ -15,7 +14,9 @@ export default function NotFound() {
 
       <GlassCard strong className="p-8 sm:p-12 max-w-md w-full text-center space-y-6 border-white/95 shadow-glass-lg relative z-10 rounded-[28px]">
         <div className="flex justify-center">
-          <Mascot size={180} showPodium={false} state="error" />
+          <div className="w-16 h-16 rounded-2xl bg-blue-50 text-[#2563EB] flex items-center justify-center border border-blue-100 shadow-xs">
+            <Compass size={32} />
+          </div>
         </div>
 
         <div className="space-y-2">

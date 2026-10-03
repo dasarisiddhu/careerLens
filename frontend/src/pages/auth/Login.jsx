@@ -4,7 +4,6 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '../../services/supabase'
 import { Eye, EyeOff, Loader2, Github, Chrome, Mail, Lock, AlertCircle, ArrowLeft } from 'lucide-react'
 import { Button, Input, GlassCard } from '../../components/ui'
-import { Mascot } from '../../mascot/Mascot'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -62,10 +61,6 @@ export default function Login() {
         transition={{ duration: 0.35, ease: [0.2, 0.8, 0.2, 1] }}
         className="relative w-full max-w-[440px] z-10"
       >
-        {/* Mascot Peeking from Top-Right */}
-        <div className="absolute -top-16 -right-6 z-20 pointer-events-none hidden sm:block">
-          <Mascot size={110} showPodium={false} state="greeting" />
-        </div>
 
         <GlassCard strong className="p-8 sm:p-10 rounded-[28px] shadow-glass-lg border-white/95">
           {/* Header */}

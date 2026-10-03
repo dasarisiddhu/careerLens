@@ -18,7 +18,6 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { GlassCard, Button, Input, Badge } from '../../components/ui'
-import { Mascot } from '../../mascot/Mascot'
 
 const LAST_RESUME_ANALYSIS_KEY = 'careerlens:last_resume_analysis_id'
 const GITHUB_LOCK_KEY = 'careerlens:locked_github_url'
@@ -215,9 +214,9 @@ export default function ResumeAnalysis() {
       {/* Main Upload Card */}
       <GlassCard className="p-8 sm:p-10 border-white/95 shadow-glass-lg">
         {loading ? (
-          /* Analyzing State with Mascot in Thinking pose */
+          /* Analyzing State */
           <div className="py-12 flex flex-col items-center justify-center text-center space-y-6">
-            <Mascot size={180} showPodium={false} state="thinking" />
+            <div className="w-16 h-16 rounded-full border-4 border-blue-100 border-t-[#2563EB] animate-spin mb-2" />
 
             <div className="space-y-2 max-w-md">
               <h3 className="text-lg font-bold text-[#0B0F19]">

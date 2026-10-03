@@ -17,7 +17,7 @@ import {
   Lock,
 } from 'lucide-react'
 import { GlassCard, Button, Badge } from '../../components/ui'
-import { Mascot } from '../../mascot/Mascot'
+import { DashboardSkeleton } from '../../components/skeletons'
 
 const STAT_CONFIGS = [
   {
@@ -108,6 +108,10 @@ export default function Dashboard() {
     }
   }, [])
 
+  if (loading) {
+    return <DashboardSkeleton />
+  }
+
   const firstName = profile?.name?.split(' ')[0] || 'there'
   const isPremium = profile?.plan_type === 'premium'
 
@@ -168,12 +172,8 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Mini Mascot Centerpiece */}
-          <div className="hidden lg:flex items-center justify-center shrink-0 pr-4">
-            <div className="relative">
-              <Mascot size={150} showPodium={false} state="greeting" />
-            </div>
-          </div>
+          {/* Right hero slot (empty) */}
+          <div className="hidden lg:flex items-center justify-center shrink-0 pr-4" />
         </div>
       </GlassCard>
 

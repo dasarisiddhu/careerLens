@@ -1,29 +1,30 @@
 import React from 'react'
 
-export function Skeleton({ className = '', ...props }) {
+export function Skeleton({
+  className = '',
+  variant = 'rounded', // 'rounded' | 'circular' | 'text' | 'card'
+  ...props
+}) {
+  const variantStyles = {
+    circular: 'rounded-full',
+    text: 'rounded-md h-4',
+    rounded: 'rounded-xl',
+    card: 'rounded-2xl',
+  }[variant] || 'rounded-xl'
+
   return (
     <div
       aria-hidden="true"
-      className={`relative overflow-hidden bg-slate-200/60 rounded-xl ${className}`}
+      className={`relative overflow-hidden bg-slate-200/70 ${variantStyles} ${className}`}
       {...props}
     >
       <div
-        className="absolute inset-0 -translate-x-full animate-[shimmer_1.8s_infinite] bg-gradient-to-r from-transparent via-white/50 to-transparent"
-        style={{
-          animationName: 'shimmer',
-          animationDuration: '1.8s',
-          animationIterationCount: 'infinite',
-        }}
+        className="absolute inset-0 -translate-x-full animate-skeleton-shimmer bg-gradient-to-r from-transparent via-white/70 to-transparent"
+        style={{ pointerEvents: 'none' }}
       />
-      <style>{`
-        @keyframes shimmer {
-          100% {
-            transform: translateX(100%);
-          }
-        }
-      `}</style>
     </div>
   )
 }
 
 export default Skeleton
+
