@@ -119,5 +119,117 @@ class RequirementsPinningTests(unittest.TestCase):
             self.assertIn("==", line, f"Dependency line is missing exact '==' pin: {line}")
 
 
+class SummaryPipelineFixTests(unittest.TestCase):
+    def test_resume_with_metric_gets_clean_2_sentence_summary(self):
+        """Resume with grounded metric is verified and preserved without being replaced by rigid template."""
+        from routers.optimizer import _apply_optimizer_safety_filters, _verify_optimizer_summary
+        
+        resume_text = (
+            "Alex Smith\n"
+            "Technical Skills: Python, FastAPI, PostgreSQL\n"
+            "Experience:\n"
+            "Backend Intern at TechCo\n"
+            "- Improved database query latency by 40% through indexing."
+        )
+        model_summary = (
+            "Backend Intern with hands-on experience in Python and PostgreSQL. "
+            "Improved query latency by 40% through database query indexing."
+        )
+        is_valid, reason = _verify_optimizer_summary(model_summary, resume_text, "Backend Engineer")
+        self.assertTrue(is_valid, f"Summary should be valid but failed: {reason}")
+        
+        result = {
+            "optimized_summary": model_summary,
+            "improved_bullets": [],
+            "new_bullets": [],
+            "optimized_skills": {"Languages": ["Python"], "Databases": ["PostgreSQL"]},
+        }
+        filtered = _apply_optimizer_safety_filters(
+            result=result,
+            resume_text=resume_text,
+            job_description="Python Backend Engineer with PostgreSQL experience.",
+            job_title="Backend Engineer",
+            user_id="test-user",
+        )
+        self.assertEqual(filtered["optimized_summary"], model_summary)
+
+    def test_no_resume_contact_info_ever_appears_in_optimized_summary(self):
+        """Contact info, email, phone, or raw resume header text must never appear in optimized_summary."""
+        from routers.optimizer import _apply_optimizer_safety_filters, _verify_optimizer_summary
+        
+        resume_text = (
+            "John Doe\n"
+            "john.doe@example.com | +1 (555) 234-5678 | San Francisco, CA\n"
+            "Education: B.S. in Computer Science\n"
+            "Skills: Python, React, SQL"
+        )
+        # Attempted summary with email / phone
+        bad_summary = "John Doe (john.doe@example.com, +1 555-234-5678) is a developer."
+        is_valid, reason = _verify_optimizer_summary(bad_summary, resume_text)
+        self.assertFalse(is_valid)
+
+        # Result with invalid summary
+        result = {
+            "optimized_summary": bad_summary,
+            "improved_bullets": [],
+            "new_bullets": [],
+            "optimized_skills": {"Languages": ["Python", "SQL"]},
+        }
+        filtered = _apply_optimizer_safety_filters(
+            result=result,
+            resume_text=resume_text,
+            job_description="Software Engineer",
+            job_title="Software Engineer",
+            user_id="test-user",
+        )
+        # Summary should have fallen back to verified skills + education line
+        summary = filtered["optimized_summary"]
+        self.assertNotIn("john.doe@example.com", summary)
+        self.assertNotIn("555", summary)
+        self.assertNotIn("ADD_EVIDENCE_REQUIRED", summary)
+        self.assertIn("Computer Science", summary)
+        self.assertIn("Python", summary)
+
+    def test_percentage_with_different_trailing_words_not_flagged(self):
+        """'40%' with different trailing words is not flagged as ungrounded."""
+        from routers.optimizer import _find_ungrounded_numbers, _verify_optimizer_summary
+        
+        resume_text = "Software developer with experience in Python. Optimized backend data pipelines, reducing build times by 40%."
+        # Generated text uses 40% with different trailing words
+        generated_summary = (
+            "Software developer skilled in Python backend systems. "
+            "Reduced build times by 40% in test execution latency."
+        )
+        ungrounded = _find_ungrounded_numbers(generated_summary, resume_text)
+        self.assertEqual(ungrounded, [], f"40% was incorrectly flagged as ungrounded: {ungrounded}")
+        
+        is_valid, reason = _verify_optimizer_summary(generated_summary, resume_text)
+        self.assertTrue(is_valid, f"Summary verification failed on 40%: {reason}")
+
+    def test_domain_mismatch_skips_summary(self):
+        """On domain mismatch, summary is skipped (empty string + note)."""
+        from routers.optimizer import _apply_optimizer_safety_filters
+        
+        resume_text = "Elementary school teacher with 5 years experience in curriculum planning."
+        result = {
+            "optimized_summary": "Machine Learning Engineer with deep neural network skills.",
+            "improved_bullets": [],
+            "new_bullets": [],
+            "optimized_skills": {},
+        }
+        # JD is heavy ML, candidate has 0 ML skills -> triggers domain_mismatch
+        filtered = _apply_optimizer_safety_filters(
+            result=result,
+            resume_text=resume_text,
+            job_description="Senior ML Engineer: requires PyTorch, TensorFlow, Deep Learning, MLOps, Neural Networks.",
+            job_title="Machine Learning Engineer",
+            user_id="test-user",
+        )
+        self.assertTrue(filtered.get("domain_mismatch"))
+        self.assertEqual(filtered.get("optimized_summary"), "")
+        self.assertIn("summary_grounding_note", filtered)
+
+
 if __name__ == "__main__":
     unittest.main()
+

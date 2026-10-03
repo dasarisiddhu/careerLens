@@ -584,7 +584,8 @@ def _find_ungrounded_numbers(text: str, source_text: str) -> list[dict[str, str]
         if variants.isdisjoint(source_variants):
             ungrounded.append({"number": raw, "reason": "absent_from_source"})
             continue
-        if not _number_context_is_grounded(text, match.start(), match.end(), source_text, variants):
+        # Compare numbers, not trailing words: percentages (e.g. 40%) are verified by number value
+        if not raw.endswith("%") and not _number_context_is_grounded(text, match.start(), match.end(), source_text, variants):
             ungrounded.append({"number": raw, "reason": "source_context_mismatch"})
     return ungrounded
 
@@ -720,14 +721,18 @@ def _enforce_source_number_grounding(result: dict, resume_text: str, user_id: st
             user_id,
             _find_ungrounded_numbers(summary, source_text),
         )
-        # Use the original user-provided summary text if available, to avoid fabrication.
-        # If it also contains ungrounded numbers, emit the ADD_EVIDENCE_REQUIRED sentinel.
-        original_summary = str(result.get("original_summary", "") or source_text[:120] or "")
+        # Use the original user-provided summary text if available and grounded.
+        # Never fall back to source_text[:120] and never return ADD_EVIDENCE_REQUIRED as summary.
+        original_summary = str(result.get("original_summary", "") or "")
         original_ungrounded = _find_ungrounded_numbers(original_summary, source_text) if original_summary else True
         if original_summary and not original_ungrounded:
             result["optimized_summary"] = original_summary
         else:
-            result["optimized_summary"] = SUMMARY_NOT_SUPPORTED
+            fallback = _build_skills_education_summary(source_text, result)
+            if fallback and not _find_ungrounded_numbers(fallback, source_text):
+                result["optimized_summary"] = fallback
+            else:
+                result["optimized_summary"] = ""
             result["summary_grounding_note"] = (
                 "The AI-generated summary contained metrics that could not be verified against your resume. "
                 "Please add quantified achievements (numbers, percentages, scale) to your resume "
@@ -1713,6 +1718,189 @@ def _summary_valid(value: str) -> bool:
     return words <= 45 and all(sentence.endswith(".") for sentence in sentences)
 
 
+def _build_skills_education_summary(resume_text: str, result: dict | None = None) -> str:
+    """
+    Plain, verified skills + education fallback line.
+    Never returns contact info, raw resume dumps, or fabricated metrics.
+    """
+    degree = ""
+    edu_match = re.search(
+        r"\b(B\.?S\.?|B\.?Tech|Bachelor(?:'s)?|M\.?S\.?|M\.?Tech|Master(?:'s)?|Ph\.?D\.?|Associate(?:'s)?)\s+(?:of\s+|in\s+)?([A-Za-z\s]+?)(?:,|\.|\n|\||-|\d{4})",
+        resume_text,
+        re.IGNORECASE,
+    )
+    if edu_match:
+        degree_type = edu_match.group(1).strip()
+        field = edu_match.group(2).strip()
+        field_words = [w for w in field.split() if w.lower() not in ("from", "at", "university", "college", "institute", "gpa")]
+        clean_field = " ".join(field_words[:3]).strip()
+        if clean_field:
+            degree = f"{degree_type} in {clean_field}"
+        else:
+            degree = f"{degree_type} graduate"
+    elif re.search(r"\bcomputer science\b", resume_text, re.IGNORECASE):
+        degree = "Computer Science graduate"
+    elif re.search(r"\bengineering\b", resume_text, re.IGNORECASE):
+        degree = "Engineering graduate"
+
+    # Extract top verified skills that actually appear in source resume
+    skills = []
+    if result and isinstance(result.get("optimized_skills"), dict):
+        for group, items in result["optimized_skills"].items():
+            if isinstance(items, list):
+                for item in items:
+                    if isinstance(item, str) and item.lower() in resume_text.lower():
+                        skills.append(item)
+    if not skills and result:
+        skills = _summary_top_skills(result, resume_text)
+        skills = [s for s in skills if s.lower() in resume_text.lower()]
+    if not skills:
+        for kw in ["Python", "Java", "JavaScript", "TypeScript", "C++", "C", "SQL", "Go", "Rust", "React", "Node.js", "Docker", "Git", "AWS", "Linux"]:
+            if re.search(rf"\b{re.escape(kw)}\b", resume_text, re.IGNORECASE):
+                skills.append(kw)
+
+    unique_skills = []
+    for s in skills:
+        if s not in unique_skills and len(unique_skills) < 4:
+            unique_skills.append(s)
+
+    skills_text = ", ".join(unique_skills) if unique_skills else "software engineering"
+
+    if degree:
+        return f"{degree} with core technical skills in {skills_text}."
+    return f"Technical background with core proficiencies in {skills_text}."
+
+
+def _verify_optimizer_summary(
+    summary: str,
+    source_text: str,
+    job_title: str = "",
+) -> tuple[bool, str]:
+    """
+    Verify summary against source resume:
+    - No contact details (email, phone, address, links)
+    - No raw resume text / header dumps
+    - Never uses target job title as identity
+    - Every number must appear in source (compare numbers, not trailing words)
+    - Every technical term must appear in source
+    """
+    if not summary or not summary.strip():
+        return False, "empty_summary"
+
+    clean_summary = summary.strip()
+
+    # 1. Contact info check
+    if SUMMARY_EMAIL_RE.search(clean_summary):
+        return False, "contains_email"
+    if SUMMARY_PHONE_RE.search(clean_summary):
+        return False, "contains_phone"
+    if re.search(r"https?://|www\.|linkedin\.com|github\.com", clean_summary, re.IGNORECASE):
+        return False, "contains_url"
+    if re.search(r"\b(phone|tel|email|address|street|pincode|zip code)\s*:", clean_summary, re.IGNORECASE):
+        return False, "contains_contact_info"
+
+    # 2. Raw resume text / header dump check
+    if len(clean_summary) > 40 and clean_summary.lower() in source_text[:300].lower():
+        return False, "raw_resume_header_dump"
+
+    # 3. Target job title as identity check
+    if job_title:
+        jt_clean = re.sub(r"^(senior|junior|lead|staff|principal)\s+", "", job_title.strip(), flags=re.IGNORECASE).lower()
+        if len(jt_clean) > 4 and jt_clean not in source_text.lower():
+            first_sentence = clean_summary.split(".")[0].lower()
+            if first_sentence.startswith(jt_clean) or re.search(rf"\b(as an?|as a|i am an?)\s+{re.escape(jt_clean)}\b", first_sentence):
+                return False, "target_job_title_as_identity"
+
+    # 4. Number check (compare numbers, not trailing words)
+    source_variants = _source_number_variants(source_text)
+    for match in NUMBER_TOKEN_RE.finditer(clean_summary):
+        raw = re.sub(r"\s+", " ", match.group(0)).strip()
+        variants = _number_token_variants(raw)
+        if not variants:
+            continue
+        if variants.isdisjoint(source_variants):
+            return False, f"ungrounded_number: {raw}"
+
+    # 5. Technical terms check
+    source_lower = source_text.lower()
+    tech_terms = re.findall(r'\b[A-Z][a-zA-Z0-9+#.]{2,}\b', clean_summary)
+    ignored_words = {
+        "the", "this", "with", "and", "for", "built", "developed", "engineered",
+        "designed", "implemented", "created", "led", "spearheaded", "proven",
+        "strong", "focused", "experienced", "specializing", "student", "intern",
+        "graduate", "candidate", "developer", "developers", "engineer", "engineers",
+        "analyst", "analysts", "bachelor", "master", "degree", "university", "college",
+        "institute", "technology", "technologies", "science", "skills", "projects",
+        "experience", "summary", "professional", "technical", "hands", "key",
+        "core", "major", "minor", "across", "using", "through", "within", "both",
+        "also", "well", "high", "good", "excellent", "results", "impact", "systems",
+        "system", "solutions", "solution", "services", "service", "applications",
+        "application", "background", "proficient", "data", "work", "practical",
+        "software", "hardware", "firmware", "reduced", "increased", "managed",
+        "improved", "optimized", "scaled", "automated", "delivered", "maintained",
+        "collaborated", "architected", "launched", "enhanced", "code", "program",
+        "platform", "platforms", "tool", "tools", "pipeline", "pipelines",
+        "architecture", "design", "team", "teams", "user", "users", "client",
+        "clients", "proficiency", "knowledge", "domain", "focus", "execution",
+        "latency", "performance", "efficiency", "accuracy", "quality", "metric",
+        "metrics", "scale", "production", "testing", "test", "tests", "deployment",
+        "process", "processing", "operation", "operations", "method", "methods",
+        "practices", "standard", "standards", "fast", "clean", "real", "time",
+        "modern", "deep", "broad", "solid", "direct", "active", "daily", "weekly",
+        "monthly", "annual", "annualized", "full", "stack", "front", "end", "back",
+        "lead", "senior", "junior", "associate", "staff", "principal", "internship",
+        "fellow", "fellowship", "undergraduate", "first", "second", "third",
+    }
+    for term in tech_terms:
+        t = term.lower().strip("*")
+        if len(t) < 3 or t in ignored_words or t in OPTIMIZER_IGNORED_TECH_TERMS:
+            continue
+        if t not in source_lower:
+            return False, f"unsupported_tech_term: {term}"
+
+    return True, "valid"
+
+
+async def _retry_summary_generation(
+    resume_text: str,
+    job_title: str,
+    fail_reason: str,
+) -> str:
+    """
+    Retry summary generation once with Groq when the initial attempt fails verification.
+    """
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are an expert resume writer. Generate a concise 2-to-3 sentence professional summary for this candidate.\n"
+                "STRICT RULES:\n"
+                "1. Use ONLY skills and technical terms that appear in the candidate's resume.\n"
+                "2. Use ONLY metrics/numbers that appear in the candidate's resume verbatim. If the resume has no numbers, DO NOT include any numbers or percentages.\n"
+                "3. Accurately represent the candidate's real career stage/role from their resume (e.g. Student, Intern, Junior Developer). NEVER use the target job title as candidate identity.\n"
+                "4. NEVER include contact details (email, phone, address, URLs) or raw resume text.\n"
+                "5. Return strictly valid JSON: {\"optimized_summary\": \"...\"}"
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                f"Candidate Resume:\n{resume_text[:2500]}\n\n"
+                f"Target Role: {job_title or 'Software Engineering'}\n\n"
+                f"Note: Previous summary attempt was rejected due to: {fail_reason}. "
+                "Write a clean, strictly grounded 2-to-3 sentence summary adhering to the rules."
+            ),
+        },
+    ]
+    try:
+        raw = await call_groq(messages, json_mode=True, temperature=0.1)
+        data = _extract_json(raw)
+        return str(data.get("optimized_summary", "") or "").strip()
+    except Exception as e:
+        logger.warning("Summary retry call failed: %s", e)
+        return ""
+
+
 def generate_structured_summary(
     result: dict,
     resume_text: str = "",
@@ -2143,12 +2331,29 @@ def _apply_optimizer_safety_filters(
                 + existing_reason
             ).strip()
 
-    result["optimized_summary"] = generate_structured_summary(
-        result,
-        resume_text,
-        job_title or "",
-        job_description,
-    )
+    # Stop replacing LLM summary with a template. Verify and handle fallbacks (FIX 1)
+    if result.get("domain_mismatch"):
+        result["optimized_summary"] = ""
+        result["summary_grounding_note"] = (
+            "Summary omitted due to domain mismatch between candidate background and job requirements."
+        )
+    else:
+        existing_summary = str(result.get("optimized_summary", "") or "").strip()
+        is_valid, reason = _verify_optimizer_summary(existing_summary, resume_text, job_title)
+        if is_valid:
+            result["optimized_summary"] = existing_summary
+        else:
+            logger.info(
+                "Optimizer summary failed verification (%s) for user %s; using verified skills+education fallback",
+                reason,
+                user_id,
+            )
+            fallback = _build_skills_education_summary(resume_text, result)
+            result["optimized_summary"] = fallback
+            result["summary_grounding_note"] = (
+                "The AI-generated summary contained ungrounded claims and was replaced with a verified skills and education overview."
+            )
+
     result = _enforce_source_number_grounding(result, resume_text, user_id)
     return result
 
@@ -2213,6 +2418,23 @@ async def _generate_optimizer_attempt(
 
     if not isinstance(result, dict):
         raise ValueError("Optimizer response was not a JSON object.")
+
+    # Retry summary once with model if initial attempt is invalid (FIX 1)
+    if not result.get("domain_mismatch"):
+        summary = str(result.get("optimized_summary", "") or "").strip()
+        is_valid, reason = _verify_optimizer_summary(summary, resume_text, job_title)
+        if not is_valid and summary:
+            logger.info("Optimizer summary attempt 1 invalid (%s); retrying model once...", reason)
+            try:
+                retried_summary = await _retry_summary_generation(
+                    resume_text=resume_text,
+                    job_title=job_title,
+                    fail_reason=reason,
+                )
+                if retried_summary and _verify_optimizer_summary(retried_summary, resume_text, job_title)[0]:
+                    result["optimized_summary"] = retried_summary
+            except Exception as retry_err:
+                logger.warning("Summary retry failed: %s", retry_err)
 
     result = _apply_optimizer_safety_filters(
         result,
@@ -2311,76 +2533,20 @@ async def optimize_resume(request: Request, body: OptimizeRequest, user=Depends(
         "  set insufficient_data: true and return minimal safe output\n\n"
         
         "════════════════════════════════════════════════════════\n"
-        "RULE 2 — SUMMARY (STRICT)\n"
+        "RULE 2 — SUMMARY (EVIDENCE-BASED 2-3 SENTENCE SYNTHESIS)\n"
         "════════════════════════════════════════════════════════\n"
-        "- GENERATE the summary through synthesis; do not copy any\n"
-        "  resume bullet or experience sentence verbatim\n"
-        "- Use these inputs only: target role and the strongest\n"
-        "  deterministic metric from experience/projects\n"
-        "- EXACTLY 2 complete sentences, maximum 45 words total\n"
-        "- Sentence 1: Machine Learning Engineer specializing in\n"
-        "  scalable AI systems and data pipelines\n"
-        "- Do not write 'Machine Learning and Artificial Intelligence';\n"
-        "  use a specific domain such as data pipelines, model\n"
-        "  deployment, computer vision, NLP, or predictive modeling\n"
-        "- Sentence 2: [Built/Reduced/Improved/Deployed/Engineered]\n"
-        "  [performance, efficiency, or accuracy impact] by\n"
-        "  [backend systems, data pipelines, model deployment, or\n"
-        "  production systems]\n"
-        "- Sentence 2 must include what caused the impact\n"
-        "- Metric selection priority: highest real percentage wins;\n"
-        "  if percentages tie, choose performance/time reduction over\n"
-        "  accuracy, then use scale only when no stronger metric exists\n"
-        "- If multiple metrics exist, choose the highest-impact metric\n"
-        "  from that priority order\n"
-        "- Never use generic fallback wording when a real percentage,\n"
-        "  accuracy, latency, retrieval-time, or processing-time metric\n"
-        "  exists in experience or projects\n"
-        "- Avoid weak count claims; use only\n"
-        "  source context already present in experience/projects\n"
-        "- Accuracy metrics must be source-stated percentages only\n"
-        "- Never combine accuracy with counts; never attach a count to\n"
-        "  an accuracy claim unless that exact relationship is in source\n"
-        "- Count metrics may refer only to users, records, requests,\n"
-        "  data points, transactions, patients, entries, or samples\n"
-        "- Never apply counts to accuracy, model quality, scores, or\n"
-        "  abstract improvements\n"
-        "- Improvement metrics must name what improved, e.g. reduced\n"
-        "  processing time by the source-stated percentage\n"
-        "- Never write 'improved by [number]%' without a subject\n"
-        "- If no clear metric exists from the original resume, do not\n"
-        "  invent a number; use the required no-metric fallback.\n"
-        "- Never add a third tools sentence\n"
-        "- Replace weak phrasing like 'built user-facing systems' with\n"
-        "  reduced processing time, improved accuracy, reduced latency,\n"
-        "  optimized backend systems, built scalable data pipelines,\n"
-        "  model deployment, or production systems\n"
-        "- The summary must include at least one of: backend systems,\n"
-        "  data pipelines, model deployment, production systems\n"
-        "- Keep sentences short and direct\n"
-        "- Do not repeat the full skills list\n"
-        "- Every sentence must end with a period\n"
-        "- Never output an ellipsis or three dots\n"
-        "- Never use buzzwords or filler phrases such as:\n"
-        "  production-grade, applied engineering work, reliable\n"
-        "  deployment practices, practical measurable outcomes,\n"
-        "  maintainable solutions, delivery quality\n"
-        "- Never start a sentence with Uses, Has, I, or My\n"
-        "- If original resume has no usable metrics, use exactly:\n"
-        "  Machine Learning Engineer specializing in scalable AI systems\n"
-        "  and data pipelines, focused on building efficient backend\n"
-        "  solutions.\n"
-        "- NEVER include email, phone, location, city, country\n"
-        "- NEVER use weak phrases: with experience in, experienced in,\n"
-        "  proficient in\n"
-        "- Use stronger phrasing: specializing in, focused on, building\n"
-        "- NEVER use, except in the required fallback sentence:\n"
-        "             passionate, motivated, hardworking, dynamic,\n"
-        "             enthusiastic, detail-oriented, self-starter\n"
-        "- NEVER start with 'I' or 'My'\n"
-        "- NEVER repeat the job title anywhere else in the resume\n"
-        "  body — experience entries must show their own specific\n"
-        "  position title, not the global target job title\n\n"
+        "- Generate a concise, high-impact 2-to-3 sentence summary (maximum 50 words).\n"
+        "- Synthesize using ONLY:\n"
+        "  (a) Skills and technologies explicitly present in the candidate's source resume.\n"
+        "  (b) Verifiable metrics and numbers present in the source resume verbatim (never invent, inflate, or adjust figures).\n"
+        "  (c) The candidate's real current role, stage, or background from their resume (e.g. Computer Science Student, Software Engineering Intern, Junior Developer).\n"
+        "- NEVER use the target job title as candidate identity (e.g. if a student targets a Senior role, do NOT introduce them as a Senior Engineer).\n"
+        "- If the original resume has no numbers or metrics, do NOT invent one. State their verified core skills and technical focus honestly.\n"
+        "- NEVER include contact information (email, phone, address, LinkedIn/GitHub links).\n"
+        "- NEVER copy-paste raw resume header chunks or contact lines.\n"
+        "- Never use buzzwords or empty filler: 'passionate', 'hardworking', 'dynamic', 'self-starter', 'various', 'multiple'.\n"
+        "- Never start a sentence with 'I', 'My', 'Uses', or 'Has'.\n"
+        "- Every sentence must end with a period.\n\n"
         
         "════════════════════════════════════════════════════════\n"
         "RULE 3 — SKILLS (GROUPED BY DOMAIN)\n"
@@ -2483,7 +2649,7 @@ async def optimize_resume(request: Request, body: OptimizeRequest, user=Depends(
         "{\n"
         '  "insufficient_data": false,\n'
         
-        '  "optimized_summary": "exactly 2 clear sentences, max 45 words, engineering-focused",\n'
+        '  "optimized_summary": "2-3 clear sentences using only source skills, verbatim metrics, and real candidate stage",\n'
         
         '  "optimized_skills": {\n'
         '    "Languages": ["Python", "Java"],\n'
