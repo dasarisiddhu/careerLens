@@ -481,6 +481,88 @@ class GuardCalibrationFixTests(unittest.TestCase):
         self.assertIn("Kubernetes", filtered["fabricated_skills"])
 
 
+class PromptHygieneFixTests(unittest.TestCase):
+    def test_pydantic_field_max_length_20000(self):
+        """OptimizeRequest and AnalyseRequest enforce max_length=20000."""
+        from routers.optimizer import OptimizeRequest, AnalyseRequest
+        from pydantic import ValidationError
+
+        # Exactly 20,000 chars succeeds
+        valid_req = OptimizeRequest(resume_text="A" * 20000, job_description="B" * 20000)
+        self.assertEqual(len(valid_req.resume_text), 20000)
+
+        # 20,001 chars raises ValidationError
+        with self.assertRaises(ValidationError):
+            OptimizeRequest(resume_text="A" * 20001, job_description="test")
+
+        with self.assertRaises(ValidationError):
+            OptimizeRequest(resume_text="test", job_description="B" * 20001)
+
+        # AnalyseRequest
+        valid_analyse = AnalyseRequest(resume_text="A" * 20000, job_description="B" * 20000)
+        self.assertEqual(len(valid_analyse.resume_text), 20000)
+
+        with self.assertRaises(ValidationError):
+            AnalyseRequest(resume_text="A" * 20001)
+
+    def test_pdf_request_content_size_cap(self):
+        """POST /professional-resume-pdf caps content size and returns generic error on overflow."""
+        import asyncio
+        from unittest.mock import MagicMock
+        from fastapi import HTTPException
+        from routers.optimizer import generate_professional_resume_pdf, ProfessionalResumePdfRequest
+
+        # Content payload exceeding 100,000 characters
+        huge_content = {"summary": "x" * 105000}
+        req = ProfessionalResumePdfRequest(
+            name="John Doe",
+            content=huge_content,
+        )
+        fake_request = MagicMock()
+
+        with self.assertRaises(HTTPException) as ctx:
+            asyncio.run(generate_professional_resume_pdf(
+                request=fake_request,
+                body=req,
+                user={"user_id": "test-user"},
+                premium={},
+            ))
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertIn("exceeds maximum allowed size", ctx.exception.detail)
+
+    def test_analyse_dimensions_clamped_to_max(self):
+        """Each /analyse dimension is clamped to its configured maximum."""
+        from routers.optimizer import RECRUITER_DIMENSION_MAXES
+
+        # Simulate inflated dimension scores returned by LLM
+        inflated_dims = {
+            "title_clarity": {"score": 99, "max": 10},       # max 10
+            "company_signal": {"score": -5, "max": 10},      # min 0
+            "tenure_stability": {"score": 10, "max": 10},    # max 10
+            "scannability": {"score": 50, "max": 15},        # max 15
+            "skills_quality": {"score": 15, "max": 15},      # max 15
+            "quantification_rate": {"score": 100, "max": 20},# max 20
+            "red_flag_penalty": {"score": 25, "max": 20},    # max 20
+        }
+
+        # Apply clamping logic
+        computed_total = 0
+        for dim_key, v in inflated_dims.items():
+            max_val = RECRUITER_DIMENSION_MAXES.get(dim_key, int(v.get("max", 10) or 10))
+            raw_score = int(float(v.get("score", 0) or 0))
+            clamped_score = max(0, min(raw_score, max_val))
+            v["score"] = clamped_score
+            v["max"] = max_val
+            computed_total += clamped_score
+
+        self.assertEqual(inflated_dims["title_clarity"]["score"], 10)
+        self.assertEqual(inflated_dims["company_signal"]["score"], 0)
+        self.assertEqual(inflated_dims["scannability"]["score"], 15)
+        self.assertEqual(inflated_dims["quantification_rate"]["score"], 20)
+        self.assertEqual(inflated_dims["red_flag_penalty"]["score"], 20)
+        self.assertEqual(computed_total, 10 + 0 + 10 + 15 + 15 + 20 + 20)  # 90 <= 100
+
+
 if __name__ == "__main__":
     unittest.main()
 

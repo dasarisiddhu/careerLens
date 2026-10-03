@@ -5,7 +5,7 @@
 
 from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Any, Optional
 from middleware.auth import get_authenticated_user, require_premium
 from database import supabase
@@ -2093,27 +2093,38 @@ def generate_structured_summary(
     return " ".join([first_sentence, impact_sentence])
 
 
+RECRUITER_DIMENSION_MAXES = {
+    "title_clarity": 10,
+    "company_signal": 10,
+    "tenure_stability": 10,
+    "scannability": 15,
+    "skills_quality": 15,
+    "quantification_rate": 20,
+    "red_flag_penalty": 20,
+}
+
+
 class OptimizeRequest(BaseModel):
-    resume_text: str
-    job_description: str
+    resume_text: str = Field(..., max_length=20000)
+    job_description: str = Field(..., max_length=20000)
     job_title: Optional[str] = ""
 
 
 class AnalyseRequest(BaseModel):
-    resume_text: str
-    job_description: Optional[str] = ""
+    resume_text: str = Field(..., max_length=20000)
+    job_description: Optional[str] = Field("", max_length=20000)
     job_title: Optional[str] = ""
 
 
 class ProfessionalResumePdfRequest(BaseModel):
-    name: Optional[str] = ""
-    email: Optional[str] = ""
-    phone: Optional[str] = ""
-    linkedin: Optional[str] = ""
-    github: Optional[str] = ""
-    location: Optional[str] = ""
-    job_title: Optional[str] = ""
-    source_resume_text: Optional[str] = ""
+    name: Optional[str] = Field("", max_length=200)
+    email: Optional[str] = Field("", max_length=200)
+    phone: Optional[str] = Field("", max_length=50)
+    linkedin: Optional[str] = Field("", max_length=300)
+    github: Optional[str] = Field("", max_length=300)
+    location: Optional[str] = Field("", max_length=200)
+    job_title: Optional[str] = Field("", max_length=200)
+    source_resume_text: Optional[str] = Field("", max_length=50000)
     content: dict[str, Any]
 
 
@@ -2123,13 +2134,18 @@ def _safe_pdf_filename(value: str) -> str:
 
 
 @router.post("/professional-resume-pdf")
-@limiter.limit("15/hour")  # AI-calling endpoint — prevent abuse
+@_safe_limit("15/hour")  # AI-calling endpoint — prevent abuse
 async def generate_professional_resume_pdf(
     request: Request,
     body: ProfessionalResumePdfRequest,
     user=Depends(get_authenticated_user),
     premium=Depends(require_premium),
 ):
+    # Cap content size on the PDF request
+    content_json = json.dumps(body.content)
+    if len(content_json) > 100_000:
+        raise HTTPException(status_code=400, detail="Resume content exceeds maximum allowed size.")
+
     try:
         generated = build_professional_resume_pdf(
             name=body.name or "Your Name",
@@ -2143,7 +2159,7 @@ async def generate_professional_resume_pdf(
         )
     except ValueError as e:
         logger.error(f"Professional PDF text regression failed for user {user['user_id']}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Could not generate a readable resume PDF.")
     except Exception as e:
         logger.error(f"Professional PDF generation failed for user {user['user_id']}: {e}")
         raise HTTPException(status_code=500, detail="Could not generate a readable resume PDF.")
@@ -2580,11 +2596,6 @@ async def _generate_optimizer_attempt(
         {"role": "system", "content": system},
         {"role": "user", "content": f"{user_msg}{retry_addendum}"},
     ]
-    logger.info(
-        "Optimizer model payload for user %s:\n%s",
-        user_id,
-        json.dumps(messages, ensure_ascii=False, indent=2),
-    )
     text = await call_groq(messages, json_mode=True)
     try:
         result = _extract_json(text)
@@ -2654,12 +2665,10 @@ async def optimize_resume(request: Request, body: OptimizeRequest, user=Depends(
     source_items = build_source_items_for_prompt(doc)
 
     system = (
-        "You are an elite ATS optimization specialist and resume writer. "
-        "Your ONLY job is to maximize keyword density and ATS score. "
-        "You inject EVERY technical keyword from the job description "
-        "into the resume. You rewrite EVERY bullet point to include "
-        "job keywords plus source-grounded metrics only. You respond ONLY in "
-        "valid JSON with no markdown, no code fences, no extra text.\n\n"
+        "Rephrase and reorder what the candidate actually did, "
+        "using JD wording only where the source supports it. "
+        "Never add skills or numbers. "
+        "You respond ONLY in valid JSON with no markdown, no code fences, no extra text.\n\n"
         "NUMBER GROUNDING - NON-NEGOTIABLE:\n"
         "Never introduce a number, percentage, count, scale, duration, or "
         "quantitative claim unless the same figure appears in the ORIGINAL "
@@ -3110,7 +3119,9 @@ async def analyse_resume(
     if not resume_text.strip():
         raise HTTPException(status_code=400, detail="Resume text is required.")
 
-    if len(resume_text) > 8000:
+    resume_truncated = len(resume_text) > 8000
+    jd_truncated = len(job_description) > 3000
+    if resume_truncated:
         resume_text = _smart_truncate_resume(resume_text, 8000)
 
     has_job_description = bool(job_description.strip())
@@ -3138,16 +3149,31 @@ async def analyse_resume(
         if not isinstance(analysis, dict):
             raise ValueError("Analysis response was not a JSON object.")
 
-        # Compute recruiter lens total from dimensions if model got it wrong
+        # Tell the user when text is truncated
+        if resume_truncated or jd_truncated:
+            truncation_parts = []
+            if resume_truncated:
+                truncation_parts.append("Resume text exceeded 8,000 characters and was truncated for analysis.")
+            if jd_truncated:
+                truncation_parts.append("Job description exceeded 3,000 characters and was truncated for analysis.")
+            analysis["truncation_notice"] = " ".join(truncation_parts)
+            analysis["is_truncated"] = True
+
+        # Clamp each /analyse dimension to its max
         dims = analysis.get("module2_recruiter_lens", {}).get("dimensions", {})
         if dims:
             computed_total = 0
-            for v in dims.values():
+            for dim_key, v in dims.items():
                 if isinstance(v, dict):
+                    max_val = RECRUITER_DIMENSION_MAXES.get(dim_key, int(v.get("max", 10) or 10))
                     try:
-                        computed_total += int(float(v.get("score", 0) or 0))
+                        raw_score = int(float(v.get("score", 0) or 0))
                     except Exception:
-                        computed_total += 0
+                        raw_score = 0
+                    clamped_score = max(0, min(raw_score, max_val))
+                    v["score"] = clamped_score
+                    v["max"] = max_val
+                    computed_total += clamped_score
             analysis["module2_recruiter_lens"]["total"] = computed_total
 
             # Set interpretation band
