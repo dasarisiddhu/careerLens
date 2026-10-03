@@ -3,7 +3,8 @@
 # File: backend/routers/news.py
 # ============================================================
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
+from rate_limit import limiter
 import asyncio
 import httpx, feedparser, logging, time
 from contextlib import suppress
@@ -158,7 +159,8 @@ async def _fetch_newsapi_hiring(client: httpx.AsyncClient) -> list:
 
 
 @router.get("/tech")
-async def get_tech_news():
+@limiter.limit("30/minute")
+async def get_tech_news(request: Request):
     """Fetch latest tech news quickly with NewsAPI + concurrent RSS fallback + cache."""
     cached = _get_cached("tech")
     if cached is not None:
@@ -184,7 +186,8 @@ async def get_tech_news():
 
 
 @router.get("/hiring")
-async def get_hiring_news():
+@limiter.limit("30/minute")
+async def get_hiring_news(request: Request):
     """Fetch hiring news quickly with NewsAPI + concurrent RSS fallback + cache."""
     cached = _get_cached("hiring")
     if cached is not None:

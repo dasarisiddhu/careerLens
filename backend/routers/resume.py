@@ -396,12 +396,6 @@ async def analyze_resume(
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid user profile. Please sign in again.")
 
-    # ---- Freemium gate ----
-    plan_type = profile.get("plan_type", "freemium")
-    resume_analysis_count = int(profile.get("resume_analysis_count") or 0)
-    if plan_type == "freemium" and resume_analysis_count >= settings.FREEMIUM_MAX_ANALYSES:
-        raise HTTPException(status_code=403, detail="Freemium limit reached. Upgrade to Premium for unlimited analyses.")
-
     # ---- Validate URLs ----
     validate_url(github_url, "GitHub")
     github_url = normalize_github_url(github_url)
@@ -440,18 +434,46 @@ async def analyze_resume(
     # ---- Backward-compatible placeholder for DB schemas that require linkedin_url ----
     linkedin_url = ""
 
+    # ---- Validate file (FINDING-002) ----
+    content = await resume.read()
+    if len(content) > settings.MAX_RESUME_SIZE_MB * 1024 * 1024:
+        raise HTTPException(status_code=413, detail=f"Resume file too large (max {settings.MAX_RESUME_SIZE_MB}MB).")
+    if resume.content_type not in settings.ALLOWED_RESUME_TYPES or not content.startswith(b"%PDF-"):
+        raise HTTPException(status_code=415, detail="Invalid file format. Only valid PDF files starting with %PDF- are accepted.")
+
+    # ---- Atomic Freemium gate & counter increment (FINDING-001) ----
+    plan_type = profile.get("plan_type", "freemium")
+    resume_analysis_count = int(profile.get("resume_analysis_count") or 0)
+    incremented = False
+
+    try:
+        rpc_res = supabase.rpc("try_increment_resume_count", {
+            "p_user_id": user_id,
+            "p_max": settings.FREEMIUM_MAX_ANALYSES,
+        }).execute()
+        allowed = bool(rpc_res.data) if hasattr(rpc_res, "data") else bool(rpc_res)
+        if allowed:
+            incremented = True
+    except Exception as rpc_err:
+        logger.warning(f"try_increment_resume_count RPC error, using fallback for {user_id}: {rpc_err}")
+        if plan_type == "freemium" and resume_analysis_count >= settings.FREEMIUM_MAX_ANALYSES:
+            allowed = False
+        else:
+            allowed = True
+            try:
+                supabase.rpc("increment_resume_count", {"p_user_id": user_id}).execute()
+                incremented = True
+            except Exception:
+                pass
+
+    if not allowed:
+        raise HTTPException(status_code=403, detail="Freemium limit reached. Upgrade to Premium for unlimited analyses.")
+
     # ---- Create analysis run ----
     analysis_id = str(uuid.uuid4())
     processing_record_created = False
 
     try:
-        # ---- Validate file ----
-        content = await resume.read()
-        if len(content) > settings.MAX_RESUME_SIZE_MB * 1024 * 1024:
-            raise HTTPException(status_code=413, detail=f"Resume exceeds maximum allowed size of {settings.MAX_RESUME_SIZE_MB}MB.")
-        if resume.content_type not in settings.ALLOWED_RESUME_TYPES or not content.startswith(b"%PDF-"):
-            raise HTTPException(status_code=415, detail="Invalid file format. Only valid PDF files starting with %PDF- are accepted.")
-
         # ---- Create DB record (pending) ----
         try:
             supabase.table("resume_analyses").insert({
@@ -539,14 +561,23 @@ async def analyze_resume(
             "status": "done",
         }).eq("id", analysis_id).execute()
 
-        # ---- Increment usage counter ----
-        supabase.rpc("increment_resume_count", {"p_user_id": user_id}).execute()
+        # Note: Usage counter was already incremented atomically before running AI analysis (FINDING-001)
 
         return {"success": True, "analysis_id": analysis_id, "result": result}
     
     except HTTPException:
+        if incremented:
+            try:
+                supabase.rpc("decrement_resume_count", {"p_user_id": user_id}).execute()
+            except Exception as dec_err:
+                logger.warning(f"Could not rollback resume count for {user_id}: {dec_err}")
         raise
     except Exception as e:
+        if incremented:
+            try:
+                supabase.rpc("decrement_resume_count", {"p_user_id": user_id}).execute()
+            except Exception as dec_err:
+                logger.warning(f"Could not rollback resume count for {user_id}: {dec_err}")
         if processing_record_created:
             try:
                 supabase.table("resume_analyses").update({"status": "failed"}).eq("id", analysis_id).execute()

@@ -36,7 +36,10 @@ async def generate_portfolio(
 
     content = await resume.read()
     if len(content) > settings.MAX_RESUME_SIZE_MB * 1024 * 1024:
-        raise HTTPException(status_code=400, detail=f"Resume must be under {settings.MAX_RESUME_SIZE_MB}MB.")
+        raise HTTPException(status_code=413, detail=f"Resume file too large (max {settings.MAX_RESUME_SIZE_MB}MB).")
+    if not content.startswith(b"%PDF-"):
+        raise HTTPException(status_code=415, detail="Invalid file format. Only valid PDF files starting with %PDF- are accepted.")
+    await resume.seek(0)
 
     try:
         resume_text = extract_text_from_pdf(base64.b64encode(content).decode('utf-8')).strip()
