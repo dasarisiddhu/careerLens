@@ -343,6 +343,144 @@ class ATSScoreFixTests(unittest.TestCase):
         self.assertFalse(result_equal["ats_regression_severe"])
 
 
+class GuardCalibrationFixTests(unittest.TestCase):
+    def test_action_verb_bullets_survive(self):
+        """'Improved/Created/Led/Cut ...' power verb bullets survive and are not treated as fabricated tech."""
+        from routers.optimizer import _apply_optimizer_safety_filters, _find_ungrounded_tech_terms
+
+        source_resume = (
+            "Alex Smith\n"
+            "Software Engineer\n"
+            "Experience:\n"
+            "- Worked on web backend systems in Python.\n"
+            "- Maintained SQL database queries.\n"
+        )
+        source_lower = source_resume.lower()
+
+        # Check action verbs directly against _find_ungrounded_tech_terms
+        for bullet in [
+            "Improved database query latency and backend performance.",
+            "Created scalable Python applications for internal services.",
+            "Led backend refactoring across database query layers.",
+            "Cut server response times by streamlining query logic.",
+        ]:
+            ungrounded = _find_ungrounded_tech_terms(bullet, source_lower)
+            self.assertEqual(ungrounded, [], f"Action verb bullet was falsely flagged: {bullet}")
+
+        # Check in full _apply_optimizer_safety_filters pipeline
+        result = {
+            "optimized_summary": "Software Engineer with experience in Python and SQL.",
+            "improved_bullets": [
+                {
+                    "original": "Worked on web backend systems in Python.",
+                    "improved": "Improved web backend architecture using Python.",
+                },
+                {
+                    "original": "Maintained SQL database queries.",
+                    "improved": "Cut query response times through SQL indexing.",
+                },
+            ],
+            "new_bullets": [],
+            "optimized_skills": {"Languages": ["Python", "SQL"]},
+        }
+        filtered = _apply_optimizer_safety_filters(
+            result,
+            source_resume,
+            "Python SQL Developer",
+            "Software Engineer",
+            "test-user",
+        )
+        self.assertEqual(
+            filtered["improved_bullets"][0]["improved"],
+            "Improved web backend architecture using Python.",
+        )
+        self.assertEqual(
+            filtered["improved_bullets"][1]["improved"],
+            "Cut query response times through SQL indexing.",
+        )
+        self.assertNotIn("fabricated_skills", filtered)
+
+    def test_percentage_through_grounded_tech_survives(self):
+        """'40% through Redis caching' survives when 40% and Redis are in the source."""
+        from routers.optimizer import _apply_optimizer_safety_filters, _find_ungrounded_numbers
+
+        source_resume = (
+            "Alex Smith\n"
+            "Skills: Python, Redis, PostgreSQL\n"
+            "Experience:\n"
+            "- Optimized backend services, reducing database query latency by 40% through index tuning.\n"
+        )
+        improved_bullet = "Reduced database query latency by 40% through Redis caching."
+        
+        # Verify ungrounded numbers check does not flag 40% when Redis is in source
+        ungrounded = _find_ungrounded_numbers(improved_bullet, source_resume)
+        self.assertEqual(ungrounded, [], f"40% with grounded Redis was falsely flagged: {ungrounded}")
+
+        result = {
+            "optimized_summary": "Backend developer with experience in Python and Redis.",
+            "improved_bullets": [
+                {
+                    "original": "Optimized backend services, reducing database query latency by 40% through index tuning.",
+                    "improved": improved_bullet,
+                }
+            ],
+            "new_bullets": [],
+            "optimized_skills": {"Databases": ["Redis", "PostgreSQL"]},
+        }
+        filtered = _apply_optimizer_safety_filters(
+            result,
+            source_resume,
+            "Backend Engineer with Redis and PostgreSQL",
+            "Backend Engineer",
+            "test-user",
+        )
+        self.assertEqual(filtered["improved_bullets"][0]["improved"], improved_bullet)
+
+    def test_bullet_with_jd_only_tool_reverts(self):
+        """A bullet introducing a JD-only tool (e.g. Kubernetes absent from source) still reverts."""
+        from routers.optimizer import _apply_optimizer_safety_filters, _find_ungrounded_tech_terms
+
+        source_resume = (
+            "Alex Smith\n"
+            "Skills: Python, Redis, PostgreSQL\n"
+            "Experience:\n"
+            "- Optimized backend services, reducing database query latency by 40% through index tuning.\n"
+        )
+        source_lower = source_resume.lower()
+
+        # JD asks for Kubernetes, which candidate does NOT have
+        jd = "Senior Cloud Engineer requiring Kubernetes, Docker, and Python."
+        improved_bullet_with_jd_only_tool = "Reduced database query latency by 40% through Kubernetes orchestration."
+
+        # Verify _find_ungrounded_tech_terms detects Kubernetes
+        ungrounded = _find_ungrounded_tech_terms(improved_bullet_with_jd_only_tool, source_lower, jd.lower())
+        self.assertIn("Kubernetes", ungrounded)
+
+        original_bullet = "Optimized backend services, reducing database query latency by 40% through index tuning."
+        result = {
+            "optimized_summary": "Backend developer with experience in Python.",
+            "improved_bullets": [
+                {
+                    "original": original_bullet,
+                    "improved": improved_bullet_with_jd_only_tool,
+                }
+            ],
+            "new_bullets": [],
+            "optimized_skills": {"Languages": ["Python"]},
+        }
+        filtered = _apply_optimizer_safety_filters(
+            result,
+            source_resume,
+            jd,
+            "Cloud Engineer",
+            "test-user",
+        )
+        # The bullet must revert to original because Kubernetes is ungrounded
+        self.assertEqual(filtered["improved_bullets"][0]["improved"], original_bullet)
+        self.assertIn("fabricated_skills", filtered)
+        self.assertIn("Kubernetes", filtered["fabricated_skills"])
+
+
 if __name__ == "__main__":
     unittest.main()
 

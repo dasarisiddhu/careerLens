@@ -670,14 +670,52 @@ def _number_context_is_grounded(
     source_text: str,
     variants: set[str],
 ) -> bool:
+    source_variants = _source_number_variants(source_text)
+    if not variants or variants.isdisjoint(source_variants):
+        logger.warning(
+            "optimizer.guard_trip: code=number_absent_from_source variants=%s context=%s",
+            variants,
+            text[:80],
+        )
+        return False
+
+    source_lower = str(source_text or "").lower()
+
+    # Check that any NEW technology words in the context/text are grounded in the source
+    ungrounded_tech = _find_ungrounded_tech_terms(text, source_lower)
+    if ungrounded_tech:
+        logger.warning(
+            "optimizer.guard_trip: code=ungrounded_tech_in_numeric_context ungrounded=%s context=%s",
+            ungrounded_tech,
+            text[:80],
+        )
+        return False
+
+    raw = str(text[start:end] or "").strip()
+    # Percentages (e.g. 40%) describe rate of improvement and do not bind to conflicting count nouns
+    if raw.endswith("%"):
+        return True
+
+    # For counts with specific entity units (e.g. '100 parking slots' vs '50 parking slots'),
+    # verify that the count is not bound to a conflicting entity from source
     after_words = _number_after_context_words(text, end)
     context_keys = _number_word_keys(after_words or _number_before_context_words(text, start))
     if not context_keys:
         return True
 
-    for source_keys in _source_contexts_for_number(source_text, variants, include_before=not after_words):
-        if source_keys and all(key in source_keys for key in context_keys):
-            return True
+    source_contexts = _source_contexts_for_number(source_text, variants, include_before=not after_words)
+    if not source_contexts:
+        return True
+
+    if any(bool(source_keys & context_keys) for source_keys in source_contexts):
+        return True
+
+    logger.warning(
+        "optimizer.guard_trip: code=numeric_context_mismatch number=%s context_keys=%s context=%s",
+        raw,
+        context_keys,
+        text[:80],
+    )
     return False
 
 
@@ -690,11 +728,24 @@ def _find_ungrounded_numbers(text: str, source_text: str) -> list[dict[str, str]
         if not variants:
             continue
         if variants.isdisjoint(source_variants):
-            ungrounded.append({"number": raw, "reason": "absent_from_source"})
+            reason_code = "number_absent_from_source"
+            logger.warning(
+                "optimizer.guard_trip: code=%s number=%s context=%s",
+                reason_code,
+                raw,
+                str(text or "")[:80],
+            )
+            ungrounded.append({"number": raw, "reason": reason_code})
             continue
-        # Compare numbers, not trailing words: percentages (e.g. 40%) are verified by number value
-        if not raw.endswith("%") and not _number_context_is_grounded(text, match.start(), match.end(), source_text, variants):
-            ungrounded.append({"number": raw, "reason": "source_context_mismatch"})
+        if not _number_context_is_grounded(text, match.start(), match.end(), source_text, variants):
+            reason_code = "source_context_mismatch"
+            logger.warning(
+                "optimizer.guard_trip: code=%s number=%s context=%s",
+                reason_code,
+                raw,
+                str(text or "")[:80],
+            )
+            ungrounded.append({"number": raw, "reason": reason_code})
     return ungrounded
 
 
@@ -2264,32 +2315,34 @@ def _apply_optimizer_safety_filters(
     )
 
     # Candidate technologies in bullets must be grounded in the source resume.
-    # The JD is NEVER evidence for candidate skills or technical experience.
+    # Rely on _find_ungrounded_tech_terms to detect ungrounded tools/technologies.
     fabricated_skills = []
 
     for bullet_obj in result.get("improved_bullets") or []:
         if not isinstance(bullet_obj, dict):
             continue
         bullet_text = str(bullet_obj.get("improved", "") or "")
-        tech_terms = re.findall(r'\b[A-Z][a-zA-Z0-9+#.]{2,}\b', bullet_text)
-        for term in tech_terms:
-            t = term.lower().strip("*")
-            if len(t) < 3 or t in OPTIMIZER_IGNORED_TECH_TERMS:
-                continue
-            if t not in original_lower:
-                fabricated_skills.append(term)
+        ungrounded = _find_ungrounded_tech_terms(bullet_text, original_lower, jd_lower)
+        if ungrounded:
+            logger.warning(
+                "optimizer.guard_trip: code=revert_unsupported_tech bullet=%s ungrounded=%s",
+                bullet_text[:80],
+                ungrounded,
+            )
+            fabricated_skills.extend(ungrounded)
 
     for bullet_obj in result.get("new_bullets") or []:
         if not isinstance(bullet_obj, dict):
             continue
         bullet_text = str(bullet_obj.get("text", "") or "")
-        tech_terms = re.findall(r'\b[A-Z][a-zA-Z0-9+#.]{2,}\b', bullet_text)
-        for term in tech_terms:
-            t = term.lower().strip("*")
-            if len(t) < 3 or t in OPTIMIZER_IGNORED_TECH_TERMS:
-                continue
-            if t not in original_lower:
-                fabricated_skills.append(term)
+        ungrounded = _find_ungrounded_tech_terms(bullet_text, original_lower, jd_lower)
+        if ungrounded:
+            logger.warning(
+                "optimizer.guard_trip: code=drop_unsupported_tech_new_bullet bullet=%s ungrounded=%s",
+                bullet_text[:80],
+                ungrounded,
+            )
+            fabricated_skills.extend(ungrounded)
 
     # Claim-level grounding for new_bullets:
     # Require that the action/capability described has reasonable lexical overlap
@@ -2337,10 +2390,7 @@ def _apply_optimizer_safety_filters(
         )
         if max_overlap < 2:
             unsupported_action_bullets.append(bullet_text)
-            terms = [
-                t for t in re.findall(r'\b[A-Z][a-zA-Z0-9+#.]{2,}\b', bullet_text)
-                if t.lower() not in original_lower
-            ]
+            terms = _find_ungrounded_tech_terms(bullet_text, original_lower, jd_lower)
             if terms:
                 unsupported_action_terms.extend(terms)
             continue
@@ -2416,7 +2466,12 @@ def _apply_optimizer_safety_filters(
             if not isinstance(bullet_obj, dict):
                 continue
             bullet_text = str(bullet_obj.get("improved", ""))
-            if any(term in bullet_text.lower() for term in fabricated_lower):
+            if any(_contains_grounded_term(bullet_text.lower(), term) for term in fabricated_lower):
+                logger.warning(
+                    "optimizer.guard_trip: code=revert_bullet_to_original bullet=%s ungrounded=%s",
+                    bullet_text[:80],
+                    fabricated_lower,
+                )
                 bullet_obj["improved"] = str(bullet_obj.get("original") or "")
                 bullet_obj["keywords_added"] = []
                 bullet_obj["improvement_reason"] = (
@@ -2426,7 +2481,7 @@ def _apply_optimizer_safety_filters(
         result["new_bullets"] = [
             bullet_obj for bullet_obj in result.get("new_bullets") or []
             if isinstance(bullet_obj, dict)
-            and not any(term in str(bullet_obj.get("text", "")).lower() for term in fabricated_lower)
+            and not any(_contains_grounded_term(str(bullet_obj.get("text", "")).lower(), term) for term in fabricated_lower)
         ]
 
     no_employment_history = not re.search(
