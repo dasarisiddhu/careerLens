@@ -220,31 +220,139 @@ Return ONLY this exact JSON structure. No extra fields. No markdown.
 """
 
 
+EXPERIENCE_VOCABULARY_STOPWORDS = {
+    # English grammar / connectors / pronouns / generic verbs
+    "the", "and", "for", "with", "that", "this", "will", "have", "from", "you",
+    "are", "your", "our", "they", "can", "has", "was", "were", "been", "their",
+    "into", "about", "which", "when", "who", "what", "how", "all", "also", "both",
+    "each", "more", "other", "some", "such", "than", "then", "them", "these",
+    "those", "very", "shall", "should", "could", "would", "may", "might", "must",
+    "had", "its", "his", "her", "we", "is", "a", "an", "of", "to", "in", "on",
+    "at", "by", "or", "not", "be", "as", "if", "but", "so", "up", "out", "any",
+    "only", "own", "same", "too", "just", "now",
+
+    # Experience / qualification / candidate vocabulary (MUST NEVER BE COUNTED AS HARD SKILLS)
+    "experience", "experiences", "experienced", "strong", "solid", "proven",
+    "demonstrated", "track", "record", "ability", "abilities", "able", "skilled",
+    "proficiency", "proficient", "expert", "expertise", "knowledge", "background",
+    "work", "working", "worked", "worker", "workers", "team", "teams", "teamwork",
+    "player", "environment", "fast-paced", "candidate", "candidates", "role",
+    "roles", "job", "jobs", "position", "positions", "responsibilities",
+    "responsibility", "duties", "duty", "degree", "bachelor", "bachelors", "master",
+    "masters", "phd", "university", "college", "education", "years", "year",
+    "yr", "yrs", "month", "months", "daily", "weekly", "monthly", "annual",
+    "communication", "collaborative", "collaboration", "collaborate", "problem",
+    "solving", "analytical", "detail", "oriented", "leadership", "mentor",
+    "mentoring", "require", "requires", "required", "requirement", "requirements",
+    "qualification", "qualifications", "preferred", "plus", "nice", "bonus",
+    "building", "developing", "designing", "implementing", "maintaining",
+    "managing", "leading", "driving", "creating", "supporting", "optimizing",
+    "delivering", "executing", "tools", "technologies", "tech", "technology",
+    "solutions", "systems", "platform", "platforms", "applications", "apps",
+    "stack", "services", "software", "hardware", "excellent", "great", "good",
+    "passionate", "motivated", "enthusiastic", "self-starter", "dynamic",
+    "hands-on", "quality", "best", "practices", "understanding", "familiar",
+    "familiarity", "exposure", "passion", "interested", "interest", "equivalent",
+    "seeking", "looking", "join", "help", "build", "grow", "scale", "impact",
+    "opportunity", "industry", "standard", "standards", "professional",
+    "across", "within", "high", "multiple", "various", "complex", "real-world",
+    "skills", "skill", "must-have", "nice-to-have", "minimum", "senior", "junior",
+    "lead", "staff", "principal", "developer", "engineer", "specialist",
+}
+
+HARD_TECH_SKILLS = [
+    # Multi-word skills first (so multi-word patterns match before individual words)
+    "machine learning", "deep learning", "artificial intelligence", "natural language processing",
+    "computer vision", "large language models", "reinforcement learning", "data engineering",
+    "data pipelines", "cloud computing", "distributed systems", "system design", "data structures",
+    "object-oriented programming", "spring boot", "ruby on rails", "react native", "next.js",
+    "express.js", "vue.js", "angularjs", "tailwind css", "google cloud", "amazon web services",
+    "github actions", "gitlab ci", "rest api", "restful api", "restful apis", "rest apis",
+    "microservices architecture", "hugging face", "apache spark", "apache kafka", "apache flink",
+    "event-driven architecture",
+
+    # Single-word languages, frameworks, databases, platforms, tools
+    "python", "java", "javascript", "typescript", "c++", "c#", "golang", "go", "rust",
+    "ruby", "php", "swift", "kotlin", "scala", "r", "perl", "bash", "shell", "powershell",
+    "sql", "nosql", "html", "css", "sass", "scss",
+    "react", "nextjs", "vue", "angular", "svelte", "django", "flask", "fastapi", "spring",
+    "express", "node", "node.js", "asp.net", "rails", "laravel", "flutter", "jquery", "tailwind",
+    "bootstrap", "redux", "graphql", "rest", "restful", "grpc", "microservices", "websockets",
+    "postgresql", "postgres", "mysql", "sqlite", "mongodb", "redis", "cassandra", "dynamodb",
+    "elasticsearch", "neo4j", "oracle", "snowflake", "bigquery", "mariadb", "kafka", "rabbitmq",
+    "celery", "aws", "azure", "gcp", "docker", "kubernetes", "k8s", "terraform", "ansible",
+    "jenkins", "ci/cd", "linux", "unix", "helm", "prometheus", "grafana", "nginx", "apache",
+    "serverless", "lambda", "ecs", "eks", "pytorch", "tensorflow", "keras", "scikit-learn",
+    "sklearn", "pandas", "numpy", "scipy", "spark", "hadoop", "airflow", "dbt", "llm",
+    "langchain", "llamaindex", "git", "github", "gitlab", "jira", "postman", "selenium",
+    "cypress", "jest", "pytest", "junit", "oauth", "jwt", "saml", "sso", "tcp/ip", "dns",
+    "algorithms", "multithreading", "concurrency", "opencv", "nltk", "spacy", "openai",
+]
+
+
+def _clean_for_boundary_matching(text: str) -> str:
+    cleaned = re.sub(r"[\.,;:!?]+(?:\s|$)", " ", str(text or "").lower())
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
+def _skill_in_text(skill: str, text: str, check_aliases: bool = True) -> bool:
+    if not skill or not text:
+        return False
+    norm_text = _clean_for_boundary_matching(text)
+    norm_skill = _clean_for_boundary_matching(skill)
+    if not norm_skill:
+        return False
+    escaped = re.escape(norm_skill).replace(r"\ ", r"\s+")
+    pattern = rf"(?<![a-zA-Z0-9+#.]){escaped}(?![a-zA-Z0-9+#.])"
+    if bool(re.search(pattern, norm_text)):
+        return True
+    if not check_aliases:
+        return False
+    # Common tech aliases without recursion
+    if norm_skill in {"node", "node.js"}:
+        target = "node.js" if norm_skill == "node" else "node"
+        return _skill_in_text(target, text, check_aliases=False)
+    if norm_skill in {"golang", "go"}:
+        target = "go" if norm_skill == "golang" else "golang"
+        return _skill_in_text(target, text, check_aliases=False)
+    if norm_skill in {"k8s", "kubernetes"}:
+        target = "k8s" if norm_skill == "kubernetes" else "kubernetes"
+        return _skill_in_text(target, text, check_aliases=False)
+    if norm_skill in {"rest", "restful"}:
+        target = "restful" if norm_skill == "rest" else "rest"
+        return _skill_in_text(target, text, check_aliases=False)
+    if norm_skill == "ci/cd" and bool(re.search(r"\bci\s*/\s*cd\b", norm_text)):
+        return True
+    return False
+
+
+def extract_jd_hard_skills(jd: str) -> list[str]:
+    if not jd or not jd.strip():
+        return []
+    norm_jd = _clean_for_boundary_matching(jd)
+    found_skills: set[str] = set()
+    for skill in HARD_TECH_SKILLS:
+        if skill in EXPERIENCE_VOCABULARY_STOPWORDS:
+            continue
+        escaped = re.escape(skill).replace(r"\ ", r"\s+")
+        pattern = rf"(?<![a-zA-Z0-9+#.]){escaped}(?![a-zA-Z0-9+#.])"
+        if re.search(pattern, norm_jd):
+            found_skills.add(skill)
+    return sorted(found_skills)
+
+
 def count_kw_coverage(text: str, jd: str, source_text: str = "") -> int:
-    import re
-    stopwords = {
-        "the", "and", "for", "with", "that", "this", "will", "have",
-        "from", "you", "are", "your", "our", "they", "can", "has", "was",
-        "were", "been", "their", "into", "about", "which", "when", "who",
-        "what", "how", "all", "also", "both", "each", "more", "other",
-        "some", "such", "than", "then", "them", "these", "those", "very",
-        "shall", "should", "could", "would", "may", "might", "must",
-        "have", "had", "its", "his", "her", "their", "our", "we", "is",
-        "a", "an", "of", "to", "in", "on", "at", "by", "or", "not", "be"
-    }
-    words = set(re.findall(r'\b[a-zA-Z][a-zA-Z0-9+#.]*\b', jd.lower()))
-    keywords = [w for w in words if len(w) > 3 and w not in stopwords]
-    if not keywords:
+    jd_skills = extract_jd_hard_skills(jd)
+    if not jd_skills:
         return 30
-    text_lower = text.lower()
-    source_lower = source_text.lower() if source_text else ""
+    source_skills = {s for s in jd_skills if _skill_in_text(s, source_text)} if source_text else set()
     matches = 0
-    for k in keywords:
-        if k in text_lower:
+    for s in jd_skills:
+        if _skill_in_text(s, text):
             # If source_text is provided, reward keyword only if supported by candidate's source resume
-            if not source_lower or k in source_lower:
+            if not source_text or s in source_skills:
                 matches += 1
-    return min(int((matches / len(keywords)) * 100), 99)
+    return min(int((matches / len(jd_skills)) * 100), 100)
 
 
 router = APIRouter()
@@ -2077,11 +2185,40 @@ def _resume_number_audit_pieces(result: dict) -> list[str]:
 
 
 def _stamp_ats_scores(result: dict, resume_text: str, job_description: str) -> tuple[int, int]:
-    ats_before = count_kw_coverage(resume_text, job_description)
-    ats_after = count_kw_coverage(_optimized_text_for_ats(result), job_description, source_text=resume_text)
+    jd_skills = extract_jd_hard_skills(job_description)
+    if not jd_skills:
+        result["ats_before"] = 50
+        result["ats_after"] = 50
+        result["reachable_max"] = 100
+        result["ats_reachable_max"] = 100
+        result["ats_regressed"] = False
+        result["ats_regression_severe"] = False
+        return 50, 50
+
+    # Source skills present in candidate's original source resume text
+    source_skills = {s for s in jd_skills if _skill_in_text(s, resume_text)}
+    reachable_max = int((len(source_skills) / len(jd_skills)) * 100)
+    result["reachable_max"] = reachable_max
+    result["ats_reachable_max"] = reachable_max
+    result["reachable_max_skills"] = sorted(source_skills)
+    result["jd_hard_skills"] = sorted(jd_skills)
+
+    # ats_before: JD skills present in the original resume (primary sections or source)
+    doc = parse_source_resume(resume_text)
+    original_primary_text = " ".join([doc.summary] + [b.original for b in doc.all_bullets] + doc.skills).strip()
+    eval_before = original_primary_text if original_primary_text else resume_text
+    before_skills = {s for s in jd_skills if _skill_in_text(s, eval_before)}
+    ats_before = int((len(before_skills) / len(jd_skills)) * 100)
+
+    # ats_after: JD skills present in the optimized text (summary+bullets+skills)
+    optimized_text = _optimized_text_for_ats(result)
+    after_skills = {s for s in jd_skills if _skill_in_text(s, optimized_text) and s in source_skills}
+    ats_after = int((len(after_skills) / len(jd_skills)) * 100)
+
     result["ats_before"] = ats_before
     result["ats_after"] = ats_after
     result["ats_regressed"] = ats_after < ats_before
+    result["ats_regression_severe"] = (ats_before - ats_after) > 5
     return ats_before, ats_after
 
 
@@ -2719,7 +2856,7 @@ async def optimize_resume(request: Request, body: OptimizeRequest, user=Depends(
             doc=doc,
         )
 
-        if result.get("ats_regressed"):
+        if (ats_before - ats_after) > 5:
             first_attempt_after = ats_after
             logger.warning(
                 f"ATS regression detected for user {user['user_id']}: "
@@ -2747,6 +2884,7 @@ async def optimize_resume(request: Request, body: OptimizeRequest, user=Depends(
                 )
 
         result["ats_regressed"] = ats_after < ats_before
+        result["ats_regression_severe"] = (ats_before - ats_after) > 5
         result.setdefault("ats_retry_attempted", False)
 
         try:

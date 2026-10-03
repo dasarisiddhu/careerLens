@@ -230,6 +230,119 @@ class SummaryPipelineFixTests(unittest.TestCase):
         self.assertIn("summary_grounding_note", filtered)
 
 
+class ATSScoreFixTests(unittest.TestCase):
+    def test_java_not_equal_to_javascript(self):
+        """Java != JavaScript: Word boundary matching prevents substring hits."""
+        from routers.optimizer import count_kw_coverage, _skill_in_text
+
+        # Direct skill check
+        self.assertFalse(_skill_in_text("java", "Extensive experience building modern apps in JavaScript and Node.js."))
+        self.assertTrue(_skill_in_text("javascript", "Extensive experience building modern apps in JavaScript and Node.js."))
+        self.assertTrue(_skill_in_text("java", "Developed enterprise backend microservices with Java, Spring Boot, and PostgreSQL."))
+
+        # Coverage check
+        jd_java = "Looking for a backend engineer with Java."
+        jd_js = "Looking for a frontend developer with JavaScript."
+
+        resume_js_only = "Frontend developer skilled in JavaScript, React, and HTML."
+        resume_java_only = "Backend developer skilled in Java and Spring Boot."
+
+        # JS resume against Java JD should have 0% coverage
+        self.assertEqual(count_kw_coverage(resume_js_only, jd_java), 0)
+        # Java resume against JS JD should have 0% coverage
+        self.assertEqual(count_kw_coverage(resume_java_only, jd_js), 0)
+        # Java resume against Java JD should have 100% coverage
+        self.assertEqual(count_kw_coverage(resume_java_only, jd_java), 100)
+
+    def test_strong_experience_never_counted(self):
+        """'strong' and 'experience' are stop words and never counted as hard skills."""
+        from routers.optimizer import extract_jd_hard_skills, count_kw_coverage
+
+        jd = "Seeking a candidate with strong experience and solid background in Python."
+        extracted = extract_jd_hard_skills(jd)
+        self.assertEqual(extracted, ["python"])
+        self.assertNotIn("strong", extracted)
+        self.assertNotIn("experience", extracted)
+        self.assertNotIn("solid", extracted)
+        self.assertNotIn("background", extracted)
+
+        # Candidate with only buzzwords gets 0% coverage
+        buzzword_resume = "Highly motivated professional with strong experience, solid background, and great communication."
+        self.assertEqual(count_kw_coverage(buzzword_resume, jd), 0)
+
+    def test_rewrite_surfaces_buried_source_keyword_raises_score(self):
+        """Surfacing a buried source keyword in rewritten bullets raises the ATS score."""
+        from routers.optimizer import _stamp_ats_scores, count_kw_coverage
+
+        jd = "Required: Python, Redis, and PostgreSQL."
+        source_resume = (
+            "Alex Smith\n"
+            "Summary:\n"
+            "Backend developer with Python experience.\n\n"
+            "Experience:\n"
+            "Tech Corp | Backend Engineer\n"
+            "- Built web services using Python.\n\n"
+            "Projects:\n"
+            "TaskQueue Personal Project\n"
+            "- Implemented distributed caching mechanism with Redis.\n\n"
+            "Education:\n"
+            "B.S. in Computer Science. Coursework: Relational Database Systems (PostgreSQL)."
+        )
+
+        # Baseline text before rewrite has only Python
+        text_before = "Backend developer who built web services using Python."
+        score_before = count_kw_coverage(text_before, jd, source_text=source_resume)
+
+        # Rewrite surfaces buried Redis and PostgreSQL from source projects/education
+        text_after = "Built web services using Python, Redis caching, and PostgreSQL."
+        score_after = count_kw_coverage(text_after, jd, source_text=source_resume)
+
+        self.assertGreater(score_after, score_before, "Surfacing buried source keywords must raise ATS score")
+
+        # Full _stamp_ats_scores pipeline check
+        result = {
+            "optimized_summary": "Backend developer experienced in Python, Redis, and PostgreSQL.",
+            "improved_bullets": [
+                {"improved": "Engineered Python services with Redis caching layer and PostgreSQL database."}
+            ],
+            "new_bullets": [],
+            "optimized_skills": {"Backend": ["Python", "Redis", "PostgreSQL"]},
+        }
+        ats_before, ats_after = _stamp_ats_scores(result, source_resume, jd)
+        self.assertGreater(ats_after, ats_before)
+        self.assertEqual(result.get("reachable_max"), 100)
+        self.assertIn("redis", result.get("reachable_max_skills", []))
+
+    def test_retry_threshold_greater_than_5_points(self):
+        """ATS regression triggers retry only when score drop > 5 points."""
+        from routers.optimizer import _stamp_ats_scores
+
+        jd = "Skills: Python, React, Docker, Kubernetes, AWS, SQL, Redis, Kafka, TypeScript, GraphQL"
+        source_resume = "Python React Docker Kubernetes AWS SQL Redis Kafka TypeScript GraphQL"
+
+        # Case 1: Drop of exactly 3 points (<= 5)
+        # Candidate text drops 1 skill (9/10 = 90% vs 100%)
+        # ats_before = 100, ats_after = 90 -> severe drop of 10 > 5
+        result_severe = {
+            "optimized_summary": "Python React Docker",
+            "improved_bullets": [],
+            "new_bullets": [],
+            "optimized_skills": ["Python", "React", "Docker"],
+        }
+        b, a = _stamp_ats_scores(result_severe, source_resume, jd)
+        self.assertTrue(result_severe["ats_regression_severe"])
+
+        # Case 2: No drop (100% == 100%)
+        result_equal = {
+            "optimized_summary": source_resume,
+            "improved_bullets": [],
+            "new_bullets": [],
+            "optimized_skills": ["Python", "React", "Docker", "Kubernetes", "AWS", "SQL", "Redis", "Kafka", "TypeScript", "GraphQL"],
+        }
+        b, a = _stamp_ats_scores(result_equal, source_resume, jd)
+        self.assertFalse(result_equal["ats_regression_severe"])
+
+
 if __name__ == "__main__":
     unittest.main()
 
