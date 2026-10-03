@@ -2982,6 +2982,12 @@ async def optimize_resume(request: Request, body: OptimizeRequest, user=Depends(
         raise
     except Exception as e:
         logger.error(f"Optimization error for user {user['user_id']}: {e}", exc_info=True)
+        err_str = str(e).lower()
+        if "429" in err_str or "rate limit" in err_str:
+            raise HTTPException(
+                status_code=429,
+                detail="The AI service is experiencing high traffic. Please wait a few seconds and try again.",
+            )
         raise HTTPException(
             status_code=500,
             detail="Resume optimization could not be completed due to a temporary AI formatting issue. Please try again.",
