@@ -563,6 +563,140 @@ class PromptHygieneFixTests(unittest.TestCase):
         self.assertEqual(computed_total, 10 + 0 + 10 + 15 + 15 + 20 + 20)  # 90 <= 100
 
 
+class FixACloseGuardHoleTests(unittest.TestCase):
+    def test_terraform_jenkins_elasticsearch_bullets_revert(self):
+        """Terraform/Jenkins/Elasticsearch bullets revert when absent from source."""
+        from routers.optimizer import _apply_optimizer_safety_filters, _find_ungrounded_tech_terms
+
+        source_resume = (
+            "Taylor Swift\n"
+            "Software Engineer\n"
+            "Skills: Python, Redis, PostgreSQL\n"
+            "Experience:\n"
+            "- Maintained core database systems and Python APIs.\n"
+        )
+        source_lower = source_resume.lower()
+
+        # 1. Direct _find_ungrounded_tech_terms check
+        ungrounded_tf = _find_ungrounded_tech_terms("Provisioned cloud infrastructure using Terraform.", source_lower)
+        self.assertIn("Terraform", ungrounded_tf)
+
+        ungrounded_jenkins = _find_ungrounded_tech_terms("Configured CI/CD automated deployment with Jenkins.", source_lower)
+        self.assertIn("Jenkins", ungrounded_jenkins)
+
+        ungrounded_es = _find_ungrounded_tech_terms("Accelerated full-text search queries using Elasticsearch.", source_lower)
+        self.assertIn("Elasticsearch", ungrounded_es)
+
+        # 2. Pipeline reversion check
+        result = {
+            "optimized_summary": "Software Engineer with experience in Python and PostgreSQL.",
+            "improved_bullets": [
+                {
+                    "original": "Maintained core database systems and Python APIs.",
+                    "improved": "Deployed cloud infrastructure using Terraform and Jenkins, indexing metrics with Elasticsearch.",
+                }
+            ],
+            "new_bullets": [],
+            "optimized_skills": {},
+        }
+        filtered = _apply_optimizer_safety_filters(
+            result,
+            source_resume,
+            "Senior Cloud Engineer requiring Terraform, Jenkins, and Elasticsearch.",
+            "Cloud Engineer",
+            "test-user",
+        )
+        self.assertEqual(
+            filtered["improved_bullets"][0]["improved"],
+            "Maintained core database systems and Python APIs.",
+        )
+        self.assertIn("Terraform", filtered.get("fabricated_skills", []))
+        self.assertIn("Jenkins", filtered.get("fabricated_skills", []))
+        self.assertIn("Elasticsearch", filtered.get("fabricated_skills", []))
+
+    def test_led_a_team_reverts_without_leadership_signal(self):
+        """'Led a team…' reverts when the source has no leadership signal."""
+        from routers.optimizer import _apply_optimizer_safety_filters
+
+        source_resume = (
+            "Jordan Lee\n"
+            "Software Developer\n"
+            "Experience:\n"
+            "Acme Corp - Junior Developer\n"
+            "- Built backend web APIs with Python and Flask.\n"
+            "- Monitored PostgreSQL database performance.\n"
+        )
+        original_bullet = "Built backend web APIs with Python and Flask."
+        result = {
+            "optimized_summary": "Software Developer with Python and Flask.",
+            "improved_bullets": [
+                {
+                    "original": original_bullet,
+                    "improved": "Led a team of 5 engineers to deliver backend web APIs with Python and Flask.",
+                }
+            ],
+            "new_bullets": [],
+            "optimized_skills": {},
+        }
+        filtered = _apply_optimizer_safety_filters(
+            result,
+            source_resume,
+            "Lead Backend Engineer",
+            "Lead Engineer",
+            "test-user",
+        )
+        # Bullet must revert to original because 'led' and 'team of' are ungrounded
+        self.assertEqual(filtered["improved_bullets"][0]["improved"], original_bullet)
+
+    def test_grounded_leadership_bullet_survives(self):
+        """A bullet with leadership signal already present in source bullet survives."""
+        from routers.optimizer import _apply_optimizer_safety_filters
+
+        source_resume = (
+            "Morgan Reed\n"
+            "Engineering Lead\n"
+            "Experience:\n"
+            "Acme Corp - Team Lead\n"
+            "- Led a team of 4 engineers building distributed backend systems in Python.\n"
+        )
+        original_bullet = "Led a team of 4 engineers building distributed backend systems in Python."
+        improved_bullet = "Led a team of 4 engineers delivering distributed backend systems in Python."
+        result = {
+            "optimized_summary": "Engineering Lead with Python.",
+            "improved_bullets": [
+                {
+                    "original": original_bullet,
+                    "improved": improved_bullet,
+                }
+            ],
+            "new_bullets": [],
+            "optimized_skills": {},
+        }
+        filtered = _apply_optimizer_safety_filters(
+            result,
+            source_resume,
+            "Senior Engineering Lead",
+            "Engineering Lead",
+            "test-user",
+        )
+        # Survives because 'led' and 'team of' exist in original bullet and section
+        self.assertEqual(filtered["improved_bullets"][0]["improved"], improved_bullet)
+
+    def test_go_and_r_case_sensitivity(self):
+        """'go' and 'r' are matched case-sensitively to avoid matching English words."""
+        from routers.optimizer import _skill_in_text
+
+        # Lowercase English words should NOT match
+        self.assertFalse(_skill_in_text("go", "I like to go fast and explore new ideas."))
+        self.assertFalse(_skill_in_text("go", "Let's go through the requirements."))
+        self.assertFalse(_skill_in_text("r", "Research and development in various fields."))
+
+        # Proper casing DOES match
+        self.assertTrue(_skill_in_text("go", "Engineered microservices using Go and Docker."))
+        self.assertTrue(_skill_in_text("go", "Developed high-throughput services with Golang."))
+        self.assertTrue(_skill_in_text("r", "Statistical analysis performed using Python and R."))
+
+
 if __name__ == "__main__":
     unittest.main()
 

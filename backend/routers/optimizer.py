@@ -298,6 +298,24 @@ def _clean_for_boundary_matching(text: str) -> str:
 def _skill_in_text(skill: str, text: str, check_aliases: bool = True) -> bool:
     if not skill or not text:
         return False
+    norm_skill = skill.strip().lower()
+    if norm_skill in {"go", "r"}:
+        text_str = str(text)
+        if text_str.islower():
+            if norm_skill == "go":
+                pattern = r"\b(?:golang|go)\b"
+                return bool(re.search(pattern, text_str))
+            elif norm_skill == "r":
+                pattern = r"\br\b"
+                return bool(re.search(pattern, text_str))
+        else:
+            if norm_skill == "go":
+                pattern = r"\b(?:Golang|golang|Go)\b"
+                return bool(re.search(pattern, text_str))
+            elif norm_skill == "r":
+                pattern = r"\bR\b"
+                return bool(re.search(pattern, text_str))
+
     norm_text = _clean_for_boundary_matching(text)
     norm_skill = _clean_for_boundary_matching(skill)
     if not norm_skill:
@@ -320,7 +338,12 @@ def _skill_in_text(skill: str, text: str, check_aliases: bool = True) -> bool:
         return _skill_in_text(target, text, check_aliases=False)
     if norm_skill in {"rest", "restful"}:
         target = "restful" if norm_skill == "rest" else "rest"
-        return _skill_in_text(target, text, check_aliases=False)
+        if _skill_in_text(target, text, check_aliases=False):
+            return True
+    if norm_skill in {"rest api", "restful api", "rest apis", "restful apis"}:
+        for alt in {"rest api", "restful api", "rest apis", "restful apis", "rest", "restful"}:
+            if alt != norm_skill and _skill_in_text(alt, text, check_aliases=False):
+                return True
     if norm_skill == "ci/cd" and bool(re.search(r"\bci\s*/\s*cd\b", norm_text)):
         return True
     return False
@@ -519,7 +542,16 @@ def _find_ungrounded_tech_terms(text: str, source_lower: str, jd_lower: str = ""
             continue
         ungrounded.append(term)
 
-    # 2. Check general tech candidates (mixed-case names, symbols, or curated ML markers)
+    # 2. Check any HARD_TECH_SKILLS entry present in text but absent from source (FIX A)
+    for skill in HARD_TECH_SKILLS:
+        if not _skill_in_text(skill, text):
+            continue
+        if _skill_in_text(skill, source_lower):
+            continue
+        display_name = skill.title() if len(skill) > 2 else skill.upper()
+        ungrounded.append(display_name)
+
+    # 3. Check general tech candidates (mixed-case names, symbols, or curated ML markers)
     tech_candidates = re.findall(r"\b[A-Z][a-zA-Z0-9+#.]{2,}\b", text)
     for cand in tech_candidates:
         cand_lower = cand.lower().strip("*")
@@ -527,12 +559,13 @@ def _find_ungrounded_tech_terms(text: str, source_lower: str, jd_lower: str = ""
             continue
         is_tech = (
             cand_lower in GROUNDING_TECH_TERMS
+            or cand_lower in HARD_TECH_SKILLS
             or cand_lower in OPTIMIZER_ML_MARKERS
             or bool(re.search(r"[a-z][A-Z]|[A-Z]{2,}[a-z]|[a-zA-Z][0-9]|[0-9][a-zA-Z]|[+#.]", cand))
         )
         if not is_tech:
             continue
-        if not _contains_grounded_term(source_lower, cand_lower):
+        if not _contains_grounded_term(source_lower, cand_lower) and not _skill_in_text(cand_lower, source_lower):
             ungrounded.append(cand)
 
     return list(dict.fromkeys(ungrounded))
@@ -2289,13 +2322,92 @@ def _stamp_ats_scores(result: dict, resume_text: str, job_description: str) -> t
     return ats_before, ats_after
 
 
+_SECTION_HEADER_RE = re.compile(
+    r"^(work\s+experience|professional\s+experience|experience|employment|"
+    r"projects?|project\s+experience|academic\s+projects?|personal\s+projects?|"
+    r"education|skills|technical\s+skills|core\s+skills|certifications?|"
+    r"summary|profile|objective|contact|achievements?|awards?)\b",
+    re.IGNORECASE,
+)
+
+
+def _get_bullet_source_section_text(
+    bullet_obj: dict,
+    resume_text: str,
+    doc: Optional[ResumeDocument] = None,
+) -> str:
+    """Returns the text of the source resume section / entry containing this bullet."""
+    original_text = str(bullet_obj.get("original") or "").strip()
+    source_id = str(bullet_obj.get("source_id") or "").strip()
+
+    if doc is None and resume_text:
+        try:
+            doc = parse_source_resume(resume_text)
+        except Exception:
+            doc = None
+
+    if doc:
+        source_bullet = None
+        if source_id and source_id in doc.bullet_map:
+            source_bullet = doc.bullet_map[source_id]
+        elif original_text:
+            for b in doc.all_bullets:
+                if (
+                    b.original.strip() == original_text
+                    or b.original.strip() in original_text
+                    or original_text in b.original.strip()
+                ):
+                    source_bullet = b
+                    break
+
+        if source_bullet:
+            all_entries = (doc.experience or []) + (doc.projects or [])
+            entry = next((e for e in all_entries if e.entry_id == source_bullet.entry_id), None)
+            section_entries = [e for e in all_entries if e.section == source_bullet.section]
+            section_parts = []
+            if entry:
+                section_parts.append(f"{entry.header_raw} {' '.join(b.original for b in entry.bullets)}")
+            for se in section_entries:
+                section_parts.append(f"{se.header_raw} {' '.join(b.original for b in se.bullets)}")
+            return " ".join(section_parts)
+
+    lines = resume_text.splitlines()
+    target_idx = -1
+    for i, line in enumerate(lines):
+        if original_text and (original_text in line or line.strip() in original_text):
+            target_idx = i
+            break
+
+    if target_idx != -1:
+        start_idx = 0
+        for i in range(target_idx, -1, -1):
+            if _SECTION_HEADER_RE.match(lines[i].strip()):
+                start_idx = i
+                break
+        end_idx = len(lines)
+        for i in range(target_idx + 1, len(lines)):
+            if _SECTION_HEADER_RE.match(lines[i].strip()):
+                end_idx = i
+                break
+        return " ".join(lines[start_idx:end_idx])
+
+    return ""
+
+
 def _apply_optimizer_safety_filters(
     result: dict,
     resume_text: str,
     job_description: str,
     job_title: str = "",
     user_id: str = "",
+    doc: Optional[ResumeDocument] = None,
 ) -> dict:
+    if doc is None and resume_text:
+        try:
+            doc = parse_source_resume(resume_text)
+        except Exception:
+            doc = None
+
     result = _validate_against_source(result, resume_text, job_description)
 
     # If the JD requires >= 3 ML skills and the original resume has 0,
@@ -2346,6 +2458,12 @@ def _apply_optimizer_safety_filters(
                 ungrounded,
             )
             fabricated_skills.extend(ungrounded)
+            # Revert the bullet to original immediately
+            bullet_obj["improved"] = str(bullet_obj.get("original") or "")
+            bullet_obj["keywords_added"] = []
+            bullet_obj["improvement_reason"] = (
+                f"Kept original bullet because the generated rewrite introduced skills absent from the original resume ({', '.join(ungrounded)})."
+            )
 
     for bullet_obj in result.get("new_bullets") or []:
         if not isinstance(bullet_obj, dict):
@@ -2359,6 +2477,88 @@ def _apply_optimizer_safety_filters(
                 ungrounded,
             )
             fabricated_skills.extend(ungrounded)
+
+    # ── Claim-Verb Guard (FIX A) ───────────────────────────────────────
+    # Verbs and phrases claiming leadership, ownership, or organizational scope:
+    # led, managed, mentored, owned, headed, directed, spearheaded, architected,
+    # "team of", "cross-functional"
+    # These MUST already exist in the original bullet or its section in the source resume;
+    # otherwise, revert the bullet.
+    CLAIM_VERB_PATTERNS = [
+        ("team of", re.compile(r"\bteam\s+of\b", re.IGNORECASE)),
+        ("cross-functional", re.compile(r"\bcross[-\s]functional\b", re.IGNORECASE)),
+        ("led", re.compile(r"\bled\b", re.IGNORECASE)),
+        ("managed", re.compile(r"\bmanaged\b", re.IGNORECASE)),
+        ("mentored", re.compile(r"\bmentored\b", re.IGNORECASE)),
+        ("owned", re.compile(r"\bowned\b", re.IGNORECASE)),
+        ("headed", re.compile(r"\bheaded\b", re.IGNORECASE)),
+        ("directed", re.compile(r"\bdirected\b", re.IGNORECASE)),
+        ("spearheaded", re.compile(r"\bspearheaded\b", re.IGNORECASE)),
+        ("architected", re.compile(r"\barchitected\b", re.IGNORECASE)),
+    ]
+
+    for bullet_obj in result.get("improved_bullets") or []:
+        if not isinstance(bullet_obj, dict):
+            continue
+        original_text = str(bullet_obj.get("original") or "")
+        improved_text = str(bullet_obj.get("improved") or "")
+        if not improved_text or improved_text == original_text:
+            continue
+
+        section_text = _get_bullet_source_section_text(bullet_obj, resume_text, doc)
+        source_scope_text = f"{original_text} {section_text}"
+
+        revert_verb = None
+        for verb_phrase, verb_re in CLAIM_VERB_PATTERNS:
+            if verb_re.search(improved_text):
+                if not verb_re.search(source_scope_text):
+                    revert_verb = verb_phrase
+                    break
+
+        if revert_verb:
+            logger.warning(
+                "optimizer.guard_trip: code=revert_unsupported_claim_verb bullet=%s verb=%s",
+                improved_text[:80],
+                revert_verb,
+            )
+            bullet_obj["improved"] = original_text
+            bullet_obj["keywords_added"] = []
+            bullet_obj["improvement_reason"] = (
+                f"Kept original bullet because the generated rewrite added leadership/scope claims ('{revert_verb}') absent from the source bullet or section."
+            )
+            _append_grounding_warning(
+                result,
+                "claim_verbs",
+                f"Reverted bullet introducing unsupported leadership claim verb '{revert_verb}'.",
+                [revert_verb],
+            )
+
+    claim_filtered_new_bullets = []
+    for bullet_obj in result.get("new_bullets") or []:
+        if not isinstance(bullet_obj, dict):
+            continue
+        nb_text = str(bullet_obj.get("text") or "")
+        dropped_verb = None
+        for verb_phrase, verb_re in CLAIM_VERB_PATTERNS:
+            if verb_re.search(nb_text):
+                if not verb_re.search(resume_text):
+                    dropped_verb = verb_phrase
+                    break
+        if dropped_verb:
+            logger.warning(
+                "optimizer.guard_trip: code=drop_unsupported_claim_verb_new_bullet bullet=%s verb=%s",
+                nb_text[:80],
+                dropped_verb,
+            )
+            _append_grounding_warning(
+                result,
+                "claim_verbs",
+                f"Dropped new bullet introducing unsupported leadership claim verb '{dropped_verb}'.",
+                [dropped_verb],
+            )
+            continue
+        claim_filtered_new_bullets.append(bullet_obj)
+    result["new_bullets"] = claim_filtered_new_bullets
 
     # Claim-level grounding for new_bullets:
     # Require that the action/capability described has reasonable lexical overlap
@@ -2645,6 +2845,7 @@ async def _generate_optimizer_attempt(
         job_description,
         job_title,
         user_id,
+        doc=doc,
     )
     result = _validate_optimized_structure(
         doc,
@@ -2792,7 +2993,7 @@ async def optimize_resume(request: Request, body: OptimizeRequest, user=Depends(
         "════════════════════════════════════════════════════════\n"
         "RULE 5 — ACTION VERBS & STYLE\n"
         "════════════════════════════════════════════════════════\n"
-        "- Prefer strong action verbs (Engineered, Architected, Built, Developed, Designed,\n"
+        "- Prefer strong action verbs (Engineered, Built, Developed, Designed,\n"
         "  Implemented, Deployed, Optimized, Automated, Integrated, Launched, Streamlined, etc.)\n"
         "- Avoid passive or weak openings (worked, helped, assisted, involved, responsible, participated)\n"
         "- Avoid repetitive openings where natural, but never replace an accurate verb with an\n"
@@ -2801,12 +3002,11 @@ async def optimize_resume(request: Request, body: OptimizeRequest, user=Depends(
         "════════════════════════════════════════════════════════\n"
         "RULE 6 — JD EXACT PHRASE MATCHING\n"
         "════════════════════════════════════════════════════════\n"
-        "- Copy technical terms VERBATIM from JD — ATS matches\n"
+        "- Use JD wording only for terms the resume already contains.\n"
+        "- Copy technical terms VERBATIM from JD when supported by source — ATS matches\n"
         "  exact strings, not paraphrases\n"
-        "- 'microservices architecture' → use those exact words\n"
-        "- 'CI/CD pipelines' → use those exact words\n"
-        "- 'cross-functional teams' → use those exact words\n"
-        "- Never substitute a synonym for a technical term\n\n"
+        "- Never introduce JD terms, tools, or scope not present in the original resume\n"
+        "- Never substitute a synonym for a technical term the candidate actually used\n\n"
         
         "════════════════════════════════════════════════════════\n"
         "RULE 7 — JD GAPS ARE ANALYSIS RESULTS, NOT FABRICATION LICENSE\n"
@@ -3010,13 +3210,6 @@ async def get_optimization_history(user=Depends(get_authenticated_user), premium
 # Priority order: EXPERIENCE > PROJECTS > SUMMARY > SKILLS > CERTIFICATIONS > EDUCATION
 # When truncation is needed, the lowest-priority sections are trimmed first.
 
-_SECTION_HEADER_RE = re.compile(
-    r"^(work\s+experience|professional\s+experience|experience|employment|"
-    r"projects?|project\s+experience|academic\s+projects?|personal\s+projects?|"
-    r"education|skills|technical\s+skills|core\s+skills|certifications?|"
-    r"summary|profile|objective|contact|achievements?|awards?)\b",
-    re.IGNORECASE,
-)
 
 # Higher number = trimmed first when over budget.
 _SECTION_PRIORITY = {
