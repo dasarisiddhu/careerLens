@@ -21,6 +21,8 @@ import {
   CheckCircle2,
   XCircle,
   AlertCircle,
+  AlertTriangle,
+  Info,
   TrendingUp,
   Briefcase,
   Sparkles,
@@ -173,6 +175,26 @@ export default function AnalysisResult() {
         </Link>
       </div>
 
+      {/* Truncation / Grounding notices */}
+      {r.truncation_notice && (
+        <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-xs font-medium text-amber-900 flex items-start gap-3 shadow-xs">
+          <AlertTriangle size={18} className="text-amber-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-bold text-amber-950">Content Truncation Notice</p>
+            <p className="mt-0.5 text-amber-800 leading-relaxed">{r.truncation_notice}</p>
+          </div>
+        </div>
+      )}
+      {r.summary_grounding_note && (
+        <div className="rounded-2xl border border-blue-200 bg-blue-50/90 p-4 text-xs font-medium text-blue-900 flex items-start gap-3 shadow-xs">
+          <Info size={18} className="text-[#2563EB] shrink-0 mt-0.5" />
+          <div>
+            <p className="font-bold text-blue-950">Summary Grounding Note</p>
+            <p className="mt-0.5 text-blue-800 leading-relaxed">{r.summary_grounding_note}</p>
+          </div>
+        </div>
+      )}
+
       {/* Hero Score + Summary Cards */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Main Score Ring Card */}
@@ -217,9 +239,16 @@ export default function AnalysisResult() {
 
           <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-100">
             <div className="p-4 rounded-xl bg-slate-50/70 border border-slate-100">
-              <p className="text-[11px] font-medium text-[#64748B] uppercase tracking-wider">
-                ATS Score
-              </p>
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-medium text-[#64748B] uppercase tracking-wider">
+                  ATS Score
+                </p>
+                {r.ats_reachable_max != null && (
+                  <span className="text-[10px] font-bold text-slate-600 bg-white border border-slate-200 px-2 py-0.5 rounded-full">
+                    Max: {r.ats_reachable_max}%
+                  </span>
+                )}
+              </div>
               <p className="text-2xl font-extrabold text-[#0B0F19] mt-1">
                 {atsScore}
               </p>

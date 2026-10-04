@@ -90,6 +90,7 @@ class Settings(BaseSettings):
     # File Upload
     # ----------------------------------------------------------
     MAX_RESUME_SIZE_MB: int = 5
+    MAX_BODY_SIZE_MB: int = 10
     ALLOWED_RESUME_TYPES: List[str] = ["application/pdf"]
 
     if _USING_PYDANTIC_SETTINGS:
@@ -143,3 +144,4 @@ def get_settings() -> Settings:
 
 # Singleton used throughout the app
 settings = get_settings()
+MAX_BODY_SIZE_MB = getattr(settings, "MAX_BODY_SIZE_MB", 10)

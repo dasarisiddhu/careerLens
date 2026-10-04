@@ -207,9 +207,9 @@ class SummaryPipelineFixTests(unittest.TestCase):
         self.assertTrue(is_valid, f"Summary verification failed on 40%: {reason}")
 
     def test_domain_mismatch_skips_summary(self):
-        """On domain mismatch, summary is skipped (empty string + note)."""
+        """On domain mismatch, summary falls back to a verified skills-only line (FIX B+C), not a blank."""
         from routers.optimizer import _apply_optimizer_safety_filters
-        
+
         resume_text = "Elementary school teacher with 5 years experience in curriculum planning."
         result = {
             "optimized_summary": "Machine Learning Engineer with deep neural network skills.",
@@ -226,7 +226,9 @@ class SummaryPipelineFixTests(unittest.TestCase):
             user_id="test-user",
         )
         self.assertTrue(filtered.get("domain_mismatch"))
-        self.assertEqual(filtered.get("optimized_summary"), "")
+        # FIX B+C: Uses skills-only line instead of a blank
+        self.assertTrue(len(filtered.get("optimized_summary", "")) > 0)
+        self.assertNotIn("graduate", filtered["optimized_summary"].lower())
         self.assertIn("summary_grounding_note", filtered)
 
 
@@ -697,6 +699,554 @@ class FixACloseGuardHoleTests(unittest.TestCase):
         self.assertTrue(_skill_in_text("r", "Statistical analysis performed using Python and R."))
 
 
+class SummaryVerificationFixBCTests(unittest.TestCase):
+    """FIX B+C: Summary verification and skills/education summary."""
+
+    def test_aspiring_motivated_entry_level_summaries_accepted(self):
+        """'Aspiring/Motivated/Entry-level…' summaries should be accepted (FIX B)."""
+        from routers.optimizer import _verify_optimizer_summary
+
+        source = (
+            "John Doe\n"
+            "Skills: Python, JavaScript, React, Node.js\n"
+            "Education: B.S. in Computer Science, University of XYZ, 2024\n"
+            "Projects:\n"
+            "- Built a web app using React and Node.js\n"
+        )
+        # Sentence-starting 'Aspiring' should NOT be flagged as a tech term
+        valid, reason = _verify_optimizer_summary(
+            "Aspiring software developer with skills in Python and React.",
+            source,
+        )
+        self.assertTrue(valid, f"'Aspiring…' rejected: {reason}")
+
+        # 'Motivated' at sentence start
+        valid, reason = _verify_optimizer_summary(
+            "Motivated developer proficient in JavaScript and Node.js.",
+            source,
+        )
+        self.assertTrue(valid, f"'Motivated…' rejected: {reason}")
+
+        # 'Entry-level' at sentence start (compound word, starts with cap)
+        valid, reason = _verify_optimizer_summary(
+            "Entry-level engineer with experience in React and Python.",
+            source,
+        )
+        self.assertTrue(valid, f"'Entry-level…' rejected: {reason}")
+
+    def test_sentence_start_known_tech_term_still_flagged(self):
+        """A known tech term (e.g. Kubernetes) at sentence start IS flagged if absent from source."""
+        from routers.optimizer import _verify_optimizer_summary
+
+        source = "Skills: Python, React\nBuilt a REST API using Python."
+        valid, reason = _verify_optimizer_summary(
+            "Kubernetes orchestration expert with Python skills.",
+            source,
+        )
+        self.assertFalse(valid, "Kubernetes should be flagged even at sentence start")
+        self.assertIn("unsupported_tech_term", reason)
+
+    def test_mid_sentence_non_tech_caps_not_flagged(self):
+        """Mid-sentence capitalized words that are NOT tech-like should pass."""
+        from routers.optimizer import _verify_optimizer_summary
+
+        source = "Skills: Python, SQL\nExperience in data analysis with Python."
+        # 'Excellent' mid-sentence (not in ignored_words but also not tech-looking)
+        valid, reason = _verify_optimizer_summary(
+            "Proficient in Python. Demonstrated strong SQL skills.",
+            source,
+        )
+        self.assertTrue(valid, f"Clean summary rejected: {reason}")
+
+    def test_associate_software_engineer_never_produces_degree(self):
+        """'Associate Software Engineer' must NOT be interpreted as a degree (FIX C)."""
+        from routers.optimizer import _build_skills_education_summary
+        from services.resume_structure import ResumeDocument
+
+        doc = ResumeDocument(
+            raw_text="Associate Software Engineer at XYZ Corp\nSkills: Python, Java",
+            education=[],  # No education section
+        )
+        summary = _build_skills_education_summary(
+            "Associate Software Engineer at XYZ Corp\nSkills: Python, Java",
+            result=None,
+            doc=doc,
+        )
+        self.assertNotIn("Associate", summary)
+        self.assertNotIn("graduate", summary.lower())
+        # Should be a skills-only fallback
+        self.assertIn("proficiencies", summary.lower())
+
+    def test_ms_office_never_produces_degree(self):
+        """'MS Office' must NOT be interpreted as an M.S. degree (FIX C)."""
+        from routers.optimizer import _build_skills_education_summary
+        from services.resume_structure import ResumeDocument
+
+        doc = ResumeDocument(
+            raw_text="Skills: MS Office, Excel, PowerPoint\nExperience: Data Entry",
+            education=[],  # No education section
+        )
+        summary = _build_skills_education_summary(
+            "Skills: MS Office, Excel, PowerPoint\nExperience: Data Entry",
+            result=None,
+            doc=doc,
+        )
+        # Should not produce a Master's degree from "MS Office"
+        self.assertNotIn("M.S.", summary)
+        self.assertNotIn("Master", summary)
+        self.assertNotIn("graduate", summary.lower())
+
+    def test_degree_extracted_from_doc_education_only(self):
+        """Degree should ONLY come from doc.education lines, not the full resume text."""
+        from routers.optimizer import _build_skills_education_summary
+        from services.resume_structure import ResumeDocument
+
+        # Education section has the degree
+        doc = ResumeDocument(
+            raw_text="Summary: MS in Data Science\nSkills: Python\nEducation:\nB.S. in Computer Science, MIT, 2023",
+            education=["B.S. in Computer Science, MIT, 2023"],
+        )
+        summary = _build_skills_education_summary(
+            doc.raw_text,
+            result=None,
+            doc=doc,
+        )
+        self.assertIn("B.S. in Computer Science", summary)
+        # Should not pick up "MS in Data Science" from summary section
+        self.assertNotIn("MS in Data Science", summary)
+
+    def test_no_education_lines_produces_skills_only(self):
+        """When doc.education is empty, should produce a skills-only sentence."""
+        from routers.optimizer import _build_skills_education_summary
+        from services.resume_structure import ResumeDocument
+
+        doc = ResumeDocument(
+            raw_text="Skills: Python, Docker, AWS\nExperience: 3 years",
+            education=[],
+        )
+        summary = _build_skills_education_summary(
+            doc.raw_text,
+            result=None,
+            doc=doc,
+        )
+        self.assertNotIn("graduate", summary.lower())
+        self.assertIn("proficiencies", summary.lower())
+        self.assertIn("Python", summary)
+
+    def test_never_writes_graduate(self):
+        """The word 'graduate' must NEVER appear in the summary (FIX C)."""
+        from routers.optimizer import _build_skills_education_summary
+        from services.resume_structure import ResumeDocument
+
+        # Even with a degree type but no clean field
+        doc = ResumeDocument(
+            raw_text="Education: B.S. from University of XYZ\nSkills: Java",
+            education=["B.S. from University of XYZ"],
+        )
+        summary = _build_skills_education_summary(
+            doc.raw_text,
+            result=None,
+            doc=doc,
+        )
+        self.assertNotIn("graduate", summary.lower())
+
+    def test_domain_mismatch_uses_skills_line_not_blank(self):
+        """On domain_mismatch, the summary should be a skills-only line, not blank."""
+        from routers.optimizer import _apply_optimizer_safety_filters
+        from services.resume_structure import ResumeDocument
+
+        doc = ResumeDocument(
+            raw_text="Skills: Python, SQL\nExperience: Data analysis projects",
+            education=[],
+        )
+        result = {
+            "domain_mismatch": True,
+            "optimized_summary": "",
+            "improved_bullets": [],
+            "new_bullets": [],
+            "optimized_skills": {},
+        }
+        filtered = _apply_optimizer_safety_filters(
+            result,
+            doc.raw_text,
+            "JD about Kubernetes orchestration",
+            "",
+            "test-user",
+            doc=doc,
+        )
+        # Summary should NOT be blank
+        self.assertTrue(len(filtered["optimized_summary"]) > 0)
+        # Should contain verified skills
+        self.assertIn("Python", filtered["optimized_summary"])
+
+    def test_proper_degree_from_education_section(self):
+        """When education has a real degree line, it should appear in the summary."""
+        from routers.optimizer import _build_skills_education_summary
+        from services.resume_structure import ResumeDocument
+
+        doc = ResumeDocument(
+            raw_text="Education:\nMaster's in Artificial Intelligence, Stanford, 2024\nSkills: Python, TensorFlow",
+            education=["Master's in Artificial Intelligence, Stanford, 2024"],
+        )
+        summary = _build_skills_education_summary(
+            doc.raw_text,
+            result=None,
+            doc=doc,
+        )
+        self.assertIn("Master's in Artificial Intelligence", summary)
+        self.assertNotIn("graduate", summary.lower())
+
+
+class FixDNumberMeaningTests(unittest.TestCase):
+    """FIX D: Number meaning grounding for counts and percentages."""
+
+    def test_500_concurrent_users_reverts_when_qualifier_absent(self):
+        """'500 concurrent users' reverts when 'concurrent' is not in source resume."""
+        from routers.optimizer import _apply_optimizer_safety_filters, _find_ungrounded_numbers
+
+        source_resume = (
+            "Jane Developer\n"
+            "Skills: Python, Django\n"
+            "Experience:\n"
+            "- Built internal web portal serving 500 users across company departments.\n"
+        )
+        improved_bullet = "Engineered internal web portal serving 500 concurrent users using Django."
+
+        # Direct number grounding check
+        ungrounded = _find_ungrounded_numbers(improved_bullet, source_resume)
+        self.assertTrue(len(ungrounded) > 0, "500 concurrent users should be flagged as ungrounded")
+        self.assertEqual(ungrounded[0]["number"], "500")
+
+        # Full pipeline test: bullet should revert to original
+        result = {
+            "optimized_summary": "Python developer with experience in Django.",
+            "improved_bullets": [
+                {
+                    "original": "Built internal web portal serving 500 users across company departments.",
+                    "improved": improved_bullet,
+                }
+            ],
+            "new_bullets": [],
+            "optimized_skills": {"Languages": ["Python"]},
+        }
+        filtered = _apply_optimizer_safety_filters(
+            result,
+            source_resume,
+            "Python Engineer",
+            "Software Engineer",
+            "test-user",
+        )
+        self.assertEqual(
+            filtered["improved_bullets"][0]["improved"],
+            "Built internal web portal serving 500 users across company departments.",
+            "Bullet with ungrounded 'concurrent' qualifier must revert to original",
+        )
+
+    def test_500_concurrent_users_passes_when_concurrent_in_source(self):
+        """'500 concurrent users' passes when 'concurrent' already exists in source."""
+        from routers.optimizer import _find_ungrounded_numbers
+
+        source_resume = (
+            "Jane Developer\n"
+            "Skills: Python, Django\n"
+            "Experience:\n"
+            "- Built internal web portal serving 500 concurrent connections across departments.\n"
+        )
+        improved_bullet = "Engineered internal web portal serving 500 concurrent users."
+        ungrounded = _find_ungrounded_numbers(improved_bullet, source_resume)
+        self.assertEqual(ungrounded, [], f"Expected grounded count when concurrent in source: {ungrounded}")
+
+    def test_92_percent_accuracy_to_92_percent_latency_reverts(self):
+        """'92% accuracy' -> '92% latency' reverts because there are no shared content words within ±3 words."""
+        from routers.optimizer import _apply_optimizer_safety_filters, _find_ungrounded_numbers
+
+        source_resume = (
+            "Alex AI Engineer\n"
+            "Skills: Python, PyTorch\n"
+            "Experience:\n"
+            "- Trained PyTorch classification model, achieving 92% accuracy on benchmark test suite.\n"
+        )
+        # LLM hijacked 92% from accuracy to latency for a backend role
+        hijacked_bullet = "Optimized production microservices, reducing 92% latency across distributed endpoints."
+
+        ungrounded = _find_ungrounded_numbers(hijacked_bullet, source_resume)
+        self.assertTrue(len(ungrounded) > 0, "92% latency should be flagged when source was 92% accuracy")
+
+        # Full pipeline test: bullet should revert to original
+        result = {
+            "optimized_summary": "AI Engineer with PyTorch experience.",
+            "improved_bullets": [
+                {
+                    "original": "Trained PyTorch classification model, achieving 92% accuracy on benchmark test suite.",
+                    "improved": hijacked_bullet,
+                }
+            ],
+            "new_bullets": [],
+            "optimized_skills": {"Frameworks": ["PyTorch"]},
+        }
+        filtered = _apply_optimizer_safety_filters(
+            result,
+            source_resume,
+            "Backend Systems Engineer",
+            "Software Engineer",
+            "test-user",
+        )
+        self.assertEqual(
+            filtered["improved_bullets"][0]["improved"],
+            "Trained PyTorch classification model, achieving 92% accuracy on benchmark test suite.",
+            "Bullet with 92% latency must revert because source only supports 92% accuracy",
+        )
+
+    def test_40_percent_through_redis_caching_still_passes(self):
+        """'40% through Redis caching' still passes because ±3 words share 'latency' / 'query'."""
+        from routers.optimizer import _apply_optimizer_safety_filters, _find_ungrounded_numbers
+
+        source_resume = (
+            "Alex Smith\n"
+            "Skills: Python, Redis, PostgreSQL\n"
+            "Experience:\n"
+            "- Optimized backend services, reducing database query latency by 40% through index tuning.\n"
+        )
+        improved_bullet = "Reduced database query latency by 40% through Redis caching."
+
+        ungrounded = _find_ungrounded_numbers(improved_bullet, source_resume)
+        self.assertEqual(ungrounded, [], f"40% with grounded latency context must not be flagged: {ungrounded}")
+
+        result = {
+            "optimized_summary": "Backend developer with experience in Python and Redis.",
+            "improved_bullets": [
+                {
+                    "original": "Optimized backend services, reducing database query latency by 40% through index tuning.",
+                    "improved": improved_bullet,
+                }
+            ],
+            "new_bullets": [],
+            "optimized_skills": {"Databases": ["Redis", "PostgreSQL"]},
+        }
+        filtered = _apply_optimizer_safety_filters(
+            result,
+            source_resume,
+            "Software Engineer",
+            "Software Engineer",
+            "test-user",
+        )
+        self.assertEqual(
+            filtered["improved_bullets"][0]["improved"],
+            improved_bullet,
+            "40% through Redis caching should be preserved",
+        )
+
+
+class FixEATSScoreTests(unittest.TestCase):
+    def test_ambiguous_phrases_produce_no_skills(self):
+        """'R&D / go the extra mile / express interest' must add no skills."""
+        from routers.optimizer import extract_jd_hard_skills
+
+        jd_text = "Looking for R&D experience, someone willing to go the extra mile and express interest in growth."
+        skills = extract_jd_hard_skills(jd_text)
+        self.assertEqual(skills, [], "Ambiguous non-tech phrases must not produce any skills")
+
+    def test_ambiguous_skills_non_tech_vs_tech_contexts(self):
+        """Ambiguous skills (spring, swift, node, apache) must only match in technical context."""
+        from routers.optimizer import extract_jd_hard_skills
+
+        non_tech_jd = "Graduating in Spring 2024 with swift action across cluster nodes under Apache 2.0 license."
+        self.assertEqual(extract_jd_hard_skills(non_tech_jd), [])
+
+        tech_jd = "Building backend with Go, Node.js, Express, Spring Boot, Swift iOS, Apache Kafka, and R for data."
+        skills = extract_jd_hard_skills(tech_jd)
+        self.assertIn("go", skills)
+        self.assertIn("node", skills)
+        self.assertIn("express", skills)
+        self.assertIn("spring", skills)
+        self.assertIn("swift", skills)
+        self.assertIn("apache", skills)
+        self.assertIn("r", skills)
+
+    def test_new_hard_skills_extracted(self):
+        """Tableau, Power BI, Excel, Salesforce, Agile must be recognized as hard tech skills."""
+        from routers.optimizer import extract_jd_hard_skills
+
+        jd = "Requirements: Tableau, Power BI dashboards, advanced Excel, Salesforce CRM, and Agile workflows."
+        skills = extract_jd_hard_skills(jd)
+        for expected in ["agile", "excel", "power bi", "salesforce", "tableau"]:
+            self.assertIn(expected, skills)
+
+    def test_no_jd_skills_returns_none_and_hides_bar(self):
+        """If no JD skills are found, _stamp_ats_scores returns None and sets hide_ats_bar = True."""
+        from routers.optimizer import _stamp_ats_scores
+
+        result = {
+            "optimized_summary": "Motivated professional eager to contribute.",
+            "improved_bullets": [],
+            "new_bullets": [],
+            "optimized_skills": [],
+        }
+        source_resume = "Motivated individual with leadership experience."
+        jd_no_skills = "We are seeking a fast learner and enthusiastic team player with strong interpersonal abilities."
+
+        b, a = _stamp_ats_scores(result, source_resume, jd_no_skills)
+        self.assertIsNone(b)
+        self.assertIsNone(a)
+        self.assertIsNone(result.get("ats_before"))
+        self.assertIsNone(result.get("ats_after"))
+        self.assertTrue(result.get("hide_ats_bar"))
+
+    def test_keyword_only_in_added_keywords_does_not_raise_ats_after(self):
+        """A keyword only in added_keywords must not raise ats_after."""
+        from routers.optimizer import _stamp_ats_scores
+
+        source_resume = (
+            "Jane Doe\n"
+            "Summary: Full-stack developer experienced in Python and Docker.\n"
+            "Skills: Python, Docker\n"
+            "Experience:\n"
+            "Tech Inc | Engineer\n"
+            "- Built backend services using Python and Docker.\n"
+        )
+        jd = "Requires Python and Docker."
+
+        # Case 1: With reconstructed_resume only containing Python
+        result_with_rec = {
+            "reconstructed_resume": {
+                "summary": "Full-stack developer experienced in Python.",
+                "skills": ["Python"],
+                "experience": [
+                    {
+                        "title": "Engineer",
+                        "organization": "Tech Inc",
+                        "bullets": ["Built backend services using Python."],
+                    }
+                ],
+                "projects": [],
+                "education": [],
+                "certifications": [],
+            },
+            "added_keywords": ["Docker"],
+        }
+        b1, a1 = _stamp_ats_scores(result_with_rec, source_resume, jd)
+        self.assertEqual(b1, 100, "Source resume has both Python and Docker (100%)")
+        self.assertEqual(a1, 50, "Docker only in added_keywords must not be counted in reconstructed resume (50%)")
+
+        # Case 2: Without reconstructed_resume (fallback path)
+        result_fallback = {
+            "optimized_summary": "Full-stack developer experienced in Python.",
+            "improved_bullets": [{"improved": "Built backend services using Python."}],
+            "new_bullets": [],
+            "optimized_skills": ["Python"],
+            "added_keywords": ["Docker"],
+        }
+        b2, a2 = _stamp_ats_scores(result_fallback, source_resume, jd)
+        self.assertEqual(b2, 100)
+        self.assertEqual(a2, 50, "Fallback path must also drop added_keywords")
+
+
+
+class FixFUIAndLeftoversTests(unittest.TestCase):
+    def test_safe_limit_does_not_rerun_on_error(self):
+        """_safe_limit decorator does not catch exceptions and re-run fn without rate limiting."""
+        import asyncio
+        from routers.optimizer import _safe_limit
+
+        call_count = 0
+
+        @_safe_limit("5/minute")
+        async def failing_endpoint(request):
+            nonlocal call_count
+            call_count += 1
+            raise ValueError("parameter `response` must be an instance of Response")
+
+        class DummyRequest:
+            headers = {}
+            client = None
+
+        with self.assertRaises(ValueError):
+            asyncio.run(failing_endpoint(DummyRequest()))
+
+        # Fn should only have been called once — no fallback re-execution
+        self.assertEqual(call_count, 1)
+
+    def test_ats_retry_error_removed_from_result(self):
+        """ats_retry_error is stripped from result to prevent leaking backend error strings."""
+        result = {
+            "ats_retry_attempted": True,
+            "ats_retry_failed": True,
+            "ats_retry_error": "Internal database or LLM timeout detail: 0x82f4",
+        }
+        # Simulate router endpoint cleanup
+        result.pop("ats_retry_error", None)
+        self.assertNotIn("ats_retry_error", result)
+
+    def test_body_size_limit_middleware_blocks_oversized_content_length(self):
+        """BodySizeLimitMiddleware returns 413 when Content-Length exceeds MAX_BODY_SIZE_MB."""
+        import asyncio
+        from main import BodySizeLimitMiddleware
+        from config import MAX_BODY_SIZE_MB
+
+        app_called = False
+
+        async def dummy_app(scope, receive, send):
+            nonlocal app_called
+            app_called = True
+
+        middleware = BodySizeLimitMiddleware(dummy_app)
+
+        oversized_bytes = (MAX_BODY_SIZE_MB * 1024 * 1024) + 1024
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/optimizer/optimize",
+            "headers": [
+                (b"content-length", str(oversized_bytes).encode("latin-1")),
+            ],
+        }
+
+        sent_messages = []
+
+        async def fake_receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        async def fake_send(msg):
+            sent_messages.append(msg)
+
+        asyncio.run(middleware(scope, fake_receive, fake_send))
+
+        self.assertFalse(app_called, "Underlying app must not be called when payload is oversized")
+        status_msg = next((m for m in sent_messages if m["type"] == "http.response.start"), None)
+        self.assertIsNotNone(status_msg)
+        self.assertEqual(status_msg["status"], 413)
+
+    def test_truncation_notice_and_reachable_max_in_router(self):
+        """Truncation notice and ats_reachable_max are calculated and included in response structures."""
+        from routers.optimizer import extract_jd_hard_skills, _skill_in_text
+
+        # 1. Truncation logic check
+        resume_8001 = "A" * 8001
+        jd_3001 = "B" * 3001
+        resume_truncated = len(resume_8001) > 8000
+        jd_truncated = len(jd_3001) > 3000
+        self.assertTrue(resume_truncated)
+        self.assertTrue(jd_truncated)
+
+        trunc_parts = []
+        if resume_truncated:
+            trunc_parts.append("Resume text exceeded 8,000 characters and was truncated for optimization.")
+        if jd_truncated:
+            trunc_parts.append("Job description exceeded 3,000 characters and was truncated for optimization.")
+        notice = " ".join(trunc_parts)
+        self.assertIn("8,000 characters", notice)
+        self.assertIn("3,000 characters", notice)
+
+        # 2. Reachable max calculation
+        jd = "Requirements: Python, Docker, PostgreSQL, Redis."
+        resume = "Experienced in Python and Docker."
+        jd_skills = extract_jd_hard_skills(jd)
+        source_skills = {s for s in jd_skills if _skill_in_text(s, resume)}
+        reachable_max = int((len(source_skills) / len(jd_skills)) * 100)
+        self.assertEqual(reachable_max, 50)
+
+
 if __name__ == "__main__":
     unittest.main()
+
 

@@ -273,6 +273,9 @@ function normalizeOptimizationResult(opt) {
         ? opt.skills_to_highlight
         : [],
     new_bullets: Array.isArray(opt.new_bullets) ? opt.new_bullets : [],
+    truncation_notice: opt.truncation_notice || null,
+    summary_grounding_note: opt.summary_grounding_note || null,
+    ats_reachable_max: opt.ats_reachable_max !== undefined ? opt.ats_reachable_max : null,
   }
 }
 
@@ -1373,6 +1376,9 @@ function ATSMatchBreakdownPanel({ data }) {
   const atsTips = Array.isArray(data?.ats_tips) ? data.ats_tips : []
   const score = getMatchScoreEstimate(data)
   const confidence = getConfidence(score)
+  const reachableMax = (data?.ats_reachable_max !== null && data?.ats_reachable_max !== undefined)
+    ? data.ats_reachable_max
+    : null
 
   const totalKw = addedKeywords.length + missingKeywords.length
   const keywordCoverage = totalKw > 0 ? Math.round((addedKeywords.length / totalKw) * 100) : null
@@ -1381,7 +1387,14 @@ function ATSMatchBreakdownPanel({ data }) {
     <section className="rounded-[22px] border border-slate-200/90 bg-white/95 p-6 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="text-xs font-bold uppercase tracking-wider text-[#0B0F19]">ATS Match Score</h3>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-[#0B0F19]">ATS Match Score</h3>
+            {reachableMax !== null && (
+              <span className="rounded-full bg-slate-100 border border-slate-200 px-2 py-0.5 text-[11px] font-bold text-slate-700">
+                Reachable Max: {reachableMax}%
+              </span>
+            )}
+          </div>
           {keywordCoverage !== null && (
             <p className="mt-0.5 text-xs text-slate-500">
               LLM-reported coverage (unverified): <span className="font-bold text-slate-700">{keywordCoverage}%</span>
@@ -2224,6 +2237,11 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
       const normalized = normalizeOptimizationResult(res.optimization)
       if (normalized) {
         normalized.source_resume_text = resumeText
+        normalized.truncation_notice = res.truncation_notice || res.optimization?.truncation_notice || normalized.truncation_notice || null
+        normalized.summary_grounding_note = res.summary_grounding_note || res.optimization?.summary_grounding_note || normalized.summary_grounding_note || null
+        normalized.ats_reachable_max = (res.ats_reachable_max !== undefined && res.ats_reachable_max !== null)
+          ? res.ats_reachable_max
+          : (res.optimization?.ats_reachable_max !== undefined ? res.optimization.ats_reachable_max : null)
         normalized.optimized_summary = normalizeGeneratedSummary(normalized.optimized_summary)
           || buildProfessionalSummary(normalized, resumeText, jobTitle)
       }
@@ -2262,7 +2280,13 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
       // Await the analyse result (already running in parallel)
       const analyseRes = await analysePromise
       if (analyseRes?.success && analyseRes?.analysis) {
-        setAnalysisResult(analyseRes.analysis)
+        const fullAnalysis = {
+          ...analyseRes.analysis,
+          ats_reachable_max: analyseRes.analysis?.ats_reachable_max ?? analyseRes.ats_reachable_max ?? null,
+          summary_grounding_note: analyseRes.analysis?.summary_grounding_note ?? analyseRes.summary_grounding_note ?? null,
+          truncation_notice: analyseRes.analysis?.truncation_notice ?? analyseRes.truncation_notice ?? null,
+        }
+        setAnalysisResult(fullAnalysis)
       }
       setAnalysisLoading(false)
     } catch (err) {
@@ -2326,6 +2350,7 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
     const addedKeywords = Array.isArray(result?.added_keywords) ? result.added_keywords : []
     const optimizedSkills = Array.isArray(result?.optimized_skills) ? result.optimized_skills : []
     const atsTips = Array.isArray(result?.ats_tips) ? result.ats_tips : []
+    const showAtsBar = !result?.hide_ats_bar && typeof result?.ats_before === 'number' && typeof result?.ats_after === 'number'
     const atsBefore = typeof result?.ats_before === 'number' ? result.ats_before : 0
     const atsAfter = typeof result?.ats_after === 'number' ? result.ats_after : atsBefore
     const atsGain = atsAfter - atsBefore
@@ -2347,6 +2372,35 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
       <motion.div variants={pageTransition} initial="hidden" animate="visible" exit="exit" style={{ width: '100%' }}>
         <div className="max-w-6xl w-full mx-auto space-y-8">
 
+          {/* ── Truncation and Grounding Notices ─────────────── */}
+          {result?.truncation_notice && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-xs font-medium text-amber-900 flex items-start gap-3 shadow-xs"
+            >
+              <AlertTriangle size={18} className="text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold text-amber-950">Content Truncation Notice</p>
+                <p className="mt-0.5 text-amber-800 leading-relaxed">{result.truncation_notice}</p>
+              </div>
+            </motion.div>
+          )}
+
+          {result?.summary_grounding_note && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="rounded-2xl border border-blue-200 bg-blue-50/90 p-4 text-xs font-medium text-blue-900 flex items-start gap-3 shadow-xs"
+            >
+              <Info size={18} className="text-[#2563EB] shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold text-blue-950">Summary Grounding Note</p>
+                <p className="mt-0.5 text-blue-800 leading-relaxed">{result.summary_grounding_note}</p>
+              </div>
+            </motion.div>
+          )}
+
           {/* ── Hero impact card ─────────────────────────────── */}
           <GlassCard
             className="p-8 sm:p-10 border-white/90 bg-white/95 shadow-glass-md rounded-[24px] relative overflow-hidden mb-6 space-y-6"
@@ -2354,28 +2408,35 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
             <div className="absolute top-0 inset-x-8 h-px bg-gradient-to-r from-transparent via-[#2563EB]/40 to-transparent" />
             <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-96 h-48 rounded-full bg-blue-100/40 blur-3xl pointer-events-none" />
 
-            <div className="flex items-center justify-center gap-8 sm:gap-14 flex-wrap relative z-10">
-              <div className="text-center">
-                <AnimatedScoreCircle score={atsBefore} size={120} label="Before" color="#64748B" />
+            {showAtsBar && (
+              <div className="flex items-center justify-center gap-8 sm:gap-14 flex-wrap relative z-10">
+                <div className="text-center">
+                  <AnimatedScoreCircle score={atsBefore} size={120} label="Before" color="#64748B" />
+                </div>
+                <div className="text-center">
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.5 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: 0.4, duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+                  >
+                    <div className="text-5xl sm:text-7xl font-black tracking-tight text-[#2563EB] leading-none">
+                      <StatNumber value={atsGain} prefix={gainPrefix} />
+                    </div>
+                    <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mt-2">
+                      ATS Score Boost
+                    </p>
+                    {result?.ats_reachable_max !== null && result?.ats_reachable_max !== undefined && (
+                      <span className="inline-block mt-2 text-[11px] font-bold text-slate-600 bg-slate-100 border border-slate-200 px-2.5 py-0.5 rounded-full">
+                        Ceiling: {result.ats_reachable_max}%
+                      </span>
+                    )}
+                  </motion.div>
+                </div>
+                <div className="text-center">
+                  <AnimatedScoreCircle score={atsAfter} size={120} label="After" color="#10B981" />
+                </div>
               </div>
-              <div className="text-center">
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.5 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ delay: 0.4, duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-                >
-                  <div className="text-5xl sm:text-7xl font-black tracking-tight text-[#2563EB] leading-none">
-                    <StatNumber value={atsGain} prefix={gainPrefix} />
-                  </div>
-                  <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mt-2">
-                    ATS Score Boost
-                  </p>
-                </motion.div>
-              </div>
-              <div className="text-center">
-                <AnimatedScoreCircle score={atsAfter} size={120} label="After" color="#10B981" />
-              </div>
-            </div>
+            )}
 
             {result.overall_improvement && (
               <p className="text-center text-slate-600 italic font-medium max-w-2xl mx-auto">&quot;{result.overall_improvement}&quot;</p>
@@ -2458,14 +2519,51 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
                 </div>
               ) : analysisResult && (
                 <>
+                  {/* Truncation / Grounding notices in Analyse view */}
+                  {analysisResult?.truncation_notice && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-xs font-medium text-amber-900 flex items-start gap-3 shadow-xs"
+                    >
+                      <AlertTriangle size={18} className="text-amber-600 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-bold text-amber-950">Content Truncation Notice</p>
+                        <p className="mt-0.5 text-amber-800 leading-relaxed">{analysisResult.truncation_notice}</p>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {analysisResult?.summary_grounding_note && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="rounded-2xl border border-blue-200 bg-blue-50/90 p-4 text-xs font-medium text-blue-900 flex items-start gap-3 shadow-xs"
+                    >
+                      <Info size={18} className="text-[#2563EB] shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-bold text-blue-950">Summary Grounding Note</p>
+                        <p className="mt-0.5 text-blue-800 leading-relaxed">{analysisResult.summary_grounding_note}</p>
+                      </div>
+                    </motion.div>
+                  )}
+
                   {/* ── 3 Score Cards ───────────────────────── */}
                   <div className="grid md:grid-cols-3 gap-4">
                     {(() => {
                       const atsScore = analysisResult?.module1_ats?.ats_score ?? 0
                       const recruiterTotal = analysisResult?.module2_recruiter_lens?.total ?? 0
                       const readiness = Math.round((atsScore * 0.5) + (recruiterTotal * 0.5))
+                      const reachableMax = analysisResult?.ats_reachable_max ?? analysisResult?.reachable_max ?? null
                       const cards = [
-                        { label: 'ATS Compatibility', score: atsScore, icon: Shield, color: atsScore >= 70 ? '#10b981' : atsScore >= 45 ? '#f59e0b' : '#ef4444', note: "CareerLens's estimate of how well your resume passes automated screening" },
+                        {
+                          label: 'ATS Compatibility',
+                          score: atsScore,
+                          icon: Shield,
+                          color: atsScore >= 70 ? '#10b981' : atsScore >= 45 ? '#f59e0b' : '#ef4444',
+                          note: "CareerLens's estimate of how well your resume passes automated screening",
+                          reachableMax,
+                        },
                         { label: 'Recruiter Impression', score: recruiterTotal, icon: Eye, color: recruiterTotal >= 70 ? '#10b981' : recruiterTotal >= 45 ? '#f59e0b' : '#ef4444', note: `${analysisResult?.module2_recruiter_lens?.interpretation || 'N/A'} — based on title clarity, tenure, quantification, scannability` },
                         { label: 'Overall Readiness', score: readiness, icon: TrendingUp, color: readiness >= 70 ? '#10b981' : readiness >= 45 ? '#f59e0b' : '#ef4444', note: "Combined estimate — not a guarantee from any specific ATS vendor" },
                       ]
@@ -2478,9 +2576,16 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
                             <card.icon size={16} style={{ color: card.color }} />
                             <span className="text-xs font-bold uppercase tracking-wider text-slate-500">{card.label}</span>
                           </div>
-                          <div className="flex items-end gap-2">
-                            <span style={{ fontSize: 36, fontWeight: 800, color: card.color, lineHeight: 1, letterSpacing: '-1px' }}>{card.score}</span>
-                            <span className="text-xs text-slate-400 mb-1">/ 100</span>
+                          <div className="flex items-end justify-between">
+                            <div className="flex items-end gap-2">
+                              <span style={{ fontSize: 36, fontWeight: 800, color: card.color, lineHeight: 1, letterSpacing: '-1px' }}>{card.score}</span>
+                              <span className="text-xs text-slate-400 mb-1">/ 100</span>
+                            </div>
+                            {card.reachableMax !== undefined && card.reachableMax !== null && (
+                              <span className="text-xs font-bold text-slate-600 bg-slate-100 border border-slate-200 px-2.5 py-0.5 rounded-full mb-1">
+                                Max: {card.reachableMax}%
+                              </span>
+                            )}
                           </div>
                           <p className="text-xs text-slate-500 leading-relaxed">{card.note}</p>
                         </motion.div>
@@ -2813,6 +2918,12 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">Rewritten Professional Summary</h3>
               <CopyBtn text={displaySummary} />
             </div>
+            {result?.summary_grounding_note && (
+              <div className="mb-3 rounded-xl border border-blue-200 bg-blue-50/90 px-3.5 py-2 text-xs font-medium text-blue-900 flex items-center gap-2">
+                <Info size={14} className="text-[#2563EB] shrink-0" />
+                <span>{result.summary_grounding_note}</span>
+              </div>
+            )}
             <textarea
               value={displaySummary}
               onChange={(e) => setEditedSummary(sanitizeProfessionalSummary(e.target.value))}

@@ -252,6 +252,9 @@ def parse_source_resume(text: str) -> ResumeDocument:
         if sec_header:
             current_sec = sec_header
             sections.setdefault(current_sec, [])
+            inline_content = re.sub(r"^[^:\-–—|]+[:\-–—|]\s*", "", line).strip()
+            if inline_content:
+                sections[current_sec].append(inline_content)
         else:
             sections.setdefault(current_sec, []).append(line)
 

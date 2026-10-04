@@ -81,6 +81,76 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # Middleware
 # ============================================================
 
+# ============================================================
+# Body Size Limit Middleware (FINDING-001)
+# ============================================================
+
+from starlette.datastructures import Headers
+from fastapi import HTTPException
+
+
+class BodySizeLimitMiddleware:
+    """
+    Middleware that enforces a maximum body size on incoming requests (FINDING-001).
+    Rejects requests whose Content-Length or streamed body exceeds the limit with HTTP 413.
+    """
+    def __init__(self, app, max_body_size: int | None = None):
+        self.app = app
+        if max_body_size is None:
+            max_mb = getattr(settings, "MAX_BODY_SIZE_MB", 10)
+            self.max_body_size = max_mb * 1024 * 1024
+        else:
+            self.max_body_size = max_body_size
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        headers = Headers(scope=scope)
+        content_length = headers.get("content-length")
+        max_mb = self.max_body_size // (1024 * 1024)
+
+        if content_length:
+            try:
+                if int(content_length) > self.max_body_size:
+                    response = add_security_headers(JSONResponse(
+                        status_code=413,
+                        content={"detail": f"Request body too large. Maximum allowed size is {max_mb}MB."},
+                    ))
+                    await response(scope, receive, send)
+                    return
+            except ValueError:
+                pass
+
+        total_received = 0
+
+        async def custom_receive():
+            nonlocal total_received
+            message = await receive()
+            if message["type"] == "http.request":
+                body_chunk = message.get("body", b"")
+                total_received += len(body_chunk)
+                if total_received > self.max_body_size:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"Request body too large. Maximum allowed size is {max_mb}MB.",
+                    )
+            return message
+
+        try:
+            await self.app(scope, custom_receive, send)
+        except HTTPException as exc:
+            if exc.status_code == 413:
+                response = add_security_headers(JSONResponse(
+                    status_code=413,
+                    content={"detail": exc.detail},
+                ))
+                await response(scope, receive, send)
+            else:
+                raise
+
+
 # CORS -- allow frontend origin(s)
 dev_origin_regex = (
     r"https?://(localhost|127\.0\.0\.1|0\.0\.0\.0|192\.168\.\d+\.\d+)(:\d+)?$"
@@ -96,6 +166,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.add_middleware(BodySizeLimitMiddleware)
 app.add_middleware(SlowAPIMiddleware)
 
 # Trusted host protection (disable in dev if needed)

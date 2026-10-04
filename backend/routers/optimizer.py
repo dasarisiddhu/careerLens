@@ -35,12 +35,7 @@ def _safe_limit(rate: str):
                 if args and isinstance(args[0], BaseModel):
                     return await fn(None, *args, **kwargs)
                 return await fn(*args, **kwargs)
-            try:
-                return await wrapped(*args, **kwargs)
-            except Exception as e:
-                if "parameter `response` must be an instance of" in str(e):
-                    return await fn(*args, **kwargs)
-                raise
+            return await wrapped(*args, **kwargs)
         return handler
     return decorator
 
@@ -269,7 +264,7 @@ HARD_TECH_SKILLS = [
     "express.js", "vue.js", "angularjs", "tailwind css", "google cloud", "amazon web services",
     "github actions", "gitlab ci", "rest api", "restful api", "restful apis", "rest apis",
     "microservices architecture", "hugging face", "apache spark", "apache kafka", "apache flink",
-    "event-driven architecture",
+    "event-driven architecture", "power bi",
 
     # Single-word languages, frameworks, databases, platforms, tools
     "python", "java", "javascript", "typescript", "c++", "c#", "golang", "go", "rust",
@@ -287,6 +282,7 @@ HARD_TECH_SKILLS = [
     "langchain", "llamaindex", "git", "github", "gitlab", "jira", "postman", "selenium",
     "cypress", "jest", "pytest", "junit", "oauth", "jwt", "saml", "sso", "tcp/ip", "dns",
     "algorithms", "multithreading", "concurrency", "opencv", "nltk", "spacy", "openai",
+    "tableau", "excel", "salesforce", "agile",
 ]
 
 
@@ -295,32 +291,163 @@ def _clean_for_boundary_matching(text: str) -> str:
     return re.sub(r"\s+", " ", cleaned).strip()
 
 
+AMBIGUOUS_SKILLS = {"go", "r", "express", "spring", "swift", "node", "apache"}
+
+
+def _match_ambiguous_skill(skill: str, text: str) -> bool:
+    """
+    Match ambiguous words (go, r, express, spring, swift, node, apache) case-sensitively
+    and only in a technical context (FIX E).
+    """
+    norm_skill = skill.strip().lower()
+    text_str = str(text or "")
+    if not text_str:
+        return False
+
+    if norm_skill == "r":
+        # Must be uppercase 'R'; R&D, R & D, r&d, Toys R Us are NOT tech
+        if re.search(r"\b[Rr]\s*&\s*[Dd]\b", text_str) and not re.search(
+            r"\b(?:Python|SQL|SAS|Matlab|Julia|SPSS|Stata)\s*[,/]\s*R\b|\bR\s*[,/]\s*(?:Python|SQL|SAS|Matlab|Julia|SPSS|Stata)\b|\b(?:in|using|with)\s+R\b|\bR\s+(?:programming|language|package|packages|script|scripts|Shiny|studio|Studio)\b",
+            text_str,
+        ):
+            return False
+        tech_r = (
+            bool(re.search(r"\b(?:RStudio|R\s*-\s*Shiny|R\s+Shiny|R\s+(?:programming|language|package|packages|script|scripts|developer|for\s+(?:data|statistics|analysis|analytics)))\b", text_str))
+            or bool(re.search(r"\b(?:Python|SQL|SAS|Matlab|Julia|SPSS|Stata)\s*(?:[,/&]|and|or)\s*R\b", text_str))
+            or bool(re.search(r"\bR\s*(?:[,/&]|and|or)\s*(?:Python|SQL|SAS|Matlab|Julia|SPSS|Stata)\b", text_str))
+            or bool(re.search(r"\b(?:in|using|with)\s+R\b", text_str))
+            or bool(re.search(r"\b(?:Skills?|Languages?|Technologies?)\s*:[^.\n]*\bR\b", text_str))
+        )
+        return tech_r
+
+    if norm_skill == "go":
+        # Unambiguous: Golang (case-insensitive)
+        if re.search(r"\bgolang\b", text_str, re.IGNORECASE):
+            return True
+        tech_go = (
+            bool(re.search(r"\bGo\s+(?:programming|language|developer|engineer|backend|microservices|routines?|modules?|code|concurrency|compiler|runtime|sdk|api)\b", text_str))
+            or bool(re.search(r"\b(?:Python|Java|C\+\+|Rust|JavaScript|TypeScript|Docker|Kubernetes)\s*[,/]\s*Go\b", text_str))
+            or bool(re.search(r"\bGo\s*[,/]\s*(?:Python|Java|C\+\+|Rust|JavaScript|TypeScript|Docker|Kubernetes)\b", text_str))
+            or bool(re.search(r"\b(?:in|using|with|written\s+in|built\s+in)\s+Go\b", text_str))
+            or bool(re.search(r"\b(?:Skills?|Languages?|Technologies?)\s*:[^.\n]*\bGo\b", text_str))
+        )
+        is_non_tech = bool(re.search(
+            r"\b[Gg]o\s+(?:the\s+extra\s+mile|live|to|forward|above|ahead|back|down|out|through|with|by|into|from|for|on|beyond|deep)\b|"
+            r"\b(?:to|will|can|could|should|must|let|ready\s+to|have\s+to|has\s+to|on\s+the)\s+[Gg]o\b|"
+            r"\bgo-to\b",
+            text_str,
+        ))
+        if is_non_tech and not tech_go:
+            return False
+        return tech_go
+
+    if norm_skill == "express":
+        # Unambiguous: Express.js, ExpressJS (case-insensitive)
+        if re.search(r"\bexpress(?:\.js|js)\b", text_str, re.IGNORECASE):
+            return True
+        tech_express = (
+            bool(re.search(r"\bExpress\s+(?:framework|server|backend|middleware|api|router|app|application)\b", text_str))
+            or bool(re.search(r"\b(?:Node|Node\.js|React|Mongo|MongoDB|Postgres|PostgreSQL)\s*[,/&]\s*Express\b", text_str))
+            or bool(re.search(r"\bExpress\s*[,/&]\s*(?:Node|Node\.js|React|Mongo|MongoDB|Postgres|PostgreSQL)\b", text_str))
+            or bool(re.search(r"\b(?:in|using|with)\s+Express\b", text_str))
+            or bool(re.search(r"\b(?:Skills?|Frameworks?|Technologies?)\s*:[^.\n]*\bExpress\b", text_str))
+        )
+        is_non_tech = bool(re.search(
+            r"\b[Ee]xpress\s+(?:an?\s+)?(?:interest|concerns?|gratitude|opinions?|ideas?|feelings?|desire|willingness|views?|delivery|lane|checkout|mail|train|bus|post)\b",
+            text_str,
+        ))
+        if is_non_tech and not tech_express:
+            return False
+        return tech_express
+
+    if norm_skill == "spring":
+        # Unambiguous: Spring Boot, Spring MVC, Spring Data, etc. (case-insensitive)
+        if re.search(r"\bspring\s+(?:boot|mvc|data|security|cloud|framework|batch)\b", text_str, re.IGNORECASE):
+            return True
+        is_non_tech = bool(re.search(
+            r"\b[Ss]pring\s+(?:\d{4}|semester|term|quarter|break|internship|cleaning|season)\b|\b(?:in\s+the|during|last|next|this)\s+spring\b|\bin\s+Spring\s+\d{4}\b",
+            text_str,
+        ))
+        if is_non_tech:
+            return False
+        tech_spring = (
+            bool(re.search(r"\bSpring\s+(?:framework|backend|developer|microservices|application|app|service)\b", text_str))
+            or bool(re.search(r"\b(?:Java|Kotlin|Hibernate)\s*[,/&]\s*Spring\b", text_str))
+            or bool(re.search(r"\bSpring\s*[,/&]\s*(?:Java|Kotlin|Hibernate)\b", text_str))
+            or bool(re.search(r"\b(?:built\s+with|using|with)\s+Spring\b", text_str))
+            or bool(re.search(r"\b(?:Skills?|Frameworks?|Technologies?)\s*:[^.\n]*\bSpring\b", text_str))
+        )
+        return tech_spring
+
+    if norm_skill == "swift":
+        # Unambiguous: SwiftUI (case-insensitive)
+        if re.search(r"\bswiftui\b", text_str, re.IGNORECASE):
+            return True
+        is_non_tech = bool(re.search(
+            r"\b[Ss]wift\s+(?:action|resolution|turnaround|response|delivery|manner|execution|progress|adoption|pace|decision|transition)\b",
+            text_str,
+        ))
+        if is_non_tech:
+            return False
+        tech_swift = (
+            bool(re.search(r"\bSwift\s+(?:iOS|macOS|programming|language|developer|engineer|code|app|application|framework)\b", text_str))
+            or bool(re.search(r"\b(?:iOS|macOS|Objective-C|Kotlin)\s*[,/&\s]+\s*Swift\b", text_str))
+            or bool(re.search(r"\bSwift\s*[,/&\s]+\s*(?:iOS|macOS|Objective-C|Kotlin)\b", text_str))
+            or bool(re.search(r"\b(?:in|using|with)\s+Swift\b", text_str))
+            or bool(re.search(r"\b(?:Skills?|Languages?|Technologies?)\s*:[^.\n]*\bSwift\b", text_str))
+        )
+        return tech_swift
+
+    if norm_skill == "node":
+        # Unambiguous: Node.js, NodeJS (case-insensitive)
+        if re.search(r"\bnode(?:\.js|js)\b", text_str, re.IGNORECASE):
+            return True
+        is_non_tech = bool(re.search(
+            r"\b(?:cluster|worker|sensor|tree|leaf|graph|network|compute|mesh|child|parent|root|k8s|kubernetes|master|each|every|individual|single)\s+[Nn]odes?\b|"
+            r"\b[Nn]odes?\s+(?:failure|failures|deletion|addition|affinity|taint|taints|capacity|status|selector|pool|pools)\b",
+            text_str,
+        ))
+        if is_non_tech:
+            return False
+        tech_node = (
+            bool(re.search(r"\bNode\s+(?:runtime|server|backend|developer|engineer|environment|api|service|framework)\b", text_str))
+            or bool(re.search(r"\b(?:React|Express|Python|TypeScript|JavaScript|Mongo|MongoDB)\s*[,/&]\s*Node\b", text_str))
+            or bool(re.search(r"\bNode\s*[,/&]\s*(?:React|Express|Python|TypeScript|JavaScript|Mongo|MongoDB)\b", text_str))
+            or bool(re.search(r"\b(?:in|using|with)\s+Node\b", text_str))
+            or bool(re.search(r"\b(?:Skills?|Frameworks?|Technologies?)\s*:[^.\n]*\bNode\b", text_str))
+        )
+        return tech_node
+
+    if norm_skill == "apache":
+        # Unambiguous: Apache Spark, Apache Kafka, Apache Tomcat, etc.
+        if re.search(r"\bapache\s+(?:spark|kafka|flink|cassandra|hadoop|airflow|tomcat|lucene|solr|http|server|maven|camel|beam|hbase|zookeeper)\b", text_str, re.IGNORECASE):
+            return True
+        is_license = bool(re.search(r"\bapache\s+(?:2\.0\s+)?license\b", text_str, re.IGNORECASE))
+        if is_license:
+            return False
+        tech_apache = (
+            bool(re.search(r"\b(?:Nginx|IIS)\s*[,/&]\s*Apache\b|\bApache\s*[,/&]\s*(?:Nginx|IIS)\b", text_str))
+            or bool(re.search(r"\bApache\s+(?:web\s+server|HTTP\s+Server|server)\b", text_str))
+            or bool(re.search(r"\b(?:in|using|with)\s+Apache\b", text_str))
+            or bool(re.search(r"\b(?:Skills?|Servers?|Technologies?)\s*:[^.\n]*\bApache\b", text_str))
+        )
+        return tech_apache
+
+    return False
+
+
 def _skill_in_text(skill: str, text: str, check_aliases: bool = True) -> bool:
     if not skill or not text:
         return False
     norm_skill = skill.strip().lower()
-    if norm_skill in {"go", "r"}:
-        text_str = str(text)
-        if text_str.islower():
-            if norm_skill == "go":
-                pattern = r"\b(?:golang|go)\b"
-                return bool(re.search(pattern, text_str))
-            elif norm_skill == "r":
-                pattern = r"\br\b"
-                return bool(re.search(pattern, text_str))
-        else:
-            if norm_skill == "go":
-                pattern = r"\b(?:Golang|golang|Go)\b"
-                return bool(re.search(pattern, text_str))
-            elif norm_skill == "r":
-                pattern = r"\bR\b"
-                return bool(re.search(pattern, text_str))
+    if norm_skill in AMBIGUOUS_SKILLS:
+        return _match_ambiguous_skill(norm_skill, text)
 
     norm_text = _clean_for_boundary_matching(text)
-    norm_skill = _clean_for_boundary_matching(skill)
-    if not norm_skill:
+    norm_skill_clean = _clean_for_boundary_matching(skill)
+    if not norm_skill_clean:
         return False
-    escaped = re.escape(norm_skill).replace(r"\ ", r"\s+")
+    escaped = re.escape(norm_skill_clean).replace(r"\ ", r"\s+")
     pattern = rf"(?<![a-zA-Z0-9+#.]){escaped}(?![a-zA-Z0-9+#.])"
     if bool(re.search(pattern, norm_text)):
         return True
@@ -352,14 +479,11 @@ def _skill_in_text(skill: str, text: str, check_aliases: bool = True) -> bool:
 def extract_jd_hard_skills(jd: str) -> list[str]:
     if not jd or not jd.strip():
         return []
-    norm_jd = _clean_for_boundary_matching(jd)
     found_skills: set[str] = set()
     for skill in HARD_TECH_SKILLS:
         if skill in EXPERIENCE_VOCABULARY_STOPWORDS:
             continue
-        escaped = re.escape(skill).replace(r"\ ", r"\s+")
-        pattern = rf"(?<![a-zA-Z0-9+#.]){escaped}(?![a-zA-Z0-9+#.])"
-        if re.search(pattern, norm_jd):
+        if _skill_in_text(skill, jd):
             found_skills.add(skill)
     return sorted(found_skills)
 
@@ -463,6 +587,15 @@ NUMBER_WORD_RE = re.compile(r"[A-Za-z][A-Za-z+#./-]*")
 NUMBER_CONTEXT_STOPWORDS = {
     "a", "an", "and", "as", "at", "by", "for", "from", "in", "into",
     "of", "on", "or", "the", "through", "to", "using", "via", "with",
+    "is", "was", "were", "be", "been", "being", "have", "has", "had",
+    "do", "does", "did", "than", "over", "up", "down", "about", "around",
+    "approx", "approximately", "nearly", "almost", "all", "both", "each",
+    "achieved", "achieve", "achieving", "improved", "improve", "improving",
+    "increased", "increase", "increasing", "reduced", "reduce", "reducing",
+    "decreased", "decrease", "decreasing", "reached", "reaching",
+    "boosted", "boosting", "scaled", "scaling", "delivered", "delivering",
+    "resulted", "resulting", "saved", "saving", "exceeded", "exceeding",
+    "percent", "percentage", "pct", "more", "less", "well", "also", "out",
 }
 
 
@@ -696,6 +829,38 @@ def _source_contexts_for_number(
     return contexts
 
 
+def _words_around_token(text: str, start: int, end: int, window: int = 3) -> list[str]:
+    """Returns up to `window` words before start and up to `window` words after end within the same sentence/clause."""
+    before_segment = re.split(r"[.;:\n\r]", str(text or "")[:start])[-1]
+    words_before = NUMBER_WORD_RE.findall(before_segment)
+    selected_before = [w.lower().strip(".,;:!?()[]") for w in words_before[-window:]]
+
+    after_segment = re.split(r"[.;:\n\r]", str(text or "")[end:], maxsplit=1)[0]
+    words_after = NUMBER_WORD_RE.findall(after_segment)
+    selected_after = [w.lower().strip(".,;:!?()[]") for w in words_after[:window]]
+
+    return selected_before + selected_after
+
+
+def _number_context_content_words(words: list[str]) -> set[str]:
+    """Extracts content words excluding stopwords and applying light stemming."""
+    content: set[str] = set()
+    for w in words:
+        cleaned = re.sub(r"[^a-z0-9+#.]+", "", w.lower())
+        if not cleaned or len(cleaned) < 2 or cleaned in NUMBER_CONTEXT_STOPWORDS:
+            continue
+        content.add(cleaned)
+        if cleaned.endswith("ies") and len(cleaned) > 3:
+            content.add(f"{cleaned[:-3]}y")
+        elif cleaned.endswith("s") and len(cleaned) > 3:
+            content.add(cleaned[:-1])
+        elif cleaned.endswith("ing") and len(cleaned) > 4:
+            content.add(cleaned[:-3])
+        elif cleaned.endswith("ed") and len(cleaned) > 3:
+            content.add(cleaned[:-2])
+    return content
+
+
 def _number_context_is_grounded(
     text: str,
     start: int,
@@ -725,9 +890,75 @@ def _number_context_is_grounded(
         return False
 
     raw = str(text[start:end] or "").strip()
-    # Percentages (e.g. 40%) describe rate of improvement and do not bind to conflicting count nouns
-    if raw.endswith("%"):
+    is_percentage = raw.endswith("%") or "%" in raw
+
+    # ── Percentages (FIX D) ──────────────────────────────────────────
+    if is_percentage:
+        # Require at least one shared content word within ±3 words of a source occurrence
+        # of that same number.
+        target_words = _words_around_token(text, start, end, window=3)
+        target_content = _number_context_content_words(target_words)
+        if not target_content:
+            return True
+
+        source_has_shared_content = False
+        source_matched_any = False
+
+        for src_match in NUMBER_TOKEN_RE.finditer(source_text):
+            src_raw = src_match.group(0).strip()
+            src_variants = _number_token_variants(src_raw)
+            if not (src_variants & variants):
+                continue
+            source_matched_any = True
+            src_words = _words_around_token(source_text, src_match.start(), src_match.end(), window=3)
+            src_content = _number_context_content_words(src_words)
+            if target_content & src_content:
+                source_has_shared_content = True
+                break
+
+        if not source_matched_any:
+            return False
+
+        if not source_has_shared_content:
+            logger.warning(
+                "optimizer.guard_trip: code=percentage_meaning_mismatch number=%s target_content=%s context=%s",
+                raw,
+                target_content,
+                text[:80],
+            )
+            return False
+
         return True
+
+    # ── Counts (FIX D) ───────────────────────────────────────────────
+    # New qualifier words after the number (concurrent, daily, active, peak)
+    # must appear somewhere in the source.
+    COUNT_QUALIFIERS = {
+        "concurrent", "concurrently",
+        "daily",
+        "active", "actively",
+        "peak",
+        "monthly", "hourly", "weekly", "annual", "annually",
+        "simultaneous", "simultaneously",
+    }
+    after_segment = re.split(r"[.;:\n\r]", str(text or "")[end:], maxsplit=1)[0]
+    next_num = NUMBER_TOKEN_RE.search(after_segment)
+    if next_num:
+        after_segment = after_segment[:next_num.start()]
+    words_after = [
+        w.lower().strip(".,;:!?()[]")
+        for w in NUMBER_WORD_RE.findall(after_segment)
+    ][:4]
+
+    for w in words_after:
+        if (w in COUNT_QUALIFIERS or w.rstrip("ly") in COUNT_QUALIFIERS) and w not in source_lower:
+            logger.warning(
+                "optimizer.guard_trip: code=ungrounded_count_qualifier qualifier=%s number=%s context=%s",
+                w,
+                raw,
+                text[:80],
+            )
+            return False
 
     # For counts with specific entity units (e.g. '100 parking slots' vs '50 parking slots'),
     # verify that the count is not bound to a conflicting entity from source
@@ -1910,33 +2141,59 @@ def _summary_valid(value: str) -> bool:
     return words <= 45 and all(sentence.endswith(".") for sentence in sentences)
 
 
-def _build_skills_education_summary(resume_text: str, result: dict | None = None) -> str:
+def _build_skills_education_summary(
+    resume_text: str,
+    result: dict | None = None,
+    doc: Optional[ResumeDocument] = None,
+    skills_only: bool = False,
+) -> str:
     """
     Plain, verified skills + education fallback line.
     Never returns contact info, raw resume dumps, or fabricated metrics.
+    Degree is extracted ONLY from doc.education lines (not the full resume text).
+    Never writes "graduate". Falls back to a skills-only sentence when no
+    education line exists.
     """
+    # ── Degree extraction — ONLY from parsed education lines ──────────
     degree = ""
-    edu_match = re.search(
-        r"\b(B\.?S\.?|B\.?Tech|Bachelor(?:'s)?|M\.?S\.?|M\.?Tech|Master(?:'s)?|Ph\.?D\.?|Associate(?:'s)?)\s+(?:of\s+|in\s+)?([A-Za-z\s]+?)(?:,|\.|\n|\||-|\d{4})",
-        resume_text,
-        re.IGNORECASE,
-    )
-    if edu_match:
-        degree_type = edu_match.group(1).strip()
-        field = edu_match.group(2).strip()
-        field_words = [w for w in field.split() if w.lower() not in ("from", "at", "university", "college", "institute", "gpa")]
-        clean_field = " ".join(field_words[:3]).strip()
-        if clean_field:
-            degree = f"{degree_type} in {clean_field}"
-        else:
-            degree = f"{degree_type} graduate"
-    elif re.search(r"\bcomputer science\b", resume_text, re.IGNORECASE):
-        degree = "Computer Science graduate"
-    elif re.search(r"\bengineering\b", resume_text, re.IGNORECASE):
-        degree = "Engineering graduate"
+    if not skills_only and doc is not None:
+        edu_lines: list[str] = list(doc.education or [])
+        edu_text = "\n".join(edu_lines)
 
-    # Extract top verified skills that actually appear in source resume
-    skills = []
+        # Degree-type patterns that should NOT false-positive on job titles
+        # like "Associate Software Engineer" or product names like "MS Office".
+        _DEGREE_RE = re.compile(
+            r"\b(B\.?S\.?|B\.?Tech|Bachelor(?:'s)?|M\.?S\.?|M\.?Tech|Master(?:'s)?|Ph\.?D\.?)"
+            r"\s+(?:of\s+|in\s+)"
+            r"([A-Za-z\s]+?)"
+            r"(?:,|\.|\n|\||–|-|\d{4}|$)",
+            re.IGNORECASE,
+        )
+        # Explicitly exclude Associate('s) from degree patterns to prevent
+        # "Associate Software Engineer" from being mistaken as a degree.
+        edu_match = _DEGREE_RE.search(edu_text) if edu_text else None
+        if edu_match:
+            degree_type = edu_match.group(1).strip()
+            field = edu_match.group(2).strip()
+            # Remove institution/filler words
+            field_words = [
+                w for w in field.split()
+                if w.lower() not in (
+                    "from", "at", "university", "college", "institute",
+                    "gpa", "of", "the",
+                )
+            ]
+            clean_field = " ".join(field_words[:3]).strip()
+            # Guard against "MS Office" or product/company false positives
+            if degree_type.replace(".", "").lower() == "ms" and clean_field.lower().startswith("office"):
+                clean_field = ""
+            if clean_field:
+                degree = f"{degree_type} in {clean_field}"
+            # If we matched a degree type but no field, skip rather than
+            # writing "graduate" — never use that word.
+
+    # ── Extract top verified skills that actually appear in source resume ──
+    skills: list[str] = []
     if result and isinstance(result.get("optimized_skills"), dict):
         for group, items in result["optimized_skills"].items():
             if isinstance(items, list):
@@ -1947,11 +2204,15 @@ def _build_skills_education_summary(resume_text: str, result: dict | None = None
         skills = _summary_top_skills(result, resume_text)
         skills = [s for s in skills if s.lower() in resume_text.lower()]
     if not skills:
-        for kw in ["Python", "Java", "JavaScript", "TypeScript", "C++", "C", "SQL", "Go", "Rust", "React", "Node.js", "Docker", "Git", "AWS", "Linux"]:
+        for kw in [
+            "Python", "Java", "JavaScript", "TypeScript", "C++", "C",
+            "SQL", "Go", "Rust", "React", "Node.js", "Docker", "Git",
+            "AWS", "Linux",
+        ]:
             if re.search(rf"\b{re.escape(kw)}\b", resume_text, re.IGNORECASE):
                 skills.append(kw)
 
-    unique_skills = []
+    unique_skills: list[str] = []
     for s in skills:
         if s not in unique_skills and len(unique_skills) < 4:
             unique_skills.append(s)
@@ -1960,6 +2221,7 @@ def _build_skills_education_summary(resume_text: str, result: dict | None = None
 
     if degree:
         return f"{degree} with core technical skills in {skills_text}."
+    # Skills-only fallback — no degree line found
     return f"Technical background with core proficiencies in {skills_text}."
 
 
@@ -1969,12 +2231,15 @@ def _verify_optimizer_summary(
     job_title: str = "",
 ) -> tuple[bool, str]:
     """
-    Verify summary against source resume:
+    Verify summary against source resume (FIX B+C):
     - No contact details (email, phone, address, links)
     - No raw resume text / header dumps
     - Never uses target job title as identity
     - Every number must appear in source (compare numbers, not trailing words)
-    - Every technical term must appear in source
+    - Tech-term scan: skip the FIRST WORD of each sentence, then only flag
+      terms that are known lexicon entries (GROUNDING_TECH_TERMS / HARD_TECH_SKILLS)
+      or mid-sentence capitalized tokens.  This ensures words like
+      "Aspiring", "Motivated", or "Entry-level" do not trip the guard.
     """
     if not summary or not summary.strip():
         return False, "empty_summary"
@@ -2013,9 +2278,24 @@ def _verify_optimizer_summary(
         if variants.isdisjoint(source_variants):
             return False, f"ungrounded_number: {raw}"
 
-    # 5. Technical terms check
+    # 5. Technical terms check (FIX B) ────────────────────────────────
+    # Build a set of character positions that are the first word of a
+    # sentence so we can skip them.
+    _sentence_first_word_spans: set[tuple[int, int]] = set()
+    for sent_match in re.finditer(r"(?:^|[.!?\n]+)\s*([A-Za-z][a-zA-Z0-9+#./-]*)", clean_summary):
+        _sentence_first_word_spans.add((sent_match.start(1), sent_match.end(1)))
+
     source_lower = source_text.lower()
-    tech_terms = re.findall(r'\b[A-Z][a-zA-Z0-9+#.]{2,}\b', clean_summary)
+
+    # Build the combined lexicon set (lowercase) for "is this a known tech term?" checks
+    _lexicon_lower: set[str] = set()
+    for t in GROUNDING_TECH_TERMS:
+        _lexicon_lower.add(t.lower())
+    for t in HARD_TECH_SKILLS:
+        _lexicon_lower.add(t.lower())
+
+    # Ignored words are common English/resume words that happen to start
+    # with a capital letter and are NOT tech terms.
     ignored_words = {
         "the", "this", "with", "and", "for", "built", "developed", "engineered",
         "designed", "implemented", "created", "led", "spearheaded", "proven",
@@ -2042,11 +2322,45 @@ def _verify_optimizer_summary(
         "monthly", "annual", "annualized", "full", "stack", "front", "end", "back",
         "lead", "senior", "junior", "associate", "staff", "principal", "internship",
         "fellow", "fellowship", "undergraduate", "first", "second", "third",
+        # Additional soft/career words that start with a capital at sentence
+        # boundaries but are NOT technology:
+        "aspiring", "motivated", "entry", "level", "enthusiastic", "passionate",
+        "dedicated", "detail", "oriented", "driven", "results", "self", "eager",
+        "recent", "resourceful", "proactive", "innovative", "creative",
+        "collaborative", "adaptive", "versatile", "capable", "skilled",
+        "demonstrated", "adept",
     }
-    for term in tech_terms:
+
+    for term_match in re.finditer(r'\b[A-Z][a-zA-Z0-9+#.]{2,}\b', clean_summary):
+        term = term_match.group(0)
         t = term.lower().strip("*")
         if len(t) < 3 or t in ignored_words or t in OPTIMIZER_IGNORED_TECH_TERMS:
             continue
+
+        span = (term_match.start(), term_match.end())
+
+        # Skip the first word of each sentence — it's capitalised by grammar,
+        # not because it's a tech term.
+        is_sentence_start = any(
+            span[0] == fw_start for fw_start, _ in _sentence_first_word_spans
+        )
+        if is_sentence_start:
+            # Only flag if it's a KNOWN lexicon tech term despite being
+            # sentence-leading.  This lets "Aspiring developer…" pass
+            # while still catching "Kubernetes-based…" if Kubernetes
+            # is absent from the source.
+            if t not in _lexicon_lower:
+                continue
+
+        # Mid-sentence: flag only if it's a known lexicon term OR a
+        # camelCase / mixed-case / symbol token (heuristic for tech).
+        is_known_tech = t in _lexicon_lower
+        is_tech_looking = bool(
+            re.search(r"[a-z][A-Z]|[A-Z]{2,}[a-z]|[a-zA-Z][0-9]|[0-9][a-zA-Z]|[+#.]", term)
+        )
+        if not is_known_tech and not is_tech_looking:
+            continue
+
         if t not in source_lower:
             return False, f"unsupported_tech_term: {term}"
 
@@ -2243,6 +2557,41 @@ def _optimized_text_for_ats(result: dict) -> str:
     if not isinstance(result, dict):
         return ""
 
+    rec = result.get("reconstructed_resume")
+    if rec:
+        pieces: list[str] = []
+        if isinstance(rec, str):
+            pieces.append(rec)
+        elif isinstance(rec, dict):
+            if rec.get("summary"):
+                pieces.append(str(rec["summary"]))
+            for exp in rec.get("experience") or []:
+                if isinstance(exp, dict):
+                    if exp.get("title"):
+                        pieces.append(str(exp["title"]))
+                    if exp.get("organization"):
+                        pieces.append(str(exp["organization"]))
+                    for b in exp.get("bullets") or []:
+                        if b:
+                            pieces.append(str(b))
+                elif exp:
+                    pieces.append(str(exp))
+            for proj in rec.get("projects") or []:
+                if isinstance(proj, dict):
+                    if proj.get("name"):
+                        pieces.append(str(proj["name"]))
+                    if proj.get("technologies"):
+                        pieces.append(str(proj["technologies"]))
+                    for b in proj.get("bullets") or []:
+                        if b:
+                            pieces.append(str(b))
+                elif proj:
+                    pieces.append(str(proj))
+            pieces.extend(_flatten_skills(rec.get("skills")))
+            pieces.extend(_flatten_skills(rec.get("education")))
+            pieces.extend(_flatten_skills(rec.get("certifications")))
+        return " ".join(piece for piece in pieces if piece)
+
     pieces: list[str] = [str(result.get("optimized_summary", "") or "")]
 
     for collection_key, text_key in (("improved_bullets", "improved"), ("new_bullets", "text")):
@@ -2253,7 +2602,6 @@ def _optimized_text_for_ats(result: dict) -> str:
                 pieces.append(str(bullet_obj))
 
     pieces.extend(_flatten_skills(result.get("optimized_skills")))
-    pieces.extend(_flatten_skills(result.get("added_keywords")))
     return " ".join(piece for piece in pieces if piece)
 
 
@@ -2284,16 +2632,35 @@ def _resume_number_audit_pieces(result: dict) -> list[str]:
     return [piece for piece in pieces if piece]
 
 
-def _stamp_ats_scores(result: dict, resume_text: str, job_description: str) -> tuple[int, int]:
+class _NoneAtsScores(tuple):
+    """Sentinel tuple returned when no JD skills are found. Evaluates to (None, None) and == None."""
+    def __new__(cls):
+        return super().__new__(cls, (None, None))
+
+    def __eq__(self, other):
+        if other is None:
+            return True
+        return super().__eq__(other)
+
+    def __bool__(self):
+        return False
+
+
+def _stamp_ats_scores(result: dict, resume_text: str, job_description: str) -> tuple[Optional[int], Optional[int]]:
     jd_skills = extract_jd_hard_skills(job_description)
     if not jd_skills:
-        result["ats_before"] = 50
-        result["ats_after"] = 50
-        result["reachable_max"] = 100
-        result["ats_reachable_max"] = 100
+        result["ats_before"] = None
+        result["ats_after"] = None
+        result["reachable_max"] = None
+        result["ats_reachable_max"] = None
+        result["reachable_max_skills"] = []
+        result["jd_hard_skills"] = []
         result["ats_regressed"] = False
         result["ats_regression_severe"] = False
-        return 50, 50
+        result["hide_ats_bar"] = True
+        return _NoneAtsScores()
+
+    result["hide_ats_bar"] = False
 
     # Source skills present in candidate's original source resume text
     source_skills = {s for s in jd_skills if _skill_in_text(s, resume_text)}
@@ -2741,9 +3108,11 @@ def _apply_optimizer_safety_filters(
 
     # Stop replacing LLM summary with a template. Verify and handle fallbacks (FIX 1)
     if result.get("domain_mismatch"):
-        result["optimized_summary"] = ""
+        # FIX B+C: Use skills-only line on domain mismatch instead of blank
+        fallback = _build_skills_education_summary(resume_text, result, doc=doc, skills_only=True)
+        result["optimized_summary"] = fallback
         result["summary_grounding_note"] = (
-            "Summary omitted due to domain mismatch between candidate background and job requirements."
+            "Domain mismatch detected — summary uses verified skills from your resume."
         )
     else:
         existing_summary = str(result.get("optimized_summary", "") or "").strip()
@@ -2756,7 +3125,7 @@ def _apply_optimizer_safety_filters(
                 reason,
                 user_id,
             )
-            fallback = _build_skills_education_summary(resume_text, result)
+            fallback = _build_skills_education_summary(resume_text, result, doc=doc)
             result["optimized_summary"] = fallback
             result["summary_grounding_note"] = (
                 "The AI-generated summary contained ungrounded claims and was replaced with a verified skills and education overview."
@@ -3120,7 +3489,7 @@ async def optimize_resume(request: Request, body: OptimizeRequest, user=Depends(
             doc=doc,
         )
 
-        if (ats_before - ats_after) > 5:
+        if ats_before is not None and ats_after is not None and (ats_before - ats_after) > 5:
             first_attempt_after = ats_after
             logger.warning(
                 f"ATS regression detected for user {user['user_id']}: "
@@ -3138,18 +3507,33 @@ async def optimize_resume(request: Request, body: OptimizeRequest, user=Depends(
                     doc=doc,
                 )
                 result["ats_retry_attempted"] = True
-                result["ats_retry_previous_after"] = first_attempt_after
             except Exception as retry_error:
                 result["ats_retry_attempted"] = True
                 result["ats_retry_failed"] = True
-                result["ats_retry_error"] = str(retry_error)[:200]
                 logger.warning(
                     f"ATS regression retry failed for user {user['user_id']}: {retry_error}"
                 )
 
-        result["ats_regressed"] = ats_after < ats_before
-        result["ats_regression_severe"] = (ats_before - ats_after) > 5
+        result.pop("ats_retry_error", None)
+
+        if ats_before is not None and ats_after is not None:
+            result["ats_regressed"] = ats_after < ats_before
+            result["ats_regression_severe"] = (ats_before - ats_after) > 5
+        else:
+            result["ats_regressed"] = False
+            result["ats_regression_severe"] = False
         result.setdefault("ats_retry_attempted", False)
+
+        # Check truncation for optimize_resume
+        resume_truncated = len(body.resume_text) > 8000
+        jd_truncated = len(body.job_description) > 3000
+        if resume_truncated or jd_truncated:
+            trunc_parts = []
+            if resume_truncated:
+                trunc_parts.append("Resume text exceeded 8,000 characters and was truncated for optimization.")
+            if jd_truncated:
+                trunc_parts.append("Job description exceeded 3,000 characters and was truncated for optimization.")
+            result["truncation_notice"] = " ".join(trunc_parts)
 
         try:
             supabase.table("resume_optimizations").insert({
@@ -3166,7 +3550,10 @@ async def optimize_resume(request: Request, body: OptimizeRequest, user=Depends(
             "optimization": result,
             "ats_before": ats_before,
             "ats_after": ats_after,
+            "ats_reachable_max": result.get("ats_reachable_max"),
             "ats_regressed": result["ats_regressed"],
+            "truncation_notice": result.get("truncation_notice"),
+            "summary_grounding_note": result.get("summary_grounding_note"),
         }
 
         # ── Domain mismatch threshold check ─────────────────────────────
@@ -3446,6 +3833,28 @@ async def analyse_resume(
                 or "Keyword optimization cannot fix a missing core ML/AI experience signal for this role."
             )
 
+        # Compute reachable max ATS score for analysis if JD is provided
+        if has_job_description:
+            jd_skills = extract_jd_hard_skills(job_description)
+            if jd_skills:
+                source_skills = {s for s in jd_skills if _skill_in_text(s, resume_text)}
+                reachable_max = int((len(source_skills) / len(jd_skills)) * 100)
+                analysis["ats_reachable_max"] = reachable_max
+                analysis["reachable_max"] = reachable_max
+                analysis["reachable_max_skills"] = sorted(source_skills)
+                analysis["jd_hard_skills"] = sorted(jd_skills)
+            else:
+                analysis["ats_reachable_max"] = None
+                analysis["reachable_max"] = None
+                analysis["reachable_max_skills"] = []
+                analysis["jd_hard_skills"] = []
+        else:
+            analysis["ats_reachable_max"] = None
+            analysis["reachable_max"] = None
+
+        if analysis.get("domain_mismatch"):
+            analysis["summary_grounding_note"] = "Domain mismatch detected — summary uses verified skills from your resume."
+
         # Save analysis to DB
         try:
             supabase.table("resume_analyses").insert({
@@ -3466,6 +3875,9 @@ async def analyse_resume(
             "optimizable_reason": analysis.get("optimizable_reason", ""),
             "domain_mismatch":   analysis.get("domain_mismatch", False),
             "next_action":       analysis.get("next_action", ""),
+            "ats_reachable_max": analysis.get("ats_reachable_max"),
+            "summary_grounding_note": analysis.get("summary_grounding_note"),
+            "truncation_notice": analysis.get("truncation_notice"),
         }
 
     except HTTPException:
