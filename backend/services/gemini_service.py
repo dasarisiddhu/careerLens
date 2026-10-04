@@ -378,13 +378,12 @@ async def call_groq(
                     await asyncio.sleep(max(0.5, retry_delay))
                     continue
                 else:
-                    # If gpt-oss-120b exhausted its 8k TPM limit, fall back to llama-3.3-70b-versatile
+                    # If gpt-oss-120b exhausted its 8k TPM limit, fall back to openai/gpt-oss-20b
                     if current_payload.get("model") == "openai/gpt-oss-120b":
                         logger.warning(
-                            "Groq TPM limit reached for gpt-oss-120b. Falling back to llama-3.3-70b-versatile..."
+                            "Groq TPM limit reached for gpt-oss-120b. Falling back to openai/gpt-oss-20b..."
                         )
-                        current_payload["model"] = "llama-3.3-70b-versatile"
-                        current_payload.pop("reasoning_effort", None)
+                        current_payload["model"] = "openai/gpt-oss-20b"
                         await asyncio.sleep(max(0.5, retry_delay))
                         fb_response = await client.post(
                             GROQ_API_URL,
