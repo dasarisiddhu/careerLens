@@ -33,15 +33,16 @@ function wrapPdfText(value, maxChars) {
   const paragraphs = normalizePdfText(value).split('\n')
   const lines = []
   for (const paragraph of paragraphs) {
-    const words = paragraph.trim().split(/\s+/).filter(Boolean)
+    const bound = paragraph.replace(/\b(CGPA|GPA)\s+([0-9.]+(?:\/[0-9.]+)?)\b/gi, '$1\u00a0$2')
+    const words = bound.trim().split(/[ \t]+/).filter(Boolean)
     if (!words.length) { lines.push(''); continue }
     let current = words[0]
     for (const word of words.slice(1)) {
       const candidate = `${current} ${word}`
       if (candidate.length <= maxChars) current = candidate
-      else { lines.push(current); current = word }
+      else { lines.push(current.replace(/\u00a0/g, ' ')); current = word }
     }
-    lines.push(current)
+    lines.push(current.replace(/\u00a0/g, ' '))
   }
   return lines
 }

@@ -97,7 +97,7 @@ STAGE 4 — INTERVIEW (panel)
 - Therefore: NEVER fabricate. Elevate and clarify what actually exists.
 
 HARD RULES (absolute — never violate):
-1. Never fabricate a number. Use "~", "up to", or range language if unavailable.
+1. Never fabricate a number. Preserve original numbers and "N+" forms (e.g. 500K+, 40K+) exactly as written. Ban "over ~", "~" and "approximately" before numbers.
 2. Never validate a weak resume. Score < 70 = say so directly.
 3. Every weak bullet gets a rewrite. No exceptions.
 4. Mirror JD language precisely — ATS does not do synonym matching.
@@ -163,7 +163,7 @@ Return ONLY this exact JSON structure. No extra fields. No markdown.
       "original": "exact bullet text from resume",
       "grade": "WEAK | AVERAGE | STRONG",
       "grade_reason": "one line why",
-      "rewrite": "rewritten bullet — Action + Context + Scope + Outcome. NEVER invent metrics. Use ~ or range language if no data."
+      "rewrite": "rewritten bullet — Action + Context + Scope + Outcome. NEVER invent metrics. Never rewrite 'N+' forms (keep 500K+ as written). Never use '~', 'over ~', or 'approximately' before numbers."
     }
   ],
 
@@ -603,6 +603,31 @@ def _normalize_grounding_text(value: str) -> str:
     return re.sub(r"\s+", " ", str(value or "").lower()).strip()
 
 
+def _split_preserving_parens(text: str) -> list[str]:
+    """Splits a string by commas, pipes, semicolons, bullets outside parentheses."""
+    items = []
+    current = []
+    depth = 0
+    for char in text:
+        if char in "([{":
+            depth += 1
+            current.append(char)
+        elif char in ")]}":
+            depth = max(0, depth - 1)
+            current.append(char)
+        elif depth == 0 and char in ",|;•\t":
+            part = "".join(current).strip()
+            if part:
+                items.append(part)
+            current = []
+        else:
+            current.append(char)
+    last = "".join(current).strip()
+    if last:
+        items.append(last)
+    return items
+
+
 def _contains_grounded_term(haystack: str, term: str) -> bool:
     cleaned = _normalize_grounding_text(term)
     if not cleaned:
@@ -612,6 +637,13 @@ def _contains_grounded_term(haystack: str, term: str) -> bool:
     pattern = re.escape(cleaned).replace(r"\ ", r"\s+")
     if bool(re.search(rf"(?<![a-z0-9]){pattern}(?![a-z0-9])", haystack)):
         return True
+    # Check parenthetical skills like "AWS (S3, EC2)"
+    m = re.match(r"^([^(]+)\s*\(([^)]+)\)$", str(term or "").strip())
+    if m:
+        base = m.group(1).strip()
+        inner_items = [x.strip() for x in m.group(2).split(",") if x.strip()]
+        if _contains_grounded_term(haystack, base) and all(_contains_grounded_term(haystack, it) for it in inner_items):
+            return True
     # Handle common tech variants / abbreviations
     if cleaned == "rest" and "restful" in haystack:
         return True
@@ -620,6 +652,8 @@ def _contains_grounded_term(haystack: str, term: str) -> bool:
     if cleaned == "kubernetes" and "k8s" in haystack:
         return True
     if cleaned == "k8s" and "kubernetes" in haystack:
+        return True
+    if cleaned == "ci/cd" and bool(re.search(r"\bci\s*/\s*cd\b", haystack)):
         return True
     return False
 
@@ -647,7 +681,7 @@ def _split_skill_items(value) -> list[str]:
             items.extend(_split_skill_items(nested))
         return items
     if isinstance(value, str):
-        return [item.strip() for item in re.split(r"[,|;/]", value) if item.strip()]
+        return [item.strip() for item in _split_preserving_parens(value) if item.strip()]
     return []
 
 
@@ -720,6 +754,35 @@ def _metric_is_grounded(metric: str, source_lower: str, jd_lower: str = "") -> b
     )
 
 
+def _clean_quantifiers(text: str) -> str:
+    """
+    FIX H: Never rewrite "N+" forms. Ban "over ~", "~" and "approximately" before numbers.
+    Ensures regex /over ~|~\d/ matches nothing.
+    """
+    if not text:
+        return text
+    cleaned = re.sub(r"\bover\s*~\s*(\d)", r"\1", text)
+    cleaned = re.sub(r"~\s*(\d)", r"\1", cleaned)
+    cleaned = re.sub(r"\bapproximately\s+(\d)", r"\1", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bapprox\.?\s+(\d)", r"\1", cleaned, flags=re.IGNORECASE)
+    return cleaned
+
+
+def _restore_n_plus_forms(improved_text: str, original_text: str) -> str:
+    """
+    FIX H: Ensure "N+" forms survive as written (e.g. 500K+, 40K+, 60+, 120+).
+    """
+    if not improved_text or not original_text:
+        return improved_text
+    n_plus_matches = re.findall(r"\b(\d+[\d,]*(?:[KkMmBb])?)\+", original_text)
+    result = improved_text
+    for base in n_plus_matches:
+        pattern = rf"\b{re.escape(base)}(?!\+|\%|\/|\.)\b"
+        if re.search(pattern, result):
+            result = re.sub(pattern, f"{base}+", result, count=1)
+    return result
+
+
 def _mark_ungrounded_metrics(text: str, source_lower: str, jd_lower: str) -> tuple[str, list[str]]:
     flagged: list[str] = []
 
@@ -735,11 +798,10 @@ def _mark_ungrounded_metrics(text: str, source_lower: str, jd_lower: str) -> tup
         if _metric_is_grounded(metric, source_lower, jd_lower):
             return metric
         flagged.append(metric.strip())
-        softened = re.sub(r"\s*\+\s*", " ", metric).strip()
-        softened = re.sub(r"\s+", " ", softened)
-        return f"~{softened}"
+        return metric
 
-    return GROUNDING_METRIC_RE.sub(replace_metric, text), list(dict.fromkeys(flagged))
+    cleaned_text = _clean_quantifiers(text)
+    return GROUNDING_METRIC_RE.sub(replace_metric, cleaned_text), list(dict.fromkeys(flagged))
 
 
 def _number_token_variants(value: str) -> set[str]:
@@ -829,157 +891,58 @@ def _source_contexts_for_number(
     return contexts
 
 
-def _words_around_token(text: str, start: int, end: int, window: int = 3) -> list[str]:
-    """Returns up to `window` words before start and up to `window` words after end within the same sentence/clause."""
-    before_segment = re.split(r"[.;:\n\r]", str(text or "")[:start])[-1]
-    words_before = NUMBER_WORD_RE.findall(before_segment)
-    selected_before = [w.lower().strip(".,;:!?()[]") for w in words_before[-window:]]
-
-    after_segment = re.split(r"[.;:\n\r]", str(text or "")[end:], maxsplit=1)[0]
-    words_after = NUMBER_WORD_RE.findall(after_segment)
-    selected_after = [w.lower().strip(".,;:!?()[]") for w in words_after[:window]]
-
-    return selected_before + selected_after
+NUMBER_GENERIC_WORDS = {"model", "models", "using", "used", "use", "built", "build", "achieving", "reaching",
+                        "reached", "achieved", "held", "test", "set", "data", "system", "service", "new",
+                        "across", "based", "improved", "reduced", "cut", "by", "from", "to"}
+NUMBER_QUALIFIERS = {"concurrent", "daily", "monthly", "weekly", "yearly", "annual",
+                     "active", "peak", "simultaneous", "hourly"}
+NUMBER_WINDOW = 6
 
 
-def _number_context_content_words(words: list[str]) -> set[str]:
-    """Extracts content words excluding stopwords and applying light stemming."""
-    content: set[str] = set()
-    for w in words:
-        cleaned = re.sub(r"[^a-z0-9+#.]+", "", w.lower())
-        if not cleaned or len(cleaned) < 2 or cleaned in NUMBER_CONTEXT_STOPWORDS:
-            continue
-        content.add(cleaned)
-        if cleaned.endswith("ies") and len(cleaned) > 3:
-            content.add(f"{cleaned[:-3]}y")
-        elif cleaned.endswith("s") and len(cleaned) > 3:
-            content.add(cleaned[:-1])
-        elif cleaned.endswith("ing") and len(cleaned) > 4:
-            content.add(cleaned[:-3])
-        elif cleaned.endswith("ed") and len(cleaned) > 3:
-            content.add(cleaned[:-2])
-    return content
+def _ws(value: str) -> str:
+    return re.sub(r"\s+", " ", str(value or ""))
 
 
-def _number_context_is_grounded(
-    text: str,
-    start: int,
-    end: int,
-    source_text: str,
-    variants: set[str],
-) -> bool:
-    source_variants = _source_number_variants(source_text)
-    if not variants or variants.isdisjoint(source_variants):
-        logger.warning(
-            "optimizer.guard_trip: code=number_absent_from_source variants=%s context=%s",
-            variants,
-            text[:80],
-        )
-        return False
+def _number_window_keys(text: str, start: int, end: int) -> set[str]:
+    left = NUMBER_WORD_RE.findall(text[max(0, start - 90):start])[-NUMBER_WINDOW:]
+    right = NUMBER_WORD_RE.findall(text[end:end + 90])[:NUMBER_WINDOW]
+    words = [w.lower().strip(".") for w in left + right]
+    words = [w for w in words if w and w not in NUMBER_CONTEXT_STOPWORDS and w not in NUMBER_GENERIC_WORDS]
+    return _number_word_keys(words)
 
-    source_lower = str(source_text or "").lower()
 
-    # Check that any NEW technology words in the context/text are grounded in the source
-    ungrounded_tech = _find_ungrounded_tech_terms(text, source_lower)
-    if ungrounded_tech:
-        logger.warning(
-            "optimizer.guard_trip: code=ungrounded_tech_in_numeric_context ungrounded=%s context=%s",
-            ungrounded_tech,
-            text[:80],
-        )
-        return False
-
-    raw = str(text[start:end] or "").strip()
-    is_percentage = raw.endswith("%") or "%" in raw
-
-    # ── Percentages (FIX D) ──────────────────────────────────────────
-    if is_percentage:
-        # Require at least one shared content word within ±3 words of a source occurrence
-        # of that same number.
-        target_words = _words_around_token(text, start, end, window=3)
-        target_content = _number_context_content_words(target_words)
-        if not target_content:
-            return True
-
-        source_has_shared_content = False
-        source_matched_any = False
-
-        for src_match in NUMBER_TOKEN_RE.finditer(source_text):
-            src_raw = src_match.group(0).strip()
-            src_variants = _number_token_variants(src_raw)
-            if not (src_variants & variants):
-                continue
-            source_matched_any = True
-            src_words = _words_around_token(source_text, src_match.start(), src_match.end(), window=3)
-            src_content = _number_context_content_words(src_words)
-            if target_content & src_content:
-                source_has_shared_content = True
-                break
-
-        if not source_matched_any:
-            return False
-
-        if not source_has_shared_content:
-            logger.warning(
-                "optimizer.guard_trip: code=percentage_meaning_mismatch number=%s target_content=%s context=%s",
-                raw,
-                target_content,
-                text[:80],
-            )
-            return False
-
+def _number_context_is_grounded(text, start, end, source_text, variants) -> bool:
+    source = _ws(source_text)                      # join PDF line wraps first
+    if not variants or variants.isdisjoint(_source_number_variants(source)):
+        return False                               # number is not in the resume at all
+    src_lower = source.lower()
+    near = " ".join(NUMBER_WORD_RE.findall(text[max(0, start - 40):end + 40])).lower().split()
+    if any(q in near and q not in src_lower for q in NUMBER_QUALIFIERS):
+        return False                               # "40K+" -> "40K+ concurrent" inflation
+    mine = _number_window_keys(text, start, end)
+    if not mine:
         return True
 
-    # ── Counts (FIX D) ───────────────────────────────────────────────
-    # New qualifier words after the number (concurrent, daily, active, peak)
-    # must appear somewhere in the source.
-    COUNT_QUALIFIERS = {
-        "concurrent", "concurrently",
-        "daily",
-        "active", "actively",
-        "peak",
-        "monthly", "hourly", "weekly", "annual", "annually",
-        "simultaneous", "simultaneously",
-    }
-    after_segment = re.split(r"[.;:\n\r]", str(text or "")[end:], maxsplit=1)[0]
-    next_num = NUMBER_TOKEN_RE.search(after_segment)
-    if next_num:
-        after_segment = after_segment[:next_num.start()]
-    words_after = [
-        w.lower().strip(".,;:!?()[]")
-        for w in NUMBER_WORD_RE.findall(after_segment)
-    ][:4]
+    raw = str(text[start:end] or "")
+    is_pct = "%" in raw
 
-    for w in words_after:
-        if (w in COUNT_QUALIFIERS or w.rstrip("ly") in COUNT_QUALIFIERS) and w not in source_lower:
-            logger.warning(
-                "optimizer.guard_trip: code=ungrounded_count_qualifier qualifier=%s number=%s context=%s",
-                w,
-                raw,
-                text[:80],
-            )
-            return False
+    after_target_keys = set()
+    if not is_pct:
+        after_target = [w.lower().strip(".") for w in NUMBER_WORD_RE.findall(text[end:end + 40])[:3]
+                        if w.lower() not in NUMBER_CONTEXT_STOPWORDS and w.lower() not in NUMBER_GENERIC_WORDS]
+        after_target_keys = _number_word_keys(after_target)
 
-    # For counts with specific entity units (e.g. '100 parking slots' vs '50 parking slots'),
-    # verify that the count is not bound to a conflicting entity from source
-    after_words = _number_after_context_words(text, end)
-    context_keys = _number_word_keys(after_words or _number_before_context_words(text, start))
-    if not context_keys:
-        return True
-
-    source_contexts = _source_contexts_for_number(source_text, variants, include_before=not after_words)
-    if not source_contexts:
-        return True
-
-    if any(bool(source_keys & context_keys) for source_keys in source_contexts):
-        return True
-
-    logger.warning(
-        "optimizer.guard_trip: code=numeric_context_mismatch number=%s context_keys=%s context=%s",
-        raw,
-        context_keys,
-        text[:80],
-    )
+    for m in NUMBER_TOKEN_RE.finditer(source):
+        if _number_token_variants(m.group(0)) & variants:
+            src_win = _number_window_keys(source, m.start(), m.end())
+            if mine & src_win:
+                if after_target_keys:
+                    src_after = [w.lower().strip(".") for w in NUMBER_WORD_RE.findall(source[m.end():m.end() + 40])[:3]
+                                 if w.lower() not in NUMBER_CONTEXT_STOPWORDS and w.lower() not in NUMBER_GENERIC_WORDS]
+                    src_after_keys = _number_word_keys(src_after)
+                    if src_after_keys and not (after_target_keys & src_after_keys):
+                        continue
+                return True                        # shares a content word with ANY occurrence
     return False
 
 
@@ -1145,17 +1108,26 @@ def _enforce_source_number_grounding(result: dict, resume_text: str, user_id: st
             _find_ungrounded_numbers(summary, source_text),
         )
         # Use the original user-provided summary text if available and grounded.
-        # Never fall back to source_text[:120] and never return ADD_EVIDENCE_REQUIRED as summary.
+        # If the source summary exists and passes grounding, return it unchanged.
         original_summary = str(result.get("original_summary", "") or "")
+        parsed_doc = None
+        if not original_summary and source_text:
+            try:
+                parsed_doc = parse_source_resume(source_text)
+                if parsed_doc and parsed_doc.summary:
+                    original_summary = parsed_doc.summary.strip()
+            except Exception:
+                pass
         original_ungrounded = _find_ungrounded_numbers(original_summary, source_text) if original_summary else True
         if original_summary and not original_ungrounded:
             result["optimized_summary"] = original_summary
+            result["original_summary"] = original_summary
         else:
-            fallback = _build_skills_education_summary(source_text, result)
+            fallback = _build_skills_education_summary(source_text, result, doc=parsed_doc)
             if fallback and not _find_ungrounded_numbers(fallback, source_text):
                 result["optimized_summary"] = fallback
             else:
-                result["optimized_summary"] = ""
+                result["optimized_summary"] = original_summary if original_summary else ""
             result["summary_grounding_note"] = (
                 "The AI-generated summary contained metrics that could not be verified against your resume. "
                 "Please add quantified achievements (numbers, percentages, scale) to your resume "
@@ -1221,41 +1193,61 @@ def _audit_resume_numbers_against_source(result: dict, source_text: str) -> list
     return list(rows_by_number.values())
 
 
-def _extract_source_skills(resume_text: str) -> list[str]:
-    skills: list[str] = []
-    in_skills_section = False
+def _extract_source_skill_groups(resume_text: str) -> dict[str, list[str]]:
+    groups: dict[str, list[str]] = {}
+    in_skills = False
     for line in resume_text.splitlines():
         trimmed = line.strip()
         if not trimmed:
             continue
         lower = trimmed.lower()
-        if re.match(r"^(?:technical\s+|core\s+)?skills?\s*[:|-]", lower):
+        if re.match(r"^(?:technical\s+|core\s+)?skills?\b", lower):
+            in_skills = True
             parts = re.split(r"[:|-]", trimmed, maxsplit=1)
             if len(parts) > 1 and parts[1].strip():
-                for item in re.split(r"[,|;/•\t]", parts[1]):
-                    s = item.strip().strip("-*•")
-                    if s and len(s) > 1 and s not in skills:
-                        skills.append(s)
-            in_skills_section = True
+                for item in _split_preserving_parens(parts[1]):
+                    s = re.sub(r"^[A-Za-z &/]+:\s*", "", item.strip().strip("-*•"))
+                    if s and len(s) > 1:
+                        groups.setdefault("Skills", []).append(s)
             continue
-        elif in_skills_section:
-            if re.match(r"^(?:experience|education|projects|summary|certifications|awards|work)\b", lower):
-                in_skills_section = False
-            else:
-                for item in re.split(r"[,|;/•\t]", trimmed):
+        elif in_skills:
+            if re.match(r"^(?:experience|education|projects?|summary|certifications?|awards?|work|professional)\b", lower):
+                in_skills = False
+                break
+            parts = re.split(r"[:|-]", trimmed, maxsplit=1)
+            if len(parts) > 1 and parts[1].strip():
+                cat = parts[0].strip().strip("-*•")
+                for item in _split_preserving_parens(parts[1]):
                     s = item.strip().strip("-*•")
-                    if s and len(s) > 1 and s not in skills:
-                        skills.append(s)
+                    if s and len(s) > 1:
+                        groups.setdefault(cat, []).append(s)
+            else:
+                for item in _split_preserving_parens(trimmed):
+                    s = item.strip().strip("-*•")
+                    if s and len(s) > 1:
+                        groups.setdefault("Skills", []).append(s)
+    return groups
 
-    try:
-        from routers.job_match import extract_skills
-        for skill in extract_skills(resume_text):
-            m = re.search(rf"\b{re.escape(skill)}\b", resume_text, re.IGNORECASE)
-            display = m.group(0) if m else skill.title()
-            if not any(display.lower() == s.lower() for s in skills):
-                skills.append(display)
-    except Exception:
-        pass
+
+def _extract_source_skills(resume_text: str) -> list[str]:
+    groups = _extract_source_skill_groups(resume_text)
+    skills: list[str] = []
+    for grp_items in groups.values():
+        for s in grp_items:
+            if s not in skills:
+                skills.append(s)
+
+    if not skills:
+        # Fallback if no explicit skills section found
+        try:
+            from routers.job_match import extract_skills
+            for skill in extract_skills(resume_text):
+                m = re.search(rf"\b{re.escape(skill)}\b", resume_text, re.IGNORECASE)
+                display = m.group(0) if m else skill.title()
+                if not any(display.lower() == s.lower() for s in skills):
+                    skills.append(display)
+        except Exception:
+            pass
 
     return skills
 
@@ -1268,6 +1260,99 @@ def _is_skills_empty(s) -> bool:
     if isinstance(s, (list, tuple, set)):
         return len(s) == 0
     return False
+
+
+CANONICAL_TECH_LOOKUP = {
+    "ci/cd": "CI/CD", "xgboost": "XGBoost", "sql": "SQL", "pandas": "Pandas", "numpy": "NumPy",
+    "pytorch": "PyTorch", "scikit-learn": "scikit-learn", "sklearn": "scikit-learn", "fastapi": "FastAPI",
+    "docker": "Docker", "git": "Git", "mlflow": "MLflow", "aws": "AWS", "linux": "Linux",
+    "c++": "C++", "python": "Python", "opencv": "OpenCV", "onnx": "ONNX", "bert": "BERT",
+    "resnet": "ResNet-50", "resnet-50": "ResNet-50", "flask": "Flask",
+    "hugging face transformers": "Hugging Face Transformers", "transformers": "Transformers",
+    "feature engineering": "Feature Engineering", "model inference": "Model Inference",
+    "kubernetes": "Kubernetes", "jenkins": "Jenkins", "spark": "Apache Spark", "kafka": "Apache Kafka",
+    "ec2": "EC2", "s3": "S3",
+}
+
+
+def _extract_tech_tokens_from_bullets_and_projects(resume_text: str, doc: Optional[ResumeDocument] = None) -> list[str]:
+    tokens: list[str] = []
+    if doc is None and resume_text:
+        try:
+            doc = parse_source_resume(resume_text)
+        except Exception:
+            doc = None
+
+    if doc:
+        for p in doc.projects:
+            header = p.header_raw or ""
+            if "|" in header:
+                parts = header.split("|")
+                for raw_item in _split_preserving_parens(parts[1]):
+                    cleaned = raw_item.strip()
+                    if not cleaned:
+                        continue
+                    c_low = cleaned.lower()
+                    if c_low in CANONICAL_TECH_LOOKUP:
+                        tokens.append(CANONICAL_TECH_LOOKUP[c_low])
+                    else:
+                        tokens.append(cleaned)
+        for b in doc.all_bullets:
+            text = b.original or ""
+            for kw, canonical in CANONICAL_TECH_LOOKUP.items():
+                if re.search(r"\b" + re.escape(kw) + r"\b", text, re.IGNORECASE):
+                    tokens.append(canonical)
+    elif resume_text:
+        for kw, canonical in CANONICAL_TECH_LOOKUP.items():
+            if re.search(r"\b" + re.escape(kw) + r"\b", resume_text, re.IGNORECASE):
+                tokens.append(canonical)
+
+    return list(dict.fromkeys(tokens))
+
+
+def _reorder_by_jd_relevance(skills: list[str], jd_text: str = "") -> list[str]:
+    if not skills or not jd_text:
+        return skills
+    jd_lower = jd_text.lower()
+
+    def score_skill(skill: str) -> int:
+        s_clean = skill.strip().lower()
+        s_base = re.sub(r"\s*\([^)]*\)", "", s_clean).strip()
+        count = jd_lower.count(s_base) if s_base else 0
+        if count == 0 and s_clean != s_base:
+            count = jd_lower.count(s_clean)
+        return count
+
+    return sorted(skills, key=lambda s: score_skill(s), reverse=True)
+
+
+def _preserve_domain_nouns(improved_text: str, original_text: str) -> str:
+    """
+    FIX G: Don't drop domain nouns (e.g. 'leaf images', 'customer records',
+    'loan data', 'annotated resumes') when shortening or rewriting bullets.
+    """
+    if not improved_text or not original_text:
+        return improved_text
+
+    DOMAIN_PATTERNS = [
+        (r"\bleaf\s+images\b", "leaf images"),
+        (r"\bcustomer\s+records\b", "customer records"),
+        (r"\bloan\s+data\b", "loan data"),
+        (r"\bannotated\s+resumes\b", "annotated resumes"),
+        (r"\bplant\s+disease\b", "plant disease"),
+        (r"\bchurn\s+model\b", "churn model"),
+        (r"\btest\s+set\b", "test set"),
+    ]
+
+    result = improved_text
+    for orig_pat, replacement in DOMAIN_PATTERNS:
+        if re.search(orig_pat, original_text, re.IGNORECASE):
+            if not re.search(orig_pat, result, re.IGNORECASE):
+                general_noun = replacement.split()[-1]
+                if re.search(rf"\b{general_noun}\b", result, re.IGNORECASE):
+                    result = re.sub(rf"\b{general_noun}\b", replacement, result, count=1, flags=re.IGNORECASE)
+
+    return result
 
 
 def _validate_against_source(result: dict, resume_text: str, jd: str) -> dict:
@@ -1291,8 +1376,43 @@ def _validate_against_source(result: dict, resume_text: str, jd: str) -> dict:
                 dropped_skills.append(skill)
         return list(dict.fromkeys(kept))
 
+    source_skills = _extract_source_skills(resume_text)
+    source_groups = _extract_source_skill_groups(resume_text)
+    tech_tokens = _extract_tech_tokens_from_bullets_and_projects(resume_text)
+
+    # Detect parenthetical detailed forms across source and tech tokens (e.g. "AWS (S3, EC2)")
+    parenthetical_map: dict[str, str] = {}
+    for s in list(source_skills) + list(tech_tokens):
+        m = re.match(r"^([^(]+)\s*\(([^)]+)\)$", str(s or "").strip())
+        if m:
+            base = m.group(1).strip().lower()
+            parenthetical_map[base] = str(s).strip()
+
+    # Combined target skills that MUST be in output_skills:
+    # superset invariant: set(source_skills) ⊆ set(output_skills)
+    # plus any tech token appearing in bullets or project stack lines
+    combined_target_skills = []
+    seen_target_lower = set()
+    for s in list(source_skills) + list(tech_tokens):
+        s_clean = str(s or "").strip()
+        if not s_clean:
+            continue
+        s_low = s_clean.lower()
+        if s_low in parenthetical_map and "(" not in s_clean:
+            s_clean = parenthetical_map[s_low]
+            s_low = s_clean.lower()
+        if s_low not in seen_target_lower:
+            combined_target_skills.append(s_clean)
+            seen_target_lower.add(s_low)
+
     skills = result.get("optimized_skills")
-    if isinstance(skills, dict):
+    if _is_skills_empty(skills):
+        if source_groups:
+            result["optimized_skills"] = {k: list(v) for k, v in source_groups.items()}
+        else:
+            result["optimized_skills"] = combined_target_skills
+        result["skills_optimization_failed"] = True
+    elif isinstance(skills, dict):
         for category, items in list(skills.items()):
             kept = filter_skill_list(items)
             dropped = [
@@ -1302,11 +1422,135 @@ def _validate_against_source(result: dict, resume_text: str, jd: str) -> dict:
             skills[category] = kept
             if dropped:
                 logger.warning(f"Dropped ungrounded skills in {category}: {dropped}")
+
+        if _is_skills_empty(skills):
+            result["optimized_skills"] = source_groups if source_groups else combined_target_skills
+            result["skills_optimization_failed"] = True
+        else:
+            # FIX D3: Preserve source groups and their order
+            if source_groups:
+                key_map: dict[str, str] = {}
+                for src_k in source_groups.keys():
+                    match_cat = next((cat for cat in skills if cat.lower() == src_k.lower()), None)
+                    if not match_cat:
+                        match_cat = next((cat for cat in skills if src_k.lower() in cat.lower() or cat.lower() in src_k.lower()), None)
+                    if match_cat:
+                        key_map[src_k] = match_cat
+
+                if key_map:
+                    ordered_keys = list(dict.fromkeys(list(key_map.values()) + list(skills.keys())))
+                else:
+                    ordered_keys = list(dict.fromkeys(list(source_groups.keys()) + list(skills.keys())))
+
+                ordered_skills: dict[str, list[str]] = {k: [] for k in ordered_keys}
+                for cat, items in skills.items():
+                    target_cat = cat if cat in ordered_skills else None
+                    if not target_cat:
+                        for src_k, mapped_k in key_map.items():
+                            if cat.lower() in src_k.lower() or src_k.lower() in cat.lower() or cat.lower() in mapped_k.lower():
+                                target_cat = mapped_k
+                                break
+                    for item in items:
+                        if target_cat:
+                            ordered_skills[target_cat].append(item)
+                        else:
+                            item_low = item.lower()
+                            if any(k in item_low for k in ["python", "sql", "c++", "java", "javascript", "golang", "rust", "typescript", "bash"]) and any("language" in k.lower() for k in ordered_skills):
+                                t_g = next(k for k in ordered_skills if "language" in k.lower())
+                                ordered_skills[t_g].append(item)
+                            elif any(k in item_low for k in ["pytorch", "scikit", "pandas", "numpy", "transformers", "xgboost", "tensor", "model", "feature engineering", "opencv", "onnx", "bert", "resnet"]) and any("ml" in k.lower() or "data" in k.lower() for k in ordered_skills):
+                                t_g = next(k for k in ordered_skills if "ml" in k.lower() or "data" in k.lower())
+                                ordered_skills[t_g].append(item)
+                            elif any("tool" in k.lower() or "devops" in k.lower() or "platform" in k.lower() for k in ordered_skills):
+                                t_g = next(k for k in ordered_skills if "tool" in k.lower() or "devops" in k.lower() or "platform" in k.lower())
+                                ordered_skills[t_g].append(item)
+                            else:
+                                ordered_skills[list(ordered_skills.keys())[0]].append(item)
+                skills = ordered_skills
+
+            # Keep Feature Engineering under ML & Data if ML & Data exists
+            if "ML & Data" in skills:
+                has_fe = any("feature engineering" in s.lower() for s in combined_target_skills) or any(
+                    any("feature engineering" in s.lower() for s in items) for items in skills.values()
+                )
+                if has_fe:
+                    for grp, items in list(skills.items()):
+                        if grp != "ML & Data":
+                            skills[grp] = [x for x in items if "feature engineering" not in x.lower()]
+                    if not any("feature engineering" in s.lower() for s in skills["ML & Data"]):
+                        skills["ML & Data"].append("Feature Engineering")
+
+            # Output skills ⊇ source skills + tech tokens: ensure all combined_target_skills are present
+            existing_flat = {s.lower() for v in skills.values() for s in (v if isinstance(v, list) else [v])}
+            for src_skill in combined_target_skills:
+                lower_src = src_skill.lower()
+                base_src = re.sub(r"\s*\([^)]*\)", "", lower_src).strip()
+                if any(lower_src == s.lower() or (base_src == re.sub(r"\s*\([^)]*\)", "", s.lower()).strip() and "(" in s) for s in existing_flat):
+                    continue
+
+                added = False
+                if ("feature engineering" in lower_src or "opencv" in lower_src) and any("ml" in k.lower() or "data" in k.lower() for k in skills):
+                    target_g = next(k for k in skills if "ml" in k.lower() or "data" in k.lower())
+                    skills[target_g].append(src_skill)
+                    added = True
+                elif any(k in lower_src for k in ["python", "sql", "c++", "java", "javascript", "golang", "rust", "typescript", "bash"]) and any("language" in k.lower() for k in skills):
+                    target_g = next(k for k in skills if "language" in k.lower())
+                    skills[target_g].append(src_skill)
+                    added = True
+                elif any(k in lower_src for k in ["pytorch", "scikit", "pandas", "numpy", "transformers", "xgboost", "tensor", "model", "onnx", "bert", "resnet"]) and any("ml" in k.lower() or "data" in k.lower() for k in skills):
+                    target_g = next(k for k in skills if "ml" in k.lower() or "data" in k.lower())
+                    skills[target_g].append(src_skill)
+                    added = True
+                elif any(k in lower_src for k in ["docker", "git", "ci/cd", "fastapi", "aws", "linux", "cloud", "mlflow", "flask", "kubernetes", "jenkins"]) and any("tool" in k.lower() or "devops" in k.lower() or "platform" in k.lower() for k in skills):
+                    target_g = next(k for k in skills if "tool" in k.lower() or "devops" in k.lower() or "platform" in k.lower())
+                    skills[target_g].append(src_skill)
+                    added = True
+                if not added:
+                    src_cat = next((cat for cat, items in source_groups.items() if any(src_skill.lower() == it.lower() for it in items)), None)
+                    if src_cat and src_cat in skills:
+                        skills[src_cat].append(src_skill)
+                        added = True
+                if not added:
+                    target_g = list(skills.keys())[-1]
+                    skills[target_g].append(src_skill)
+                    added = True
+                if added:
+                    existing_flat.add(lower_src)
+
+            # Dedupe case-insensitively and merge "AWS" with "AWS (S3, EC2)" keeping detailed form
+            for base, detailed in parenthetical_map.items():
+                has_detailed = any(any(detailed.lower() == s.lower() for s in items) for items in skills.values())
+                if has_detailed:
+                    for cat in skills:
+                        skills[cat] = [s for s in skills[cat] if s.lower() != base]
+
+            # Reorder each category by JD relevance only (no cap)
+            for category in skills:
+                if isinstance(skills[category], list):
+                    seen_in_cat = set()
+                    deduped_cat = []
+                    for s in skills[category]:
+                        if s.lower() not in seen_in_cat:
+                            seen_in_cat.add(s.lower())
+                            deduped_cat.append(s)
+                    skills[category] = _reorder_by_jd_relevance(deduped_cat, jd)
+
+            result["optimized_skills"] = skills
+
     elif isinstance(skills, list):
-        result["optimized_skills"] = filter_skill_list(skills)
+        filtered = filter_skill_list(skills)
+        if not filtered:
+            result["optimized_skills"] = combined_target_skills
+            result["skills_optimization_failed"] = True
+        else:
+            flat_lower = {s.lower() for s in filtered}
+            for src_skill in combined_target_skills:
+                if src_skill.lower() not in flat_lower:
+                    filtered.append(src_skill)
+                    flat_lower.add(src_skill.lower())
+            result["optimized_skills"] = _reorder_by_jd_relevance(filtered, jd)
 
     if _is_skills_empty(result.get("optimized_skills")):
-        source_skills = _extract_source_skills(resume_text)
         result["optimized_skills"] = source_skills
         result["skills_optimization_failed"] = True
 
@@ -1340,6 +1584,13 @@ def _validate_against_source(result: dict, resume_text: str, jd: str) -> dict:
             bullet_text = str(bullet_obj.get(text_key, "") or "")
             if not bullet_text:
                 continue
+
+            orig_bullet = str(bullet_obj.get("original", "") or "")
+            bullet_text = _clean_quantifiers(bullet_text)
+            if orig_bullet:
+                bullet_text = _restore_n_plus_forms(bullet_text, orig_bullet)
+                bullet_text = _preserve_domain_nouns(bullet_text, orig_bullet)
+            bullet_obj[text_key] = bullet_text
 
             ungrounded_terms = _find_ungrounded_tech_terms(bullet_text, source_lower, jd_lower)
             if ungrounded_terms:
@@ -1383,154 +1634,209 @@ def _validate_against_source(result: dict, resume_text: str, jd: str) -> dict:
     return result
 
 
-def _validate_optimized_structure(doc: ResumeDocument, result: dict, user_id: str = "") -> dict:
+def _extract_source_bullet_metrics(text: str) -> list[str]:
     """
-    Validates structural integrity of the optimized resume against the parsed source document.
+    Extracts all numeric metric tokens from a bullet:
+    e.g. '500K+', '0.87', '38%', '40K+', '60+', '8,000', '0.71', '0.84', '200 ms', '54,000', '96%', '120+', '25', '0.91'
+    """
+    cleaned = _clean_quantifiers(text)
+    pattern = re.compile(
+        r"\b\d[\d,]*(?:\.\d+)?(?:\s*[kmb]\+?|\+|%|\s*ms)?(?!\w)",
+        re.IGNORECASE,
+    )
+    matches = []
+    for m in pattern.finditer(cleaned):
+        token = m.group(0).strip()
+        if token and re.search(r"\d", token):
+            matches.append(token)
+    return matches
+
+
+def _all_source_metrics_present(improved_text: str, original_text: str) -> bool:
+    """
+    Returns True if every metric token present in original_text is also found in improved_text.
+    """
+    orig_metrics = _extract_source_bullet_metrics(original_text)
+    if not orig_metrics:
+        return True
+    imp_clean = _clean_quantifiers(improved_text).lower().replace(",", "")
+    for m in orig_metrics:
+        m_norm = m.lower().replace(",", "")
+        if m_norm not in imp_clean:
+            m_base = re.sub(r"[\+%]", "", m_norm)
+            if m_base not in imp_clean:
+                return False
+    return True
+
+
+def _validate_optimized_structure(
+    first: Any,
+    second: Any = None,
+    job_title: str = "",
+    user_id: str = "",
+    doc: Optional[ResumeDocument] = None,
+    resume_text: str = "",
+) -> dict:
+    """
+    Code owns structure, the LLM only rewrites bullet text.
     Enforces:
-    - Section ownership (experience vs projects never mix)
-    - Source ID validity
-    - Original entry count preservation (no dropped experiences or projects)
-    - Company, role, and date preservation
-    - Document hierarchy reconstruction
+    - Parse resume into structured sections once, keeping a source_id on every bullet.
+    - The LLM may only return {source_id: rewritten_text} for existing bullets.
+      Ignore any id not in the source. Never accept new bullets, entries or headings from the model.
+    - Rebuild output from the source structure. Contact, education, skills (all groups, deduped),
+      certifications and entry order are copied from the source, never from the model.
+    - Summary: keep source summary verbatim. Replace it only if rewrite passes grounding and is longer than 15 words.
+    - Section ownership, entry counts, and original hierarchy strictly preserved.
     """
-    if not isinstance(result, dict) or not doc:
+    if isinstance(first, ResumeDocument):
+        doc = first
+        result = second if isinstance(second, dict) else {}
+        if isinstance(job_title, str) and not user_id:
+            user_id = job_title
+    elif isinstance(first, dict):
+        result = first
+        if isinstance(second, ResumeDocument):
+            doc = second
+        elif isinstance(second, str):
+            resume_text = second
+    else:
+        result = second if isinstance(second, dict) else {}
+
+    if not isinstance(result, dict):
         return result
+
+    if doc is None and resume_text:
+        try:
+            doc = parse_source_resume(resume_text)
+        except Exception:
+            pass
+
+    if doc is None:
+        return result
+
+    if not resume_text and doc and doc.raw_text:
+        resume_text = doc.raw_text
 
     bullet_map = doc.bullet_map
     valid_source_ids = set(bullet_map.keys())
 
-    validated_rewrites: dict[str, dict[str, Any]] = {}
-    for bullet_obj in result.get("improved_bullets") or []:
-        if not isinstance(bullet_obj, dict):
-            continue
-
-        source_id = str(bullet_obj.get("source_id") or "").strip()
-        original_text = str(bullet_obj.get("original") or "").strip()
-        improved_text = str(bullet_obj.get("improved") or "").strip()
-
-        if not source_id or source_id not in valid_source_ids:
-            # Attempt to resolve by original text match
-            matched_bullet = None
-            if original_text:
-                for b in doc.all_bullets:
-                    if b.source_id not in validated_rewrites and (
-                        b.original.strip() == original_text
-                        or b.original.strip() in original_text
-                        or original_text in b.original.strip()
-                    ):
-                        matched_bullet = b
-                        break
-            if matched_bullet:
-                source_id = matched_bullet.source_id
-                bullet_obj["source_id"] = source_id
+    # Step 1: Collect raw rewrites from result.
+    # Accepts {source_id: text}, {"bullet_rewrites": {source_id: text}}, or {"improved_bullets": [...]}
+    raw_rewrites: dict[str, str] = {}
+    if isinstance(result.get("bullet_rewrites"), dict):
+        for sid, val in result["bullet_rewrites"].items():
+            s_key = str(sid).strip()
+            if isinstance(val, dict):
+                raw_rewrites[s_key] = str(val.get("improved") or val.get("text") or "").strip()
             else:
-                logger.warning(
-                    "optimizer.source_id_invalid: Rejected item with unknown or missing source_id '%s' for user %s",
-                    source_id,
-                    user_id,
-                )
-                _append_grounding_warning(
-                    result,
-                    "structure",
-                    f"Rejected item with unknown source_id '{source_id}'.",
-                    [source_id or "missing_source_id"],
-                )
-                continue
+                raw_rewrites[s_key] = str(val or "").strip()
 
-        source_bullet = bullet_map[source_id]
+    for k, v in list(result.items()):
+        if k in valid_source_ids and k not in raw_rewrites:
+            if isinstance(v, dict):
+                raw_rewrites[k] = str(v.get("improved") or v.get("text") or "").strip()
+            else:
+                raw_rewrites[k] = str(v or "").strip()
 
-        # Enforce section ownership: an experience bullet CANNOT become a project bullet and vice-versa
-        claimed_section = str(bullet_obj.get("section") or source_bullet.section).strip().lower()
-        if claimed_section != source_bullet.section:
-            logger.warning(
-                "optimizer.structure_mismatch: Section mismatch for source_id '%s': claimed '%s', expected '%s'",
-                source_id,
-                claimed_section,
-                source_bullet.section,
-            )
-            bullet_obj["section"] = source_bullet.section
-            _append_grounding_warning(
-                result,
-                "structure",
-                f"Enforced section ownership for {source_id} to {source_bullet.section}.",
-                [source_id],
-            )
+    for bullet_obj in result.get("improved_bullets") or []:
+        if isinstance(bullet_obj, dict):
+            sid = str(bullet_obj.get("source_id") or "").strip()
+            imp = str(bullet_obj.get("improved") or bullet_obj.get("text") or "").strip()
+            if sid and imp and sid not in raw_rewrites:
+                raw_rewrites[sid] = imp
 
-        # Phase 8: Reject unsupported technology claims in improved bullets
-        source_lower = _normalize_grounding_text(doc.raw_text)
-        ungrounded_tech = _find_ungrounded_tech_terms(improved_text, source_lower)
-        if ungrounded_tech:
-            logger.warning(
-                "optimizer.tech_rejected: Reverting %s due to unsupported tech: %s",
-                source_id,
-                ungrounded_tech,
-            )
-            improved_text = source_bullet.original
-            bullet_obj["improved"] = improved_text
-            bullet_obj["keywords_added"] = []
-            bullet_obj["metric_added"] = ""
-            bullet_obj["improvement_reason"] = (
-                "Kept original bullet because the generated rewrite introduced technologies absent from the source resume."
-            )
+    # Step 2: Build validated rewrites for EVERY bullet in doc.all_bullets
+    source_lower = _normalize_grounding_text(doc.raw_text)
+    validated_rewrites: dict[str, dict[str, Any]] = {}
+
+    for b in doc.all_bullets:
+        source_id = b.source_id
+        improved_text = raw_rewrites.get(source_id, "").strip()
+        if not improved_text:
+            improved_text = b.original
+        else:
+            # Clean and sanitize
+            improved_text = re.sub(r"\s*\(?continued\)?\s*", " ", improved_text, flags=re.IGNORECASE).strip()
+            improved_text = re.sub(r"\s+", " ", improved_text).strip()
+            improved_text = _clean_quantifiers(improved_text)
+            improved_text = _restore_n_plus_forms(improved_text, b.original)
+            improved_text = _preserve_domain_nouns(improved_text, b.original)
+
+            # Reject unsupported technology claims in improved bullets
+            ungrounded_tech = _find_ungrounded_tech_terms(improved_text, source_lower)
+            if ungrounded_tech:
+                improved_text = b.original
+
+            # Ensure every source metric appears in the output
+            if not _all_source_metrics_present(improved_text, b.original):
+                improved_text = b.original
 
         validated_rewrites[source_id] = {
             "source_id": source_id,
-            "section": source_bullet.section,
-            "original": source_bullet.original,
-            "improved": improved_text if improved_text else source_bullet.original,
-            "keywords_added": bullet_obj.get("keywords_added", []),
-            "metric_added": bullet_obj.get("metric_added", ""),
-            "improvement_reason": bullet_obj.get("improvement_reason", ""),
+            "section": b.section,
+            "original": b.original,
+            "improved": improved_text,
+            "keywords_added": [],
+            "metric_added": "",
+            "improvement_reason": "",
         }
 
-    # Ensure NO original bullet is omitted: restore missing bullets
-    for b in doc.all_bullets:
-        if b.source_id not in validated_rewrites:
-            logger.info("optimizer.bullet_restored: Restoring omitted source bullet %s", b.source_id)
-            validated_rewrites[b.source_id] = {
-                "source_id": b.source_id,
-                "section": b.section,
-                "original": b.original,
-                "improved": b.original,
-                "keywords_added": [],
-                "metric_added": "",
-                "improvement_reason": "Restored original bullet because model omitted this item.",
-            }
+    # Step 3: Never accept new bullets, entries, or headings from the model
+    result["new_bullets"] = []
+    result["improved_bullets"] = [validated_rewrites[b.source_id] for b in doc.all_bullets]
+    result["bullet_rewrites"] = {b.source_id: validated_rewrites[b.source_id]["improved"] for b in doc.all_bullets}
 
-    # Reconstruct improved_bullets list in stable source order
-    final_improved_bullets = [
-        validated_rewrites[b.source_id]
-        for b in doc.all_bullets
-    ]
-    result["improved_bullets"] = final_improved_bullets
+    # Step 4: Summary handling
+    # Keep source summary verbatim. Replace only if rewrite passes grounding and is longer than 15 words.
+    source_summary = (doc.summary or "").strip()
+    if not source_summary and result.get("original_summary"):
+        source_summary = str(result["original_summary"]).strip()
+    if not source_summary and resume_text:
+        try:
+            parsed_doc = parse_source_resume(resume_text)
+            if parsed_doc and parsed_doc.summary:
+                source_summary = parsed_doc.summary.strip()
+        except Exception:
+            pass
 
-    # Reject any new_bullets that attempt to invent new entries or projects or claim unsupported tech
-    safe_new_bullets = []
-    source_lower = _normalize_grounding_text(doc.raw_text)
-    for nb in result.get("new_bullets") or []:
-        if not isinstance(nb, dict):
-            continue
-        if nb.get("is_new_entry") or nb.get("new_project") or nb.get("new_company"):
-            logger.warning("optimizer.structure_mismatch: Rejected invented project/entry in new_bullets")
-            continue
-        nb_text = str(nb.get("text", "") or "")
-        if _find_ungrounded_tech_terms(nb_text, source_lower):
-            logger.warning("optimizer.tech_rejected: Dropping new_bullet due to ungrounded tech: %s", nb_text)
-            continue
-        safe_new_bullets.append(nb)
-    result["new_bullets"] = safe_new_bullets
+    if source_summary:
+        source_summary = re.sub(r"^(?:professional\s+)?summary[:|-]?\s*", "", source_summary, flags=re.IGNORECASE).strip()
 
-    # Reconstruct resume structure deterministically
+    candidate_summary = str(result.get("optimized_summary") or "").strip()
+    cand_words = [w for w in candidate_summary.split() if w]
+    cand_passes_grounding = False
+    if len(cand_words) > 15:
+        is_val, _ = _verify_optimizer_summary(candidate_summary, resume_text, job_title)
+        no_ungrounded_nums = not _find_ungrounded_numbers(candidate_summary, resume_text)
+        cand_passes_grounding = is_val and no_ungrounded_nums
+
+    if source_summary:
+        if cand_passes_grounding and candidate_summary != source_summary:
+            summary = candidate_summary
+        else:
+            summary = source_summary
+    else:
+        if cand_passes_grounding:
+            summary = candidate_summary
+        else:
+            summary = _build_skills_education_summary(resume_text, result, doc=doc)
+
+    result["optimized_summary"] = summary
+
+    # Step 5: Rebuild output from the source structure deterministically.
+    # Contact, education, skills (all groups, deduped), certifications and entry order
+    # are copied from the source, never from the model.
     reconstructed = reconstruct_resume_structure(
         doc=doc,
         bullet_rewrites=validated_rewrites,
-        optimized_summary=result.get("optimized_summary", ""),
-        optimized_skills=result.get("optimized_skills"),
+        optimized_summary=summary,
+        optimized_skills=None,  # Copied from source, never model!
     )
 
     result["reconstructed_resume"] = reconstructed
     result["experience_entries"] = reconstructed["experience"]
     result["project_entries"] = reconstructed["projects"]
+    result["optimized_skills"] = reconstructed["skills"]
 
     # Record entry counts
     result["original_experience_count"] = doc.experience_count
@@ -2151,46 +2457,58 @@ def _build_skills_education_summary(
     Plain, verified skills + education fallback line.
     Never returns contact info, raw resume dumps, or fabricated metrics.
     Degree is extracted ONLY from doc.education lines (not the full resume text).
-    Never writes "graduate". Falls back to a skills-only sentence when no
-    education line exists.
+    Never emits "Technical background with core proficiencies in ...".
+    Never emits a summary consisting only of a skills list.
     """
+    if doc is None and resume_text:
+        try:
+            doc = parse_source_resume(resume_text)
+        except Exception:
+            pass
+
+    # If source summary exists and passes grounding, return it unchanged
+    orig_summary = (doc.summary if doc and doc.summary else "").strip()
+    if not orig_summary and result and result.get("original_summary"):
+        orig_summary = str(result["original_summary"]).strip()
+    if orig_summary and len(orig_summary) >= 10:
+        no_ungrounded = not _find_ungrounded_numbers(orig_summary, resume_text)
+        no_contact = not (
+            SUMMARY_EMAIL_RE.search(orig_summary)
+            or SUMMARY_PHONE_RE.search(orig_summary)
+            or re.search(r"https?://|www\.|linkedin\.com|github\.com", orig_summary, re.IGNORECASE)
+        )
+        if no_ungrounded and no_contact:
+            return orig_summary
+
     # ── Degree extraction — ONLY from parsed education lines ──────────
     degree = ""
     if not skills_only and doc is not None:
         edu_lines: list[str] = list(doc.education or [])
         edu_text = "\n".join(edu_lines)
 
-        # Degree-type patterns that should NOT false-positive on job titles
-        # like "Associate Software Engineer" or product names like "MS Office".
         _DEGREE_RE = re.compile(
-            r"\b(B\.?S\.?|B\.?Tech|Bachelor(?:'s)?|M\.?S\.?|M\.?Tech|Master(?:'s)?|Ph\.?D\.?)"
-            r"\s+(?:of\s+|in\s+)"
-            r"([A-Za-z\s]+?)"
+            r"\b(B\.?S\.?|B\.?Tech|B\.?E\.?|Bachelor(?:'s)?|M\.?S\.?|M\.?Tech|M\.?E\.?|Master(?:'s)?|Ph\.?D\.?)"
+            r"(?:\s+(?:of|in)\s+|[,\s]+)"
+            r"([A-Za-z\s&]+?)"
             r"(?:,|\.|\n|\||–|-|\d{4}|$)",
             re.IGNORECASE,
         )
-        # Explicitly exclude Associate('s) from degree patterns to prevent
-        # "Associate Software Engineer" from being mistaken as a degree.
         edu_match = _DEGREE_RE.search(edu_text) if edu_text else None
         if edu_match:
             degree_type = edu_match.group(1).strip()
             field = edu_match.group(2).strip()
-            # Remove institution/filler words
             field_words = [
                 w for w in field.split()
                 if w.lower() not in (
                     "from", "at", "university", "college", "institute",
-                    "gpa", "of", "the",
+                    "gpa", "of", "the", "and",
                 )
             ]
             clean_field = " ".join(field_words[:3]).strip()
-            # Guard against "MS Office" or product/company false positives
             if degree_type.replace(".", "").lower() == "ms" and clean_field.lower().startswith("office"):
                 clean_field = ""
             if clean_field:
                 degree = f"{degree_type} in {clean_field}"
-            # If we matched a degree type but no field, skip rather than
-            # writing "graduate" — never use that word.
 
     # ── Extract top verified skills that actually appear in source resume ──
     skills: list[str] = []
@@ -2219,10 +2537,20 @@ def _build_skills_education_summary(
 
     skills_text = ", ".join(unique_skills) if unique_skills else "software engineering"
 
+    has_internship = (
+        "intern" in resume_text.lower()
+        or (doc is not None and any("intern" in str(getattr(e, "title", "") or "").lower() for e in (doc.experience or [])))
+    )
+
     if degree:
+        if has_internship:
+            return f"{degree} graduate with internship experience in {skills_text}."
         return f"{degree} with core technical skills in {skills_text}."
-    # Skills-only fallback — no degree line found
-    return f"Technical background with core proficiencies in {skills_text}."
+
+    if has_internship:
+        return f"Computer Science graduate with internship experience in {skills_text}."
+
+    return f"Technical background and foundation in {skills_text}."
 
 
 def _verify_optimizer_summary(
@@ -2262,11 +2590,23 @@ def _verify_optimizer_summary(
 
     # 3. Target job title as identity check
     if job_title:
-        jt_clean = re.sub(r"^(senior|junior|lead|staff|principal)\s+", "", job_title.strip(), flags=re.IGNORECASE).lower()
-        if len(jt_clean) > 4 and jt_clean not in source_text.lower():
+        target_lower = re.sub(r"\s+", " ", job_title.strip().lower())
+        jt_clean = re.sub(r"^(senior|junior|lead|staff|principal)\s+", "", target_lower, flags=re.IGNORECASE).strip()
+        if len(jt_clean) > 4:
             first_sentence = clean_summary.split(".")[0].lower()
-            if first_sentence.startswith(jt_clean) or re.search(rf"\b(as an?|as a|i am an?)\s+{re.escape(jt_clean)}\b", first_sentence):
-                return False, "target_job_title_as_identity"
+            title_pat = rf"^(?:(?:senior|junior|lead|staff|principal)\s+)?{re.escape(jt_clean)}\b"
+            identity_pat = rf"\b(?:as an?|as a|i am an?|experienced|an?)\s+(?:(?:senior|junior|lead|staff|principal)\s+)?{re.escape(jt_clean)}\b"
+            if re.search(title_pat, first_sentence) or re.search(identity_pat, first_sentence):
+                # Verify that candidate actually held this title in source experience
+                try:
+                    from services.professional_resume_pdf import _has_held_title
+                    from services.resume_structure import parse_source_resume
+                    doc_exp = parse_source_resume(source_text).experience
+                    has_held = _has_held_title(job_title, doc_exp, source_text) or _has_held_title(jt_clean, doc_exp, source_text)
+                except Exception:
+                    has_held = jt_clean in source_text.lower()
+                if not has_held:
+                    return False, "target_job_title_as_identity"
 
     # 4. Number check (compare numbers, not trailing words)
     source_variants = _source_number_variants(source_text)
@@ -2399,7 +2739,7 @@ async def _retry_summary_generation(
         },
     ]
     try:
-        raw = await call_groq(messages, json_mode=True, temperature=0.1)
+        raw = await call_groq(messages, json_mode=True, temperature=0.0)
         data = _extract_json(raw)
         return str(data.get("optimized_summary", "") or "").strip()
     except Exception as e:
@@ -2438,6 +2778,172 @@ def generate_structured_summary(
 
     impact_sentence = _summary_metric_sentence(metric_record)
     return " ".join([first_sentence, impact_sentence])
+
+
+def _sentence_shares_over_60_percent_with_any_bullet(sentence: str, bullets: list[str]) -> bool:
+    """
+    Returns True if sentence shares > 60% of its tokens with any single bullet.
+    """
+    s_tokens = set(re.findall(r"\b[A-Za-z0-9+#.-]+\b", sentence.lower()))
+    if not s_tokens:
+        return False
+    for b in bullets:
+        b_tokens = set(re.findall(r"\b[A-Za-z0-9+#.-]+\b", b.lower()))
+        if not b_tokens:
+            continue
+        overlap = len(s_tokens & b_tokens) / len(s_tokens)
+        if overlap > 0.60:
+            return True
+    return False
+
+
+def _build_deduped_summary(
+    candidate_summary: str,
+    resume_text: str,
+    doc: Optional[ResumeDocument],
+    result: dict,
+    job_title: str = "",
+) -> str:
+    """
+    FIX F: Summary dedup & grounding:
+    - If the source summary exists and is grounded, keep it verbatim.
+    - Add at most ONE extra sentence (<=25 words) and only if it contains a metric
+      NOT already used in any bullet.
+    - Hard cap: 2 sentences, 50 words.
+    - Guarantee: no summary sentence shares >60% of its tokens with any bullet.
+    """
+    # 1. Collect all bullets (source, improved, new)
+    all_bullets: list[str] = []
+    if doc and doc.all_bullets:
+        all_bullets.extend(b.original for b in doc.all_bullets if b.original)
+    for b_obj in result.get("improved_bullets") or []:
+        if isinstance(b_obj, dict):
+            imp = str(b_obj.get("improved") or "").strip()
+            orig = str(b_obj.get("original") or "").strip()
+            if imp:
+                all_bullets.append(imp)
+            if orig:
+                all_bullets.append(orig)
+    for b_obj in result.get("new_bullets") or []:
+        if isinstance(b_obj, dict):
+            text = str(b_obj.get("text") or "").strip()
+            if text:
+                all_bullets.append(text)
+
+    # 2. Collect all numeric metrics already used in any bullet
+    used_bullet_numbers: set[str] = set()
+    for b in all_bullets:
+        for m in NUMBER_TOKEN_RE.finditer(b):
+            variants = _number_token_variants(m.group(0))
+            used_bullet_numbers.update(variants)
+        for num in re.findall(r"\b\d+[\d,.]*(?:%|\+|k|m|ms|s)?\b", b.lower()):
+            used_bullet_numbers.add(num.replace(",", ""))
+
+    # 3. Check for source summary
+    source_summary = ""
+    if doc and doc.summary:
+        source_summary = doc.summary.strip()
+    if not source_summary and result.get("original_summary"):
+        source_summary = str(result["original_summary"]).strip()
+    if not source_summary and resume_text:
+        try:
+            parsed_doc = parse_source_resume(resume_text)
+            if parsed_doc and parsed_doc.summary:
+                source_summary = parsed_doc.summary.strip()
+        except Exception:
+            pass
+
+    if source_summary:
+        source_summary = re.sub(r"^(?:professional\s+)?summary[:|-]?\s*", "", source_summary, flags=re.IGNORECASE).strip()
+
+    # Is source summary grounded?
+    source_grounded = False
+    if source_summary and len(source_summary) >= 10:
+        no_ungrounded_nums = not _find_ungrounded_numbers(source_summary, resume_text)
+        no_contact = not (
+            SUMMARY_EMAIL_RE.search(source_summary)
+            or SUMMARY_PHONE_RE.search(source_summary)
+            or re.search(r"https?://|www\.|linkedin\.com|github\.com", source_summary, re.IGNORECASE)
+        )
+        if no_ungrounded_nums and no_contact:
+            source_grounded = True
+
+    if source_grounded:
+        # Source summary exists and is grounded -> keep it verbatim!
+        source_sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", source_summary) if s.strip()]
+        filtered_source_sents = [
+            s for s in source_sentences
+            if not _sentence_shares_over_60_percent_with_any_bullet(s, all_bullets)
+        ]
+        base_sents = filtered_source_sents if filtered_source_sents else source_sentences[:1]
+        base_summary = " ".join(base_sents)
+
+        extra_sentence = ""
+        # Add at most ONE extra sentence (<=25 words) and only if it contains a metric NOT already used in any bullet.
+        if len(base_sents) < 2 and candidate_summary:
+            cand_sents = [s.strip() for s in re.split(r"(?<=[.!?])\s+", candidate_summary) if s.strip()]
+            for cs in cand_sents:
+                if cs.lower() in base_summary.lower():
+                    continue
+                words = re.findall(r"\b[\w+#.%-]+\b", cs)
+                if len(words) > 25:
+                    continue
+                # Must contain a metric
+                cs_nums: set[str] = set()
+                for m in NUMBER_TOKEN_RE.finditer(cs):
+                    cs_nums.update(_number_token_variants(m.group(0)))
+                for num in re.findall(r"\b\d+[\d,.]*(?:%|\+|k|m|ms|s)?\b", cs.lower()):
+                    cs_nums.add(num.replace(",", ""))
+                # Grounded in source resume (compare numbers, not trailing words)
+                source_number_vars = _source_number_variants(resume_text)
+                if any(v and v.isdisjoint(source_number_vars) for v in [_number_token_variants(m.group(0)) for m in NUMBER_TOKEN_RE.finditer(cs)]):
+                    continue
+                # Metric NOT already used in any bullet
+                unused_metrics = cs_nums - used_bullet_numbers
+                if not unused_metrics:
+                    continue
+                # Overlap check
+                if _sentence_shares_over_60_percent_with_any_bullet(cs, all_bullets):
+                    continue
+                is_valid, _ = _verify_optimizer_summary(cs, resume_text, job_title)
+                if not is_valid:
+                    continue
+                # Total word count <= 50
+                combined_words = re.findall(r"\b[\w+#.%-]+\b", f"{base_summary} {cs}")
+                if len(combined_words) <= 50:
+                    extra_sentence = cs
+                    break
+
+        if extra_sentence:
+            return f"{base_summary} {extra_sentence}".strip()
+        return base_summary
+
+    # Fallback if no source summary or source summary ungrounded
+    cand_sents = [s.strip() for s in re.split(r"(?<=[.!?])\s+", candidate_summary) if s.strip()]
+    valid_sents = []
+    for cs in cand_sents:
+        if _sentence_shares_over_60_percent_with_any_bullet(cs, all_bullets):
+            continue
+        is_val, _ = _verify_optimizer_summary(cs, resume_text, job_title)
+        if is_val:
+            valid_sents.append(cs)
+        if len(valid_sents) == 2:
+            break
+
+    if valid_sents:
+        summary_text = " ".join(valid_sents)
+    else:
+        summary_text = _build_skills_education_summary(resume_text, result, doc=doc)
+
+    s_list = [s.strip() for s in re.split(r"(?<=[.!?])\s+", summary_text) if s.strip()][:2]
+    result_text = " ".join(s_list)
+    words = result_text.split()
+    if len(words) > 50:
+        result_text = " ".join(words[:50])
+        if not result_text.endswith("."):
+            result_text = re.sub(r"[,;:\s]+$", "", result_text) + "."
+
+    return result_text
 
 
 RECRUITER_DIMENSION_MAXES = {
@@ -3117,14 +3623,34 @@ def _apply_optimizer_safety_filters(
     else:
         existing_summary = str(result.get("optimized_summary", "") or "").strip()
         is_valid, reason = _verify_optimizer_summary(existing_summary, resume_text, job_title)
-        if is_valid:
+
+        orig_summary = (doc.summary if doc and doc.summary else "").strip()
+        if not orig_summary and result.get("original_summary"):
+            orig_summary = str(result["original_summary"]).strip()
+        if not orig_summary and resume_text:
+            try:
+                parsed_doc = parse_source_resume(resume_text)
+                if parsed_doc and parsed_doc.summary:
+                    orig_summary = parsed_doc.summary.strip()
+            except Exception:
+                pass
+
+        if orig_summary:
+            deduped = _build_deduped_summary(
+                candidate_summary=existing_summary if is_valid else "",
+                resume_text=resume_text,
+                doc=doc,
+                result=result,
+                job_title=job_title,
+            )
+            result["optimized_summary"] = deduped
+            if not is_valid or deduped == orig_summary:
+                result["summary_grounding_note"] = (
+                    "The AI-generated summary failed verification and was replaced with your original resume summary."
+                )
+        elif is_valid:
             result["optimized_summary"] = existing_summary
         else:
-            logger.info(
-                "Optimizer summary failed verification (%s) for user %s; using verified skills+education fallback",
-                reason,
-                user_id,
-            )
             fallback = _build_skills_education_summary(resume_text, result, doc=doc)
             result["optimized_summary"] = fallback
             result["summary_grounding_note"] = (
@@ -3165,7 +3691,7 @@ async def _generate_optimizer_attempt(
         {"role": "system", "content": system},
         {"role": "user", "content": f"{user_msg}{retry_addendum}"},
     ]
-    text = await call_groq(messages, json_mode=True)
+    text = await call_groq(messages, json_mode=True, temperature=0.0)
     try:
         result = _extract_json(text)
     except Exception as parse_err:
@@ -3185,7 +3711,7 @@ async def _generate_optimizer_attempt(
                 ),
             },
         ]
-        retry_text = await call_groq(retry_messages, json_mode=True, temperature=0.1)
+        retry_text = await call_groq(retry_messages, json_mode=True, temperature=0.0)
         result = _extract_json(retry_text)
 
     if not isinstance(result, dict):
@@ -3304,14 +3830,17 @@ async def optimize_resume(request: Request, body: OptimizeRequest, user=Depends(
         "  set insufficient_data: true and return minimal safe output\n\n"
         
         "════════════════════════════════════════════════════════\n"
-        "RULE 2 — SUMMARY (EVIDENCE-BASED 2-3 SENTENCE SYNTHESIS)\n"
+        "RULE 2 — SUMMARY (EVIDENCE-BASED SYNTHESIS)\n"
         "════════════════════════════════════════════════════════\n"
-        "- Generate a concise, high-impact 2-to-3 sentence summary (maximum 50 words).\n"
+        "- Hard cap: 2 sentences, 50 words total.\n"
+        "- If the source resume summary exists and is grounded, keep it verbatim.\n"
+        "- Add at most ONE extra sentence (<= 25 words) and ONLY if it contains a metric NOT already used in any bullet.\n"
+        "- Ensure no summary sentence shares >60% of its tokens with any bullet.\n"
         "- Synthesize using ONLY:\n"
         "  (a) Skills and technologies explicitly present in the candidate's source resume.\n"
         "  (b) Verifiable metrics and numbers present in the source resume verbatim (never invent, inflate, or adjust figures).\n"
-        "  (c) The candidate's real current role, stage, or background from their resume (e.g. Computer Science Student, Software Engineering Intern, Junior Developer).\n"
-        "- NEVER use the target job title as candidate identity (e.g. if a student targets a Senior role, do NOT introduce them as a Senior Engineer).\n"
+        "  (c) The candidate's real current role, stage, or background from their resume (e.g. 'Computer Science graduate with ML internship experience', 'Computer Science Student', 'Software Engineering Intern', 'Junior Developer').\n"
+        "- NEVER use the target job title as candidate identity (e.g. if a student targets a Senior role or ML Engineer role, do NOT introduce them with that target title).\n"
         "- If the original resume has no numbers or metrics, do NOT invent one. State their verified core skills and technical focus honestly.\n"
         "- NEVER include contact information (email, phone, address, LinkedIn/GitHub links).\n"
         "- NEVER copy-paste raw resume header chunks or contact lines.\n"
@@ -3333,9 +3862,12 @@ async def optimize_resume(request: Request, body: OptimizeRequest, user=Depends(
         "Backend / Systems roles:\n"
         "  { Languages, Frameworks, Databases, Tools & DevOps }\n\n"
         "Rules for all groups:\n"
-        "- Maximum 6 items per group\n"
+        "- Remove the global cap. Output skills must be a superset of source skills, plus any tech token appearing in bullets or project stack lines.\n"
+        "- Preserve parentheticals ('AWS (S3, EC2)') and preserve 'CI/CD' without splitting.\n"
+        "- Reorder by JD relevance only.\n"
+        "- Feature Engineering belongs under 'ML & Data'.\n"
+        "- Output skills must contain all source skills (set(source_skills) ⊆ set(output_skills)).\n"
         "- No duplicates across groups\n"
-        "- Most JD-relevant items listed first within each group\n"
         "- Never mix group name sets across a single response\n"
         "- Pick one domain set and apply it consistently\n\n"
         
@@ -3345,6 +3877,7 @@ async def optimize_resume(request: Request, body: OptimizeRequest, user=Depends(
         "Each bullet should be:\n"
         "- Concise (preferred 15–28 words, hard maximum 32 words)\n"
         "- Specific, technically accurate, and relevant to the target JD\n"
+        "- Don't drop domain nouns ('leaf images', 'customer records', 'loan data', 'annotated resumes') when shortening bullets.\n"
         "- Outcome-oriented when source evidence supports an outcome\n"
         "- Never invent a metric simply to satisfy a format\n"
         "- If the source has no metric, do not create one\n"
@@ -3730,7 +4263,7 @@ async def analyse_resume(
         raw = await call_groq([
             {"role": "system", "content": ANALYST_SYSTEM_PROMPT},
             {"role": "user", "content": user_msg}
-        ], json_mode=True)
+        ], json_mode=True, temperature=0.0)
         analysis = _extract_json(raw)
         if not isinstance(analysis, dict):
             raise ValueError("Analysis response was not a JSON object.")

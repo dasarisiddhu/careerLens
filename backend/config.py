@@ -56,7 +56,7 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-1.5-flash"    # fallback chain is handled in gemini_service.py
     GROQ_API_KEY: str = ""
-    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    GROQ_MODEL: str = "openai/gpt-oss-20b"
 
     # ----------------------------------------------------------
     # GitHub API
@@ -138,6 +138,12 @@ def get_settings() -> Settings:
                 f"FATAL: Production environment requires variable(s): {names}. "
                 f"Please define {names} in your deployment environment."
             )
+
+    # Strip any accidental wrapping quotes or spaces from API keys and models
+    for key in ["GROQ_API_KEY", "GEMINI_API_KEY", "SECRET_KEY", "SUPABASE_KEY", "GROQ_MODEL", "GEMINI_MODEL"]:
+        val = getattr(instance, key, None)
+        if isinstance(val, str):
+            setattr(instance, key, val.strip("\"' \t"))
 
     return instance
 

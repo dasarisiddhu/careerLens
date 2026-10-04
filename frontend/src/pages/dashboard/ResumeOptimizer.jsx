@@ -136,7 +136,8 @@ function wrapPdfText(value, maxChars) {
   const paragraphs = normalizePdfText(value).split('\n')
   const lines = []
   for (const paragraph of paragraphs) {
-    const words = paragraph.trim().split(/\s+/).filter(Boolean)
+    const bound = paragraph.replace(/\b(CGPA|GPA)\s+([0-9.]+(?:\/[0-9.]+)?)\b/gi, '$1\u00a0$2')
+    const words = bound.trim().split(/[ \t]+/).filter(Boolean)
     if (!words.length) { lines.push(''); continue }
     let current = words[0]
     for (const word of words.slice(1)) {
@@ -228,8 +229,8 @@ function extractContactInfo(text = '') {
   const { name: headerName } = extractResumeHeader(normalized)
   const emailMatch = normalized.match(/[\w.-]+@[\w.-]+\.\w+/)
   const phone = extractPhone(normalized)
-  const linkedinMatch = normalized.match(/(?:https?:\/\/)?(?:www\.)?linkedin\.com\/in\/[\w-]+/i)
-  const githubMatch = normalized.match(/(?:https?:\/\/)?(?:www\.)?github\.com\/[\w-]+/i)
+  const linkedinMatch = normalized.match(/(?:https?:\/\/)?(?:www\.)?linkedin\.com\/in\/[^\s,|]+/i)
+  const githubMatch = normalized.match(/(?:https?:\/\/)?(?:www\.)?github\.com\/[^\s,|]+/i)
   const location = extractLocationFromHeader(normalized)
 
   const email = emailMatch?.[0] || ''
@@ -261,17 +262,28 @@ function readStoredContact() {
   }
 }
 
+function flattenSkillList(value) {
+  if (Array.isArray(value)) return value.flatMap(flattenSkillList)
+  if (value && typeof value === 'object') return Object.values(value).flatMap(flattenSkillList)
+  const s = String(value ?? '').trim()
+  return s ? [s] : []
+}
+
+function skillGroupsFrom(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return []
+  return Object.entries(value)
+    .map(([category, skills]) => ({ category, skills: [...new Set(flattenSkillList(skills))] }))
+    .filter((g) => g.skills.length)
+}
+
 function normalizeOptimizationResult(opt) {
   if (!opt || typeof opt !== 'object' || Array.isArray(opt)) return null
-
+  const flat = [...new Set(flattenSkillList(opt.optimized_skills))]
   return {
     ...opt,
     optimized_summary: opt.optimized_summary || opt.summary || '',
-    optimized_skills: Array.isArray(opt.optimized_skills)
-      ? opt.optimized_skills
-      : Array.isArray(opt.skills_to_highlight)
-        ? opt.skills_to_highlight
-        : [],
+    optimized_skills: flat.length ? flat : [...new Set(flattenSkillList(opt.skills_to_highlight))],
+    optimized_skill_groups: skillGroupsFrom(opt.optimized_skills),
     new_bullets: Array.isArray(opt.new_bullets) ? opt.new_bullets : [],
     truncation_notice: opt.truncation_notice || null,
     summary_grounding_note: opt.summary_grounding_note || null,
@@ -385,16 +397,27 @@ function extractEducationLines(text = '', maxItems = 4) {
   )
 }
 
-function extractCertificationLines(text = '', maxItems = 6) {
-  return extractSectionLines(
+function extractCertificationLines(text = '', maxItems = 12) {
+  const rawLines = extractSectionLines(
     text,
     [/^certifications?\b/i, /^certificates?\b/i, /^licenses?\b/i],
     maxItems,
   )
+  const items = []
+  for (const line of rawLines) {
+    const parts = line.split(/[•|;]/).map((p) => p.trim()).filter(Boolean)
+    if (parts.length > 1) {
+      items.push(...parts)
+    } else if (line.trim()) {
+      items.push(line.trim())
+    }
+  }
+  return items.slice(0, maxItems)
 }
 
 function formatEducationLine(value = '') {
   return String(value || '')
+    .replace(/\b(CGPA|GPA)\s+([0-9.]+(?:\/[0-9.]+)?)\b/gi, '$1\u00a0$2')
     .split('|')
     .map((part) => part.trim())
     .filter(Boolean)
@@ -567,14 +590,38 @@ function sanitizeProfessionalSummary(value = '') {
   return unique.join(' ').trim()
 }
 
+function splitPreservingParens(text) {
+  const items = []
+  let current = []
+  let depth = 0
+  for (const char of String(text || '')) {
+    if (char === '(' || char === '[' || char === '{') {
+      depth += 1
+      current.push(char)
+    } else if (char === ')' || char === ']' || char === '}') {
+      depth = Math.max(0, depth - 1)
+      current.push(char)
+    } else if (depth === 0 && (char === ',' || char === '|' || char === ';' || char === '\u2022' || char === '\t')) {
+      const part = current.join('').trim()
+      if (part) items.push(part)
+      current = []
+    } else {
+      current.push(char)
+    }
+  }
+  const last = current.join('').trim()
+  if (last) items.push(last)
+  return items
+}
+
 function extractSkillsFromSource(sourceText = '') {
   return extractSectionLines(
     sourceText,
     [/^skills\b/i, /^technical skills\b/i, /^core skills\b/i, /^technologies\b/i],
-    6,
+    20,
   )
-    .flatMap((line) => line.split(/[,|;]+/))
-    .map((skill) => skill.trim())
+    .flatMap((line) => splitPreservingParens(line.replace(/^[A-Za-z &/]+:\s*/, '')))
+    .map((skill) => skill.trim().replace(/^[-*\u2022]\s+/, ''))
     .filter(Boolean)
 }
 
@@ -585,8 +632,7 @@ function flattenSkillItems(value) {
   if (value && typeof value === 'object') {
     return Object.values(value).flatMap((item) => flattenSkillItems(item))
   }
-  return String(value || '')
-    .split(/[,|;/]+/)
+  return splitPreservingParens(String(value || ''))
     .map((skill) => skill.trim().replace(/^[A-Za-z &]+:\s*/, ''))
     .filter(Boolean)
 }
@@ -1047,6 +1093,26 @@ function buildProfessionalSummary(result = {}, sourceText = '', currentJobTitle 
   return sentences.map(cleanSummarySentence).filter(Boolean).join(' ')
 }
 
+function hasHeldTitle(targetTitle, sourceText, result) {
+  if (!targetTitle) return false
+  const clean = String(targetTitle).trim().toLowerCase().replace(/^(senior|junior|lead|staff|principal)\s+/, '')
+  if (clean.length <= 3) return false
+  const expEntries = Array.isArray(result?.experience_entries)
+    ? result.experience_entries
+    : Array.isArray(result?.reconstructed_resume?.experience)
+      ? result.reconstructed_resume.experience
+      : []
+  for (const exp of expEntries) {
+    const title = String(exp?.title || exp?.role || exp?.header_raw || '').toLowerCase()
+    if (title.includes(clean)) return true
+  }
+  const expMatch = String(sourceText || '').match(/(?:experience|work\s+history|employment)[\s\S]*?(?=(?:education|projects?|skills|certifications?|$))/i)
+  if (expMatch && expMatch[0].toLowerCase().includes(clean)) {
+    return true
+  }
+  return false
+}
+
 function buildOnePageResumeContent(result = {}, sourceText = '', currentJobTitle = '') {
   const summarySource = [
     result?.optimized_summary,
@@ -1054,17 +1120,30 @@ function buildOnePageResumeContent(result = {}, sourceText = '', currentJobTitle
     extractResumeHighlights(sourceText, 1)[0] || '',
   ].find((value) => String(value || '').trim())
 
-  const optimizedSkills = Array.isArray(result?.optimized_skills)
-    ? result.optimized_skills
-    : Array.isArray(result?.skills_to_highlight)
-      ? result.skills_to_highlight
-      : []
+  let optimizedSkills = []
+  if (Array.isArray(result?.optimized_skills)) {
+    optimizedSkills = result.optimized_skills
+  } else if (result?.optimized_skills && typeof result.optimized_skills === 'object') {
+    for (const groupSkills of Object.values(result.optimized_skills)) {
+      if (Array.isArray(groupSkills)) {
+        optimizedSkills.push(...groupSkills)
+      } else if (typeof groupSkills === 'string') {
+        optimizedSkills.push(...splitPreservingParens(groupSkills))
+      }
+    }
+  } else if (Array.isArray(result?.skills_to_highlight)) {
+    optimizedSkills = result.skills_to_highlight
+  }
+
+  // Output skills ⊇ source skills: ensure all source skills are kept
+  const sourceSkills = extractSkillsFromSource(sourceText)
+  const allSkills = [...optimizedSkills, ...sourceSkills]
 
   const skills = [...new Set(
-    optimizedSkills
+    allSkills
       .map((skill) => String(skill || '').trim())
       .filter(Boolean),
-  )].slice(0, 14)
+  )] // No cap of 14
 
   const improvedBulletsRaw = Array.isArray(result?.improved_bullets)
     ? result.improved_bullets
@@ -1085,13 +1164,25 @@ function buildOnePageResumeContent(result = {}, sourceText = '', currentJobTitle
   const newBullets = newBulletsRaw
   const bullets = [...improvedBullets, ...newBullets].filter(Boolean)
   const educationLines = extractEducationLines(sourceText, 4)
-  const certificationLines = extractCertificationLines(sourceText, 6)
+  const certificationLines = extractCertificationLines(sourceText, 12)
+
+  // FIX C: Remove the header title line unless the person has actually held that title
+  const candidateHeldTitle = hasHeldTitle(currentJobTitle || result?.job_title, sourceText, result)
+  const headline = candidateHeldTitle ? String(currentJobTitle || result?.job_title || '').trim() : ''
+
+  // FIX C: If the LLM summary fails verification, keep the original summary rather than a template
+  const originalSummary = String(result?.original_summary || result?.reconstructed_resume?.summary || '').trim() ||
+    extractSectionLines(sourceText, [/^summary\b/i, /^professional summary\b/i], 3).join(' ')
+
+  const summary = normalizeGeneratedSummary(summarySource)
+    || (originalSummary ? sanitizeProfessionalSummary(originalSummary) : '')
+    || buildProfessionalSummary({ ...result, optimized_summary: summarySource }, sourceText, currentJobTitle)
 
   return {
-    headline: String(currentJobTitle || result?.job_title || result?.role_description || '').trim(),
-    summary: normalizeGeneratedSummary(summarySource)
-      || buildProfessionalSummary({ ...result, optimized_summary: summarySource }, sourceText, currentJobTitle),
+    headline,
+    summary,
     skills,
+    skillGroups: result?.optimized_skill_groups || [],
     educationLines,
     certificationLines,
     improvedBullets,
@@ -1478,7 +1569,7 @@ function buildProfessionalResumePrintHtml({ name, email, phone, linkedin = '', g
     .map((item) => String(item || '').trim())
     .filter(Boolean)
     .filter((item) => !isEducationText(item))
-    .map((item, idx) => `${idx ? '<span class="contact-separator">&#8226;</span>' : ''}<span>${escapeHtml(item)}</span>`)
+    .map((item, idx) => `${idx ? '<span class="contact-separator"> | </span>' : ''}<span>${escapeHtml(item)}</span>`)
     .join('')
 
   const skillsText = (content?.skills || [])
@@ -1880,7 +1971,23 @@ function buildOptimizedPdfBlob(opt, jobTitle, originalResumeText = '') {
 
   addWrapped(items, name || (content.headline ? `Optimized Resume - ${content.headline}` : 'Optimized Resume'), { font: 'F2', size: 18, maxChars: 48, after: 2 })
   if (contactLine) {
-    addWrapped(items, contactLine, { size: 8.5, maxChars: 104, after: 2 })
+    // FIX E2: Wrap contact line onto second line at " | " boundaries instead of clipping. Never truncate a URL.
+    const contactParts = contactLine.split(/\s*\|\s*/).map((p) => p.trim()).filter(Boolean)
+    const lines = []
+    let curLine = []
+    for (const part of contactParts) {
+      const candidate = curLine.length ? `${curLine.join(' | ')} | ${part}` : part
+      if (curLine.length && candidate.length > 70) {
+        lines.push(curLine.join(' | '))
+        curLine = [part]
+      } else {
+        curLine.push(part)
+      }
+    }
+    if (curLine.length) lines.push(curLine.join(' | '))
+    for (let i = 0; i < lines.length; i += 1) {
+      addWrapped(items, lines[i], { size: 8.5, maxChars: 120, after: i === lines.length - 1 ? 2 : 1 })
+    }
   }
   if (content.headline) {
     addWrapped(items, content.headline, { size: 9, maxChars: 104, after: 6 })
@@ -2258,10 +2365,8 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
           `${jobTitle || 'resume'}-after`,
         )
 
-        const [beforeRes, afterRes] = await Promise.all([
-          api.checkATS({ resume_pdf: beforePdf, job_description: jobDesc }),
-          api.checkATS({ resume_pdf: afterPdf, job_description: jobDesc }),
-        ])
+        const beforeRes = await api.checkATS({ resume_pdf: beforePdf, job_description: jobDesc })
+        const afterRes = await api.checkATS({ resume_pdf: afterPdf, job_description: jobDesc })
 
         const beforeScore = Number(beforeRes?.result?.ats_score)
         const afterScore = Number(afterRes?.result?.ats_score)

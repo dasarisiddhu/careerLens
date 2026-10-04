@@ -17,7 +17,7 @@ from config import settings
 logger = logging.getLogger("careerlens.ai")
 
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_MODEL = settings.GROQ_MODEL
+GROQ_MODEL = (getattr(settings, "GROQ_MODEL", "") or "llama-3.3-70b-versatile").strip("\"' \t")
 
 # Curated fallback resources used when the model omits usable links.
 DEFAULT_RESOURCES = {
@@ -309,18 +309,29 @@ def _calibrate_resume_scores(result: dict, resume_text: str, github_data: dict, 
 
 
 
+_GROQ_SEMAPHORE: asyncio.Semaphore | None = None
+
+
+def _get_groq_semaphore() -> asyncio.Semaphore:
+    global _GROQ_SEMAPHORE
+    if _GROQ_SEMAPHORE is None:
+        _GROQ_SEMAPHORE = asyncio.Semaphore(1)
+    return _GROQ_SEMAPHORE
+
+
 async def call_groq(
     messages: list,
-    temperature: float = 0.3,
+    temperature: float = 0.0,
     json_mode: bool = False,
     reasoning_effort: str | None = None,
 ) -> str:
-    groq_api_key = settings.GROQ_API_KEY
+    groq_api_key = (settings.GROQ_API_KEY or "").strip("\"'")
     if not groq_api_key:
         raise ValueError("GROQ_API_KEY is not set in your .env file")
 
+    configured_model = (getattr(settings, "GROQ_MODEL", "") or GROQ_MODEL or "openai/gpt-oss-20b").strip("\"' \t")
     payload = {
-        "model": GROQ_MODEL,
+        "model": configured_model,
         "messages": messages,
         "temperature": temperature,
         "max_completion_tokens": 8192,
@@ -331,113 +342,145 @@ async def call_groq(
         # before emitting visible content. JSON extraction/formatting tasks
         # don't need deep reasoning, so default to "low" to leave headroom
         # for the actual output unless the caller explicitly overrides it.
-        payload["reasoning_effort"] = reasoning_effort or "low"
+        if "gpt-oss" in configured_model:
+            payload["reasoning_effort"] = reasoning_effort or "low"
+        elif reasoning_effort:
+            payload["reasoning_effort"] = reasoning_effort
     elif reasoning_effort:
         payload["reasoning_effort"] = reasoning_effort
 
     max_retries = 3
     current_payload = dict(payload)
 
-    async with httpx.AsyncClient(timeout=60) as client:
-        for attempt in range(max_retries):
-            response = await client.post(
-                GROQ_API_URL,
-                headers={
-                    "Authorization": f"Bearer {groq_api_key}",
-                    "Content-Type": "application/json",
-                },
-                json=current_payload,
-            )
+    sem = _get_groq_semaphore()
+    async with sem:
+        async with httpx.AsyncClient(timeout=60) as client:
+            for attempt in range(max_retries):
+                response = await client.post(
+                    GROQ_API_URL,
+                    headers={
+                        "Authorization": f"Bearer {groq_api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json=current_payload,
+                )
 
-            # Handle 429 rate limit (TPM or RPM reached)
-            if response.status_code == 429:
-                err_detail = response.text
-                retry_delay = 1.0
-                retry_header = response.headers.get("retry-after")
-                if retry_header:
-                    try:
-                        retry_delay = float(retry_header)
-                    except ValueError:
-                        pass
-                else:
-                    match = re.search(r"try again in (\d+(?:\.\d+)?)(ms|s)", err_detail, re.IGNORECASE)
-                    if match:
-                        val, unit = float(match.group(1)), match.group(2).lower()
-                        retry_delay = (val / 1000.0 if unit == "ms" else val) + 0.2
+                # Handle 429 rate limit (TPM or RPM reached)
+                if response.status_code == 429:
+                    err_detail = response.text
+                    retry_delay = 1.0
+                    retry_header = response.headers.get("retry-after")
+                    if retry_header:
+                        try:
+                            retry_delay = float(retry_header)
+                        except ValueError:
+                            pass
                     else:
-                        retry_delay = 1.0 * (attempt + 1)
+                        match = re.search(r"try again in (\d+(?:\.\d+)?)(ms|s)", err_detail, re.IGNORECASE)
+                        if match:
+                            val, unit = float(match.group(1)), match.group(2).lower()
+                            retry_delay = (val / 1000.0 if unit == "ms" else val) + 0.2
+                        else:
+                            retry_delay = 1.0 * (attempt + 1)
 
-                if attempt < max_retries - 1:
-                    logger.warning(
-                        "Groq rate limit (429) hit for model %s. Retrying in %.2fs (attempt %d/%d)...",
-                        current_payload.get("model"),
-                        retry_delay,
-                        attempt + 1,
-                        max_retries,
-                    )
-                    await asyncio.sleep(max(0.5, retry_delay))
-                    continue
-                else:
-                    # If gpt-oss-120b exhausted its 8k TPM limit, fall back to openai/gpt-oss-20b
-                    if current_payload.get("model") == "openai/gpt-oss-120b":
+                    current_model = current_payload.get("model", "")
+
+                    # If delay is substantial (>2s) or rate limit is token-per-minute exhaustion,
+                    # switch immediately to a fallback model instead of freezing the request.
+                    is_tpm_limit = "token" in err_detail.lower() or "tpm" in err_detail.lower() or retry_delay > 2.0
+                    if is_tpm_limit:
+                        fallback_model = None
+                        if current_model == "openai/gpt-oss-20b":
+                            fallback_model = "qwen/qwen3.8-27b"
+                        elif current_model == "openai/gpt-oss-120b":
+                            fallback_model = "openai/gpt-oss-20b"
+                        elif current_model == "qwen/qwen3.8-27b":
+                            fallback_model = "openai/gpt-oss-20b"
+                        else:
+                            fallback_model = "openai/gpt-oss-20b"
+
+                        if fallback_model and fallback_model != current_model:
+                            logger.warning(
+                                "Groq rate limit hit for %s (delay=%.2fs). Switching immediately to fallback model %s...",
+                                current_model,
+                                retry_delay,
+                                fallback_model,
+                            )
+                            current_payload["model"] = fallback_model
+                            # If switching away from gpt-oss, strip reasoning_effort
+                            if "gpt-oss" not in fallback_model:
+                                current_payload.pop("reasoning_effort", None)
+                            await asyncio.sleep(0.2)
+                            continue
+
+                    if attempt < max_retries - 1:
+                        sleep_time = min(retry_delay, 2.0)
                         logger.warning(
-                            "Groq TPM limit reached for gpt-oss-120b. Falling back to openai/gpt-oss-20b..."
+                            "Groq rate limit (429) hit for model %s. Retrying in %.2fs (attempt %d/%d)...",
+                            current_payload.get("model"),
+                            sleep_time,
+                            attempt + 1,
+                            max_retries,
                         )
-                        current_payload["model"] = "openai/gpt-oss-20b"
-                        await asyncio.sleep(max(0.5, retry_delay))
-                        fb_response = await client.post(
-                            GROQ_API_URL,
-                            headers={
-                                "Authorization": f"Bearer {groq_api_key}",
-                                "Content-Type": "application/json",
-                            },
-                            json=current_payload,
-                        )
-                        if fb_response.status_code < 400:
-                            response = fb_response
-                        else:
-                            response = fb_response
+                        await asyncio.sleep(max(0.3, sleep_time))
+                        continue
+                    else:
+                        # Final attempt fallback
+                        if current_payload.get("model") != "qwen/qwen3.8-27b":
+                            current_payload["model"] = "qwen/qwen3.8-27b"
+                            current_payload.pop("reasoning_effort", None)
+                            await asyncio.sleep(0.3)
+                            fb_response = await client.post(
+                                GROQ_API_URL,
+                                headers={
+                                    "Authorization": f"Bearer {groq_api_key}",
+                                    "Content-Type": "application/json",
+                                },
+                                json=current_payload,
+                            )
+                            if fb_response.status_code < 400:
+                                response = fb_response
 
-            if response.status_code >= 400:
-                err_detail = response.text
-                try:
-                    error_payload = response.json()
-                    if isinstance(error_payload, dict):
-                        err = error_payload.get("error", error_payload)
-                        if isinstance(err, dict):
-                            err_detail = err.get("message") or err.get("type") or response.text
-                        else:
-                            err_detail = str(err)
-                except Exception:
-                    pass
-                raise ValueError(f"Groq API error ({response.status_code}): {err_detail}")
+                if response.status_code >= 400:
+                    err_detail = response.text
+                    try:
+                        error_payload = response.json()
+                        if isinstance(error_payload, dict):
+                            err = error_payload.get("error", error_payload)
+                            if isinstance(err, dict):
+                                err_detail = err.get("message") or err.get("type") or response.text
+                            else:
+                                err_detail = str(err)
+                    except Exception:
+                        pass
+                    raise ValueError(f"Groq API error ({response.status_code}): {err_detail}")
 
-            data = response.json()
-            choice = data["choices"][0]
-            content = choice["message"]["content"]
-            finish_reason = choice.get("finish_reason")
+                data = response.json()
+                choice = data["choices"][0]
+                content = choice["message"]["content"]
+                finish_reason = choice.get("finish_reason")
 
-            if not content and finish_reason == "length":
-                reasoning_tokens = (
-                    data.get("usage", {})
-                    .get("completion_tokens_details", {})
-                    .get("reasoning_tokens")
-                )
-                logger.error(
-                    "Groq returned empty content: the model spent its entire "
-                    "max_completion_tokens budget (%s) on hidden reasoning "
-                    "(reasoning_tokens=%s) and had nothing left for visible output. "
-                    "Lower reasoning_effort or raise max_completion_tokens.",
-                    current_payload.get("max_completion_tokens"),
-                    reasoning_tokens,
-                )
-                raise ValueError(
-                    "Groq returned empty content because reasoning consumed the "
-                    "entire token budget before any output was written. Try again "
-                    "or reduce prompt complexity."
-                )
+                if not content and finish_reason == "length":
+                    reasoning_tokens = (
+                        data.get("usage", {})
+                        .get("completion_tokens_details", {})
+                        .get("reasoning_tokens")
+                    )
+                    logger.error(
+                        "Groq returned empty content: the model spent its entire "
+                        "max_completion_tokens budget (%s) on hidden reasoning "
+                        "(reasoning_tokens=%s) and had nothing left for visible output. "
+                        "Lower reasoning_effort or raise max_completion_tokens.",
+                        current_payload.get("max_completion_tokens"),
+                        reasoning_tokens,
+                    )
+                    raise ValueError(
+                        "Groq returned empty content because reasoning consumed the "
+                        "entire token budget before any output was written. Try again "
+                        "or reduce prompt complexity."
+                    )
 
-            return content
+                return content
 
 
 def _extract_json(text: str) -> dict:

@@ -1,5 +1,6 @@
 import unittest
 import asyncio
+import re
 from unittest.mock import MagicMock, AsyncMock, patch
 from fastapi import HTTPException, Request
 from routers import resume, portfolio, news
@@ -775,7 +776,7 @@ class SummaryVerificationFixBCTests(unittest.TestCase):
         self.assertNotIn("Associate", summary)
         self.assertNotIn("graduate", summary.lower())
         # Should be a skills-only fallback
-        self.assertIn("proficiencies", summary.lower())
+        self.assertIn("technical", summary.lower())
 
     def test_ms_office_never_produces_degree(self):
         """'MS Office' must NOT be interpreted as an M.S. degree (FIX C)."""
@@ -830,7 +831,7 @@ class SummaryVerificationFixBCTests(unittest.TestCase):
             doc=doc,
         )
         self.assertNotIn("graduate", summary.lower())
-        self.assertIn("proficiencies", summary.lower())
+        self.assertIn("technical", summary.lower())
         self.assertIn("Python", summary)
 
     def test_never_writes_graduate(self):
@@ -1246,7 +1247,331 @@ class FixFUIAndLeftoversTests(unittest.TestCase):
         self.assertEqual(reachable_max, 50)
 
 
+class ParserLineWrapMergeTests(unittest.TestCase):
+    """
+    Tests for [FIX A: Parser, line-wrap merge]
+    - In PDF-to-structured step, a line that doesn't start with a bullet marker (•, -, ▪)
+      and follows a bullet should be appended to that bullet, not made a new one.
+    - Also merge when the previous line ends without terminal punctuation.
+    - ACCEPT: exactly 4 experience bullets and 2+2+1 project bullets.
+    - ACCEPT: no bullet under 5 words.
+    - ACCEPT: no "(continued)" ever appears.
+    """
+
+    def setUp(self):
+        self.resume_text = (
+            "Rohan Verma\n"
+            "ML Engineer\n"
+            "rohan.verma@example.com | +91 98765 00000 | Hyderabad, India | linkedin.com/in/rohan-verma-demo | github.com/rohanverma-demo\n\n"
+            "SUMMARY\n"
+            "Machine Learning Engineer with hands-on experience building and deploying ML models using Python, PyTorch, scikit-learn, and FastAPI.\n\n"
+            "SKILLS\n"
+            "Languages: Python, SQL, C++\n"
+            "ML & Data: PyTorch, scikit-learn, XGBoost, Pandas, NumPy, Hugging Face Transformers\n"
+            "Tools & Platforms: Docker, Git, MLflow, FastAPI, AWS, Linux\n"
+            "Concepts: Feature Engineering, Model Inference\n\n"
+            "EXPERIENCE\n"
+            "Machine Learning Intern | Nimbus Analytics Pvt Ltd, Hyderabad | Jan 2025 - Jun 2025\n"
+            "• Built a customer churn model with XGBoost on 500K+ customer records, reaching an F1-score of 0.87 on a held-out\n"
+            "test set.\n"
+            "• Reduced model inference latency by 38% by exporting the model to ONNX and batching requests in a FastAPI\n"
+            "service.\n"
+            "• Containerized the prediction service with Docker and served 40K+ daily predictions to the analytics dashboard.\n"
+            "• Tracked 60+ experiments with MLflow and documented feature pipelines so the team could reproduce results.\n\n"
+            "PROJECTS\n"
+            "Resume Skill Extractor (NLP) | Python, Hugging Face Transformers, FastAPI\n"
+            "• Fine-tuned a BERT-based named entity model on 8,000 annotated resumes, improving skill extraction F1 from 0.71\n"
+            "to 0.84.\n"
+            "(continued)\n"
+            "• Deployed the model as a REST API with FastAPI and Docker, returning predictions in under 200 ms.\n\n"
+            "Plant Disease Detector (Computer Vision) | PyTorch, OpenCV, AWS\n"
+            "• Trained a ResNet-50 classifier on 54,000 leaf images across 38 classes, achieving 96% validation accuracy.\n"
+            "• Hosted the model on an AWS EC2 instance with a Flask front end used by 120+ students during a college demo.\n\n"
+            "Credit Risk Scoring | Python, scikit-learn, SQL\n"
+            "• Engineered 25 features from loan data and compared logistic regression, random forest and gradient boosting,\n"
+            "selecting the best model by ROC-AUC of 0.91.\n\n"
+            "EDUCATION\n"
+            "B.Tech, Computer Science and Engineering | Example Institute of Technology, Hyderabad | 2021 - 2025 | CGPA 8.4/10\n\n"
+            "CERTIFICATIONS\n"
+            "• Deep Learning Specialization (online course certificate)\n"
+            "• AWS Certified Cloud Practitioner\n"
+        )
+
+    def test_accept_criteria_4_experience_and_2_2_1_project_bullets(self):
+        """Resume parses to exactly 4 experience bullets and 2+2+1 project bullets."""
+        from services.resume_structure import parse_source_resume
+
+        doc = parse_source_resume(self.resume_text)
+
+        # Experience check: exactly 4 bullets
+        total_exp_bullets = sum(len(e.bullets) for e in doc.experience)
+        self.assertEqual(total_exp_bullets, 4, f"Expected 4 experience bullets, got {total_exp_bullets}")
+
+        # Projects check: exactly 2+2+1 project bullets across 3 project entries
+        self.assertEqual(len(doc.projects), 3, f"Expected 3 project entries, got {len(doc.projects)}")
+        proj_bullet_counts = [len(p.bullets) for p in doc.projects]
+        self.assertEqual(proj_bullet_counts, [2, 2, 1], f"Expected [2, 2, 1] project bullets, got {proj_bullet_counts}")
+
+    def test_accept_criteria_no_bullet_under_5_words(self):
+        """Every parsed bullet must have at least 5 words."""
+        from services.resume_structure import parse_source_resume
+
+        doc = parse_source_resume(self.resume_text)
+        all_bullets = doc.all_bullets
+        self.assertTrue(len(all_bullets) > 0, "Expected bullets to be parsed")
+
+        for b in all_bullets:
+            word_count = len(re.findall(r"\b[\w+#.%-]+\b", b.original))
+            self.assertGreaterEqual(
+                word_count,
+                5,
+                f"Bullet '{b.original}' has only {word_count} words (< 5 words). Must be at least 5 words."
+            )
+
+    def test_accept_criteria_no_continued_ever_appears(self):
+        """Ensure '(continued)' never appears anywhere in parsed bullets or reconstructed output."""
+        from services.resume_structure import parse_source_resume, reconstruct_resume_structure
+
+        doc = parse_source_resume(self.resume_text)
+        for b in doc.all_bullets:
+            self.assertNotIn("continued", b.original.lower(), f"'(continued)' leaked into source bullet: {b.original}")
+
+        # Reconstructed structure test
+        fake_rewrites = {
+            b.source_id: {
+                "improved": "(continued)",  # simulated bad LLM rewrite
+                "original": b.original,
+            }
+            for b in doc.all_bullets
+        }
+        reconstructed = reconstruct_resume_structure(doc, fake_rewrites)
+        for exp in reconstructed["experience"]:
+            for b in exp["bullets"]:
+                self.assertNotIn("continued", b.lower(), f"'(continued)' leaked into reconstructed experience bullet: {b}")
+        for proj in reconstructed["projects"]:
+            for b in proj["bullets"]:
+                self.assertNotIn("continued", b.lower(), f"'(continued)' leaked into reconstructed project bullet: {b}")
+
+    def test_line_wrap_merge_without_terminal_punctuation(self):
+        """Lines ending without terminal punctuation are merged into following lines."""
+        from services.resume_structure import parse_source_resume
+
+        text = (
+            "Experience\n"
+            "Tech Corp | Backend Engineer | 2022 - Present\n"
+            "- Designed highly reliable microservices architecture using Python\n"
+            "and deployed to Kubernetes cluster.\n"
+        )
+        doc = parse_source_resume(text)
+        self.assertEqual(len(doc.experience), 1)
+        self.assertEqual(len(doc.experience[0].bullets), 1)
+        merged = doc.experience[0].bullets[0].original
+        self.assertIn("Python and deployed", merged)
+
+
+class NoPlaceholderEntriesTests(unittest.TestCase):
+    def setUp(self):
+        self.resume_text = (
+            "Rohan Verma\n"
+            "ML Engineer\n"
+            "rohan.verma@example.com | +91 98765 00000 | Hyderabad, India | linkedin.com/in/rohan-verma-demo | github.com/rohanverma-demo\n\n"
+            "SUMMARY\n"
+            "Machine Learning Engineer with hands-on experience building and deploying ML models using Python, PyTorch, scikit-learn, and FastAPI.\n\n"
+            "SKILLS\n"
+            "Languages: Python, SQL, C++\n"
+            "ML & Data: PyTorch, scikit-learn, XGBoost, Pandas, NumPy, Hugging Face Transformers\n"
+            "Tools & Platforms: Docker, Git, MLflow, FastAPI, AWS, Linux\n"
+            "Concepts: Feature Engineering, Model Inference\n\n"
+            "EXPERIENCE\n"
+            "Machine Learning Intern | Nimbus Analytics Pvt Ltd, Hyderabad | Jan 2025 - Jun 2025\n"
+            "• Built a customer churn model with XGBoost on 500K+ customer records, reaching an F1-score of 0.87 on a held-out\n"
+            "test set.\n"
+            "• Reduced model inference latency by 38% by exporting the model to ONNX and batching requests in a FastAPI\n"
+            "service.\n"
+            "• Containerized the prediction service with Docker and served 40K+ daily predictions to the analytics dashboard.\n"
+            "• Tracked 60+ experiments with MLflow and documented feature pipelines so the team could reproduce results.\n\n"
+            "PROJECTS\n"
+            "Resume Skill Extractor (NLP) | Python, Hugging Face Transformers, FastAPI\n"
+            "• Fine-tuned a BERT-based named entity model on 8,000 annotated resumes, improving skill extraction F1 from 0.71\n"
+            "to 0.84.\n"
+            "(continued)\n"
+            "• Deployed the model as a REST API with FastAPI and Docker, returning predictions in under 200 ms.\n\n"
+            "Plant Disease Detector (Computer Vision) | PyTorch, OpenCV, AWS\n"
+            "• Trained a ResNet-50 classifier on 54,000 leaf images across 38 classes, achieving 96% validation accuracy.\n"
+            "• Hosted the model on an AWS EC2 instance with a Flask front end used by 120+ students during a college demo.\n\n"
+            "Credit Risk Scoring | Python, scikit-learn, SQL\n"
+            "• Engineered 25 features from loan data and compared logistic regression, random forest and gradient boosting,\n"
+            "selecting the best model by ROC-AUC of 0.91.\n\n"
+            "EDUCATION\n"
+            "B.Tech, Computer Science and Engineering | Example Institute of Technology, Hyderabad | 2021 - 2025 | CGPA 8.4/10\n\n"
+            "CERTIFICATIONS\n"
+            "• Deep Learning Specialization (online course certificate)\n"
+            "• AWS Certified Cloud Practitioner\n"
+        )
+
+    def test_accept_criteria_output_has_exactly_3_projects_and_1_role(self):
+        """ACCEPT: output has exactly 3 projects and 1 role."""
+        from services.resume_structure import parse_source_resume, reconstruct_resume_structure
+        from services.professional_resume_pdf import build_professional_resume_pdf
+
+        doc = parse_source_resume(self.resume_text)
+
+        # 1 role in doc.experience
+        self.assertEqual(len(doc.experience), 1, f"Expected 1 role in doc.experience, got {len(doc.experience)}")
+        self.assertIn("Nimbus Analytics", doc.experience[0].organization or doc.experience[0].title)
+
+        # 3 projects in doc.projects
+        self.assertEqual(len(doc.projects), 3, f"Expected 3 projects in doc.projects, got {len(doc.projects)}")
+        proj_names = [p.organization or p.title for p in doc.projects]
+        self.assertIn("Resume Skill Extractor (NLP)", proj_names)
+        self.assertIn("Plant Disease Detector (Computer Vision)", proj_names)
+        self.assertIn("Credit Risk Scoring", proj_names)
+
+        # Reconstructed structure checks
+        rec = reconstruct_resume_structure(doc, {})
+        self.assertEqual(len(rec["experience"]), 1, f"Expected exactly 1 role in reconstructed experience, got {len(rec['experience'])}")
+        self.assertEqual(len(rec["projects"]), 3, f"Expected exactly 3 projects in reconstructed projects, got {len(rec['projects'])}")
+
+        # PDF output checks
+        pdf = build_professional_resume_pdf(
+            name=doc.name,
+            email=doc.email,
+            content=rec,
+            source_resume_text=self.resume_text,
+        )
+        visible_lines = pdf.visible_text.splitlines()
+
+        # Count project heading lines in PDF
+        rendered_proj_lines = [
+            line for line in visible_lines
+            if any(name in line for name in ["Resume Skill Extractor", "Plant Disease Detector", "Credit Risk Scoring"])
+        ]
+        self.assertEqual(len(rendered_proj_lines), 3, f"Expected exactly 3 project heading lines in PDF, got {len(rendered_proj_lines)}")
+
+        # Count role heading lines in PDF
+        rendered_role_lines = [
+            line for line in visible_lines
+            if "Nimbus Analytics" in line or "Machine Learning Intern" in line
+        ]
+        # Role heading line should appear as 1 heading line
+        self.assertEqual(len(rendered_role_lines), 1, f"Expected exactly 1 role heading line in PDF, got {len(rendered_role_lines)}")
+
+    def test_accept_criteria_each_section_heading_appears_once(self):
+        """ACCEPT: each section heading appears once."""
+        from services.resume_structure import parse_source_resume, reconstruct_resume_structure
+        from services.professional_resume_pdf import build_professional_resume_pdf
+
+        doc = parse_source_resume(self.resume_text)
+        rec = reconstruct_resume_structure(doc, {})
+        pdf = build_professional_resume_pdf(
+            name=doc.name,
+            email=doc.email,
+            content=rec,
+            source_resume_text=self.resume_text,
+        )
+
+        visible_lines = [line.strip() for line in pdf.visible_text.splitlines() if line.strip()]
+
+        expected_headings = [
+            "SUMMARY",
+            "SKILLS",
+            "EXPERIENCE",
+            "PROJECTS",
+            "EDUCATION",
+            "CERTIFICATIONS",
+        ]
+
+        for heading in expected_headings:
+            exact_matches = [l for l in visible_lines if l.upper() == heading]
+            self.assertEqual(
+                len(exact_matches),
+                1,
+                f"Section heading '{heading}' must appear exactly once in PDF output, but appeared {len(exact_matches)} times: {exact_matches}"
+            )
+
+    def test_never_emits_placeholder_heading_or_experience_experience(self):
+        """Never emit a heading like 'X Entry N' or 'EXPERIENCE | EXPERIENCE'."""
+        from services.resume_structure import parse_source_resume, reconstruct_resume_structure
+        from services.professional_resume_pdf import build_professional_resume_pdf
+
+        # Resume containing malicious / edge-case duplicate headings
+        tricky_resume = (
+            "Alex Doe\n"
+            "alex@example.com\n\n"
+            "EXPERIENCE\n"
+            "EXPERIENCE | EXPERIENCE\n"
+            "Experience Entry 1\n"
+            "Acme Corp | Software Engineer | 2021 - 2023\n"
+            "- Built scalable backend microservices using Python and Docker.\n"
+            "PROJECTS\n"
+            "Projects Entry 1\n"
+            "TaskFlow | FastAPI, React | 2022\n"
+            "- Built real-time task manager app.\n"
+        )
+
+        doc = parse_source_resume(tricky_resume)
+        rec = reconstruct_resume_structure(doc, {})
+        pdf = build_professional_resume_pdf(
+            name=doc.name,
+            email=doc.email,
+            content=rec,
+            source_resume_text=tricky_resume,
+        )
+
+        visible_text = pdf.visible_text
+
+        # 1. Never emit "EXPERIENCE | EXPERIENCE"
+        self.assertNotIn("EXPERIENCE | EXPERIENCE", visible_text)
+
+        # 2. Never emit "X Entry N" or placeholder entry headings
+        self.assertFalse(
+            bool(re.search(r"\b(?:experience|projects?|role|entry)\s+entry\s+\d+\b", visible_text, re.I)),
+            f"Found placeholder entry heading in visible text: {visible_text}"
+        )
+
+    def test_entry_with_no_title_merges_into_previous_entry(self):
+        """If an entry has no title, merge it into the previous entry."""
+        from services.resume_structure import parse_source_resume
+
+        resume = (
+            "Experience\n"
+            "Acme Corp | Software Engineer | 2020 - 2022\n"
+            "- Designed RESTful APIs handling high throughput.\n"
+            "- Optimized database indexing and query caching.\n\n"
+            "- Implemented asynchronous background workers with Celery.\n"
+            "- Automated deployment pipelines using GitHub Actions.\n"
+        )
+
+        doc = parse_source_resume(resume)
+        # Should merge into the single Acme Corp entry
+        self.assertEqual(len(doc.experience), 1)
+        self.assertEqual(doc.experience[0].organization, "Acme Corp")
+        # All bullets should be preserved under the single entry
+        all_bullet_texts = [b.original for b in doc.experience[0].bullets]
+        self.assertTrue(any("Celery" in b for b in all_bullet_texts))
+        self.assertTrue(any("GitHub Actions" in b for b in all_bullet_texts))
+
+    def test_never_creates_project_or_role_with_no_source_text(self):
+        """Never create a project or role with no source text behind it."""
+        from services.resume_structure import parse_source_resume
+
+        # Resume with stray section header lines and no text behind them
+        resume = (
+            "Experience\n"
+            "Acme Corp | Software Engineer | 2020 - 2022\n"
+            "- Designed RESTful APIs handling high throughput.\n"
+            "Projects\n"
+        )
+
+        doc = parse_source_resume(resume)
+        # Projects section had no source text, so doc.projects must be empty
+        self.assertEqual(len(doc.projects), 0)
+        # Experience has 1 role
+        self.assertEqual(len(doc.experience), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
+
 
 
