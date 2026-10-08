@@ -32,6 +32,11 @@ def extract_text_from_pdf_base64(pdf_base64: str) -> str:
     if missing_padding:
         pdf_base64 += "=" * (4 - missing_padding)
 
+    # ── Enforce size before decode (F2) ──────────────────────
+    max_bytes = settings.MAX_RESUME_SIZE_MB * 1024 * 1024
+    if (len(pdf_base64) * 3) // 4 > max_bytes:
+        raise ValueError(f"Decoded PDF size exceeds maximum limit of {settings.MAX_RESUME_SIZE_MB}MB.")
+
     try:
         raw_bytes = base64.b64decode(pdf_base64)
     except Exception as e:
@@ -39,7 +44,6 @@ def extract_text_from_pdf_base64(pdf_base64: str) -> str:
         raise ValueError("Invalid base64 PDF data.")
 
     # ── Enforce size and magic bytes ──────────────────────────
-    max_bytes = settings.MAX_RESUME_SIZE_MB * 1024 * 1024
     if len(raw_bytes) > max_bytes:
         raise ValueError(f"Decoded PDF size exceeds maximum limit of {settings.MAX_RESUME_SIZE_MB}MB.")
 

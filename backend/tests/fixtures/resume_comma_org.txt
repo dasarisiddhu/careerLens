@@ -1,0 +1,16 @@
+Alice Brown
+alice.brown@example.com | 555-0102
+
+Experience
+Acme Technologies, Hyderabad
+Software Engineer
+Jan 2023 - Present
+- Developed scalable API gateways.
+
+Acme, Inc.
+Product Developer
+Jan 2021 - Dec 2022
+- Maintained user authentication services.
+
+Education
+B.Tech in Computer Science, Global Tech, 2021

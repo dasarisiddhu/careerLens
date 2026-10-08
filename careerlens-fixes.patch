@@ -1,0 +1,849 @@
+diff --git a/backend/routers/optimizer.py b/backend/routers/optimizer.py
+index 8695110..4b592c4 100644
+--- a/backend/routers/optimizer.py
++++ b/backend/routers/optimizer.py
+@@ -946,8 +946,37 @@ def _number_context_is_grounded(text, start, end, source_text, variants) -> bool
+     return False
+ 
+ 
++_VERSION_PRECEDER_RE = re.compile(r"([A-Za-z][A-Za-z0-9+#.\-]*)\s*$")
++
++
++def _version_key(text: str, start: int, end: int) -> Optional[tuple[str, str]]:
++    """(preceding word, number) for version identifiers such as 'OAuth 2.0' or 'Python 3.11'.
++
++    Only bare dotted numbers qualify (no %, K/M suffix, or unit), so metrics like '2.0 seconds' or '40%'
++    are never treated as versions.
++    """
++    raw = str(text or "")[start:end].strip()
++    if not re.fullmatch(r"\d+(?:\.\d+)+", raw):
++        return None
++    m = _VERSION_PRECEDER_RE.search(str(text or "")[max(0, start - 24):start])
++    if not m:
++        return None
++    return (m.group(1).lower().rstrip("."), raw)
++
++
++def _source_version_keys(source_text: str) -> set[tuple[str, str]]:
++    keys: set[tuple[str, str]] = set()
++    src = str(source_text or "")
++    for match in NUMBER_TOKEN_RE.finditer(src):
++        key = _version_key(src, match.start(), match.end())
++        if key:
++            keys.add(key)
++    return keys
++
++
+ def _find_ungrounded_numbers(text: str, source_text: str) -> list[dict[str, str]]:
+     source_variants = _source_number_variants(source_text)
++    source_version_keys = _source_version_keys(source_text)
+     ungrounded: list[dict[str, str]] = []
+     for match in NUMBER_TOKEN_RE.finditer(str(text or "")):
+         raw = re.sub(r"\s+", " ", match.group(0)).strip()
+@@ -965,6 +994,11 @@ def _find_ungrounded_numbers(text: str, source_text: str) -> list[dict[str, str]
+             ungrounded.append({"number": raw, "reason": reason_code})
+             continue
+         if not _number_context_is_grounded(text, match.start(), match.end(), source_text, variants):
++            # 'OAuth 2.0', 'Python 3.11': a version identifier already present in the source
++            # (same preceding word) is not a metric, so differing trailing words cannot "mismatch" it.
++            version_key = _version_key(str(text or ""), match.start(), match.end())
++            if version_key and version_key in source_version_keys:
++                continue
+             reason_code = "source_context_mismatch"
+             logger.warning(
+                 "optimizer.guard_trip: code=%s number=%s context=%s",
+diff --git a/backend/routers/resume.py b/backend/routers/resume.py
+index 436b7e2..5018a9c 100644
+--- a/backend/routers/resume.py
++++ b/backend/routers/resume.py
+@@ -305,6 +305,22 @@ Rules:
+     return result
+ 
+ 
++def run_deterministic_ats_check(resume_text: str, job_description: str) -> dict:
++    """Same keyword matching and score as run_brutal_ats_check, with NO LLM call.
++
++    The ATS score comes entirely from _fallback_ats_match + _apply_brutal_ats_scoring; the model in
++    run_brutal_ats_check only contributes the verdict / suggestions text. Use this wherever only the
++    number is needed (e.g. the optimizer's before/after comparison) so it never spends Groq quota.
++    """
++    result = _apply_brutal_ats_scoring(_fallback_ats_match(resume_text, job_description))
++    result["schema_version"] = "ats_check_v2"
++    result["context_truncated"] = (
++        _truncation_flag(resume_text, 3000) or _truncation_flag(job_description, _JD_MAX_CHARS)
++    )
++    result["llm_used"] = False
++    return result
++
++
+ async def run_brutal_ats_check(resume_text: str, job_description: str) -> dict:
+     resume_truncated = _truncation_flag(resume_text, 3000)
+     jd_truncated = _truncation_flag(job_description, _JD_MAX_CHARS)
+@@ -677,9 +693,7 @@ class ATSCheckRequest(BaseModel):
+     job_description: str = Field(..., max_length=25000)
+ 
+ 
+-@router.post("/ats-check")
+-@limiter.limit("15/hour")  # AI-calling endpoint — prevent abuse
+-async def ats_check(request: Request, body: ATSCheckRequest, user=Depends(get_authenticated_user)):
++def _ats_resume_text_or_http_error(body: "ATSCheckRequest") -> str:
+     if not body.resume_pdf or not body.job_description.strip():
+         raise HTTPException(status_code=400, detail="Resume PDF and job description are required.")
+ 
+@@ -688,7 +702,7 @@ async def ats_check(request: Request, body: ATSCheckRequest, user=Depends(get_au
+         pdf_base64 = pdf_base64.split(",", 1)[1]
+ 
+     try:
+-        resume_text = extract_text_from_pdf_base64(pdf_base64)
++        return extract_text_from_pdf_base64(pdf_base64)
+     except ValueError as e:
+         msg = str(e)
+         if "exceeds maximum limit" in msg:
+@@ -700,5 +714,17 @@ async def ats_check(request: Request, body: ATSCheckRequest, user=Depends(get_au
+         logger.warning(f"ATS check PDF extraction failed: {e}")
+         raise HTTPException(status_code=422, detail="Could not extract text from the provided PDF.")
+ 
++
++@router.post("/ats-check")
++@limiter.limit("15/hour")  # AI-calling endpoint — prevent abuse
++async def ats_check(request: Request, body: ATSCheckRequest, user=Depends(get_authenticated_user)):
++    resume_text = _ats_resume_text_or_http_error(body)
+     result = await run_brutal_ats_check(resume_text, body.job_description)
+     return {"success": True, "result": result}
++
++
++@router.post("/ats-score")
++@limiter.limit("60/hour")  # no LLM call: same score as /ats-check, so it costs no Groq quota
++async def ats_score(request: Request, body: ATSCheckRequest, user=Depends(get_authenticated_user)):
++    resume_text = _ats_resume_text_or_http_error(body)
++    return {"success": True, "result": run_deterministic_ats_check(resume_text, body.job_description)}
+diff --git a/backend/services/gemini_service.py b/backend/services/gemini_service.py
+index d97a285..51a2153 100644
+--- a/backend/services/gemini_service.py
++++ b/backend/services/gemini_service.py
+@@ -319,6 +319,9 @@ def _get_groq_semaphore() -> asyncio.Semaphore:
+     return _GROQ_SEMAPHORE
+ 
+ 
++GROQ_MAX_RATE_LIMIT_WAIT_S = 15.0  # longest server-requested delay we will wait out once per call
++
++
+ async def call_groq(
+     messages: list,
+     temperature: float = 0.0,
+@@ -355,6 +358,8 @@ async def call_groq(
+     sem = _get_groq_semaphore()
+     async with sem:
+         async with httpx.AsyncClient(timeout=60) as client:
++            tried_models: set[str] = set()
++            waited_for_rate_limit = False
+             for attempt in range(max_retries):
+                 response = await client.post(
+                     GROQ_API_URL,
+@@ -384,6 +389,7 @@ async def call_groq(
+                             retry_delay = 1.0 * (attempt + 1)
+ 
+                     current_model = current_payload.get("model", "")
++                    tried_models.add(current_model)
+ 
+                     # If delay is substantial (>2s) or rate limit is token-per-minute exhaustion,
+                     # switch immediately to a fallback model instead of freezing the request.
+@@ -399,7 +405,7 @@ async def call_groq(
+                         else:
+                             fallback_model = "openai/gpt-oss-20b"
+ 
+-                        if fallback_model and fallback_model != current_model:
++                        if fallback_model and fallback_model != current_model and fallback_model not in tried_models:
+                             logger.warning(
+                                 "Groq rate limit hit for %s (delay=%.2fs). Switching immediately to fallback model %s...",
+                                 current_model,
+@@ -413,6 +419,24 @@ async def call_groq(
+                             await asyncio.sleep(0.2)
+                             continue
+ 
++                        # Every candidate model is already rate-limited for this request. Switching again
++                        # only burns attempts (and used to end the loop with no response at all), so
++                        # honour the server's delay once, bounded, and retry.
++                        if (
++                            not waited_for_rate_limit
++                            and attempt < max_retries - 1
++                            and retry_delay <= GROQ_MAX_RATE_LIMIT_WAIT_S
++                        ):
++                            waited_for_rate_limit = True
++                            logger.warning(
++                                "All Groq fallback models rate-limited; waiting %.1fs before retrying %s.",
++                                retry_delay,
++                                current_model,
++                            )
++                            await asyncio.sleep(retry_delay)
++                            tried_models.clear()
++                            continue
++
+                     if attempt < max_retries - 1:
+                         sleep_time = min(retry_delay, 2.0)
+                         logger.warning(
+@@ -482,6 +506,11 @@ async def call_groq(
+ 
+                 return content
+ 
++            # Every attempt ended in a rate-limit switch: fail loudly instead of returning None.
++            raise ValueError(
++                "Groq rate limit: all configured models are rate-limited right now. Retry shortly."
++            )
++
+ 
+ def _extract_json(text: str) -> dict:
+     if not isinstance(text, str) or not text.strip():
+diff --git a/backend/services/professional_resume_pdf.py b/backend/services/professional_resume_pdf.py
+index b8f0867..59318da 100644
+--- a/backend/services/professional_resume_pdf.py
++++ b/backend/services/professional_resume_pdf.py
+@@ -755,10 +755,10 @@ def build_professional_resume_pdf(
+     skill_groups = _skill_groups(content_data)
+     fallback_skills = _clean_list(content_data.get("skills"))
+     education_lines = _clean_list(
+-        content_data.get("educationLines")
+-        or (content_data.get("reconstructed_resume") or {}).get("education")
++        (content_data.get("reconstructed_resume") or {}).get("education")
++        or content_data.get("educationLines")
+         or content_data.get("education"),
+-        limit=6,
++        limit=12,
+     )
+     improved_bullets = _clean_list(content_data.get("improvedBullets"), limit=10)
+     new_bullets = _clean_list(content_data.get("newBullets"), limit=8)
+@@ -866,7 +866,9 @@ def build_professional_resume_pdf(
+                 for bullet in _clean_list(entry.get("bullets"), limit=8):
+                     builder.bullet(bullet)
+                 builder.gap(2)
+-        elif improved_bullets or fallback_bullets:
++        elif (improved_bullets or fallback_bullets) and not content_data.get("reconstructed_resume"):
++            # Legacy fallback only. When the backend parsed the source (reconstructed_resume) and
++            # found no experience section, none is printed: never invent one.
+             builder.heading("Experience")
+             builder.line("Relevant Experience", font="hebo", size=10, color=NAVY_COLOR, after=3)
+             for bullet in (improved_bullets or fallback_bullets):
+@@ -917,6 +919,16 @@ def build_professional_resume_pdf(
+             for cert in certifications:
+                 builder.bullet(cert)
+ 
++        for other in (content_data.get("reconstructed_resume") or {}).get("other_sections") or []:
++            if not isinstance(other, dict):
++                continue
++            other_items = _clean_list(other.get("items"), limit=12)
++            other_title = _clean_pdf_text(other.get("title") or "")
++            if other_title and other_items:
++                builder.heading(other_title)
++                for item in other_items:
++                    builder.bullet(item)
++
+         pdf_bytes = builder.finish()
+         visible_text = "\n".join(builder.visible_lines) or _visible_text_for_content(
+             cleaned_name,
+diff --git a/backend/services/resume_structure.py b/backend/services/resume_structure.py
+index de13859..ba59505 100644
+--- a/backend/services/resume_structure.py
++++ b/backend/services/resume_structure.py
+@@ -28,8 +28,22 @@ SECTION_PATTERNS = [
+     ("projects", re.compile(r"^(projects?|academic\s+projects?|personal\s+projects?|technical\s+projects?|key\s+projects?)\b", re.IGNORECASE)),
+     ("education", re.compile(r"^(education|academic\s+background|academics?|qualifications?|educational\s+qualifications?)\b", re.IGNORECASE)),
+     ("certifications", re.compile(r"^(certifications?|certificates?|licenses?|professional\s+certifications?)\b", re.IGNORECASE)),
++    # Sections the optimizer never rewrites: copied through verbatim (see other_sections).
++    # Whole-line matches only, so a skills label or bullet that merely STARTS with one of
++    # these words (e.g. "Leadership skills & Problem solving") is never mistaken for a heading.
++    ("achievements", re.compile(r"^(achievements?|accomplishments?|awards?(\s+(and|&)\s+(honou?rs|achievements?))?|honou?rs)\s*:?\s*$", re.IGNORECASE)),
++    ("activities", re.compile(r"^(extra[\s-]?curricular(\s+activities)?|activities|hackathons?|leadership(\s+(and|&)\s+activities)?|volunteering|volunteer\s+experience|positions?\s+of\s+responsibility|clubs?(\s+(and|&)\s+societies)?)\s*:?\s*$", re.IGNORECASE)),
++    ("publications", re.compile(r"^(publications?|research\s+papers?)\s*:?\s*$", re.IGNORECASE)),
++    ("interests", re.compile(r"^(interests|hobbies|hobbies\s+(and|&)\s+interests)\s*:?\s*$", re.IGNORECASE)),
+ ]
+ 
++OTHER_SECTION_TITLES = {
++    "achievements": "Achievements",
++    "activities": "Activities",
++    "publications": "Publications",
++    "interests": "Interests",
++}
++
+ 
+ @dataclass
+ class SourceBullet:
+@@ -247,6 +261,75 @@ def _parse_entry_header(line: str) -> tuple[str, str, str, str]:
+     return "", "", dates, ""
+ 
+ 
++_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z])")
++_NEW_PROJECT_RE = re.compile(
++    r"^(?:Created|Built|Developed|Designed|Implemented)\s+(?:a|an)\s+"
++    r"(?P<name>[A-Z][\w&/\- ]{2,50}?\s(?:System|Application|App|Platform|Tool|Bot|Website|Portal|Tracker|Manager|Dashboard|Engine|Game))\b"
++)
++
++
++def _parse_markerless_entries(canonical_sec: str, sec_prefix: str, lines: list[str]) -> list[SourceEntry]:
++    """Parse a section whose source has NO bullet markers (common in student resumes).
++
++    1. Merge a line into the previous one only when it is a real wrap (previous text has no
++       terminal punctuation, or this line starts lowercase).
++    2. Split into sentences; every sentence becomes one bullet.
++    3. A short sentence ending in ':' is an entry title. For projects, a sentence such as
++       'Created a Parking Management System using C ...' starts a new entry.
++    Nothing is invented: titles and bullets are substrings of the source text.
++    """
++    logical: list[str] = []
++    for line in lines:
++        if logical and (not re.search(r"[.!?:]$", logical[-1]) or line[:1].islower()):
++            logical[-1] = f"{logical[-1]} {line}".strip()
++        else:
++            logical.append(line)
++
++    sentences: list[str] = []
++    for chunk in logical:
++        sentences.extend(p.strip() for p in _SENTENCE_SPLIT_RE.split(chunk) if p.strip())
++
++    entries: list[SourceEntry] = []
++    current: Optional[SourceEntry] = None
++
++    def _new_entry(name: str, header_raw: str) -> SourceEntry:
++        entry = SourceEntry(
++            entry_id=f"{sec_prefix}_{len(entries) + 1:03d}",
++            section=canonical_sec,
++            title="",
++            organization=name,
++            header_raw=header_raw,
++            bullets=[],
++        )
++        entries.append(entry)
++        return entry
++
++    for sent in sentences:
++        if sent.endswith(":") and _word_count(sent) <= 18:
++            current = _new_entry(sent.rstrip(":").strip(), sent)
++            continue
++        if canonical_sec == "projects" and current is not None and current.bullets:
++            m = _NEW_PROJECT_RE.match(sent)
++            if m:
++                current = _new_entry(m.group("name").strip(), "")
++        if current is None:
++            current = _new_entry("", "")
++        if _word_count(sent) < 5 and current.bullets:
++            current.bullets[-1].original = f"{current.bullets[-1].original.rstrip()} {sent}".strip()
++            continue
++        b_idx = len(current.bullets) + 1
++        current.bullets.append(
++            SourceBullet(
++                source_id=f"{current.entry_id}_bullet_{b_idx:03d}",
++                section=canonical_sec,
++                entry_id=current.entry_id,
++                entry_name=current.organization or current.title,
++                original=sent,
++            )
++        )
++    return [e for e in entries if e.bullets]
++
++
+ def _parse_section_entries(section_name: str, lines: list[str]) -> list[SourceEntry]:
+     entries: list[SourceEntry] = []
+     current_entry: Optional[SourceEntry] = None
+@@ -282,6 +365,11 @@ def _parse_section_entries(section_name: str, lines: list[str]) -> list[SourceEn
+             else:
+                 preprocessed.append((line, False))
+ 
++    # Markerless section (no bullet markers, no 'Name | Stack' headers): the marker-based wrap
++    # merge below would fuse every line into one bullet, so segment by sentence instead.
++    if preprocessed and not any(is_b for _, is_b in preprocessed) and not any("|" in l for l, _ in preprocessed):
++        return _parse_markerless_entries(canonical_sec, sec_prefix, [l for l, _ in preprocessed])
++
+     # Step 2: Parse into entries and merge line-wraps
+     for line, is_bullet in preprocessed:
+         has_bullets = bool(current_entry and current_entry.bullets)
+@@ -524,6 +612,8 @@ def parse_source_resume(text: str) -> ResumeDocument:
+     if not cert_lines and contact.get("certifications"):
+         cert_lines = list(contact.get("certifications") or [])
+ 
++    other_sections = _collect_other_sections(sections)
++
+     return ResumeDocument(
+         raw_text=raw_text,
+         name=candidate_name or "Your Name",
+@@ -538,9 +628,40 @@ def parse_source_resume(text: str) -> ResumeDocument:
+         projects=project_entries,
+         education=education_lines,
+         certifications=cert_lines,
++        other_sections=other_sections,
+     )
+ 
+ 
++def _collect_other_sections(sections: dict[str, list[str]]) -> list[dict[str, Any]]:
++    """Copy sections the optimizer does not rewrite (achievements, activities, ...) verbatim.
++
++    Items are split on bullet markers. Without markers, every non-wrapped line is its own item;
++    a line is treated as a wrap of the previous one when the previous line does not end a
++    sentence AND this line starts lowercase.
++    """
++    result: list[dict[str, Any]] = []
++    for key, title in OTHER_SECTION_TITLES.items():
++        lines = [_clean_line(l) for l in sections.get(key, [])]
++        lines = [l for l in lines if l and _is_section_header(l) is None]
++        if not lines:
++            continue
++        items: list[str] = []
++        for line in lines:
++            m = BULLET_PREFIX_RE.match(line)
++            if m:
++                body = m.group(1).strip()
++                if body:
++                    items.append(body)
++                continue
++            if items and (line[:1].islower() or not re.search(r"[.!?:]$", items[-1])) and line[:1].islower():
++                items[-1] = f"{items[-1]} {line}"
++            else:
++                items.append(line)
++        if items:
++            result.append({"title": title, "items": items})
++    return result
++
++
+ def build_source_items_for_prompt(doc: ResumeDocument) -> list[dict[str, Any]]:
+     """Builds the list of structured source items to be sent to the LLM for transformation."""
+     items: list[dict[str, Any]] = []
+@@ -668,6 +789,7 @@ def reconstruct_resume_structure(
+             for e in doc.education
+         ],
+         "certifications": doc.certifications,
++        "other_sections": [dict(sec) for sec in doc.other_sections],
+     }
+ 
+ 
+diff --git a/backend/tests/fixtures/ml_intern_resume.txt b/backend/tests/fixtures/ml_intern_resume.txt
+new file mode 100644
+index 0000000..0ad4c21
+--- /dev/null
++++ b/backend/tests/fixtures/ml_intern_resume.txt
+@@ -0,0 +1,35 @@
++Rohan Verma
++Hyderabad, India | rohan.verma@example.com | +91 98765 00000 | linkedin.com/in/rohan-verma-demo |
++github.com/rohanverma-demo
++SUMMARY
++Computer Science graduate with hands-on machine learning experience from an internship and three end-to-end
++projects, building and deploying models with Python, PyTorch, scikit-learn and FastAPI.
++SKILLS
++Languages: Python, SQL, C++
++ML & Data: PyTorch, scikit-learn, XGBoost, Pandas, NumPy, Hugging Face Transformers, Feature Engineering
++MLOps & Tools: Docker, Git, MLflow, FastAPI, AWS (S3, EC2), Linux, CI/CD
++EXPERIENCE
++Machine Learning Intern | Nimbus Analytics Pvt Ltd, Hyderabad | Jan 2025 - Jun 2025
++• Built a customer churn model with XGBoost on 500K+ customer records, reaching an F1-score of 0.87 on a held-out
++test set.
++• Reduced model inference latency by 38% by exporting the model to ONNX and batching requests in a FastAPI
++service.
++• Containerized the prediction service with Docker and served 40K+ daily predictions to the analytics dashboard.
++• Tracked 60+ experiments with MLflow and documented feature pipelines so the team could reproduce results.
++PROJECTS
++Resume Skill Extractor (NLP) | Python, Hugging Face Transformers, FastAPI
++• Fine-tuned a BERT-based named entity model on 8,000 annotated resumes, improving skill extraction F1 from 0.71
++to 0.84.
++• Deployed the model as a REST API with FastAPI and Docker, returning predictions in under 200 ms.
++Plant Disease Detector (Computer Vision) | PyTorch, OpenCV, AWS
++• Trained a ResNet-50 classifier on 54,000 leaf images across 38 classes, achieving 96% validation accuracy.
++• Hosted the model on an AWS EC2 instance with a Flask front end used by 120+ students during a college demo.
++Credit Risk Scoring | Python, scikit-learn, SQL
++• Engineered 25 features from loan data and compared logistic regression, random forest and gradient boosting,
++selecting the best model by ROC-AUC of 0.91.
++EDUCATION
++B.Tech, Computer Science and Engineering | Example Institute of Technology, Hyderabad | 2021 - 2025 | CGPA
++8.4/10
++CERTIFICATIONS
++• Deep Learning Specialization (online course certificate)
++• AWS Certified Cloud Practitioner
+\ No newline at end of file
+diff --git a/backend/tests/fixtures/student_markerless_resume.txt b/backend/tests/fixtures/student_markerless_resume.txt
+new file mode 100644
+index 0000000..d4d3167
+--- /dev/null
++++ b/backend/tests/fixtures/student_markerless_resume.txt
+@@ -0,0 +1,51 @@
++Kasanagottu Karthik    
++kasanagottu.cse@gmail.com, 8919496927,  Hyderabad, India     
++PROFILE       
++   
++AI-focused Computer Science student with hands-on experience in building  
++automation systems using LLMs and APIs. Interested in developing AI-powered 
++applications and scalable backend systems.   
++ 
++EDUCATION        
++   
++Geethanjali College of Engineering and Technology,                         2023-2027     
++Bachelor of Technology in Computer Science and Engineering 
++ CGPA : 6.5     
++Alphores Junior College, Karimnagar                                                               2021-2023                            
++Percentage : 87%     
++SPR School Of Excellence, Yellapur                                                                                                        
++Percentage :98%     
++SKILLS      
++   
++Programming Skills  : Python , C and Java   
++AI / ML & Data Skills: Natural Language Processing (NLP),Generative AI (LLMs, prompt  
++based automation),API Integration (Gmail API)&Model interaction & inference (Google 
++Gemini)  
++Tools & Technologies: OAuth 2.0 Authentication ,Automation ,Workflow Design &Debugging  
++Other skills : Leadership skills & Problem solving, Analytical Thinking & Team Collaboration  
++PROJECTS       
++   
++ AI-powered Gmail automation project using Python and Google Gemini: 
++Designed   
++to   
++read,  analyze,   and   
++reply  to   
++emails  automatically.  
++Improved efficiency by integrating Gmail API with smart response generation. 
++Implemented  OAuth  2.0  for  secure authentication  and  message  handling.   
++Demonstrated skills in AI integration, natural language processing, and automation using real-world email 
++data.   
++Created a Parking Management System using C language. Automated parking slot allocation and vehicle 
++record management.   
++Improved parking operations with efficient and reliable logic-based programming   
++   
++ACHIEVEMENTS        
++   
++• 
++Recognized for problem-solving, teamwork, and adaptability in academic and project 
++work.   
++• 
++Presented project work in department-level technical symposium 
++• 
++Contributed to efficient code design and debugging practices in overall program 
++performance.
+\ No newline at end of file
+diff --git a/backend/tests/test_ats_score_without_llm.py b/backend/tests/test_ats_score_without_llm.py
+new file mode 100644
+index 0000000..e4017a4
+--- /dev/null
++++ b/backend/tests/test_ats_score_without_llm.py
+@@ -0,0 +1,47 @@
++"""The ATS number is computed by plain code; the LLM only writes verdict/suggestion text.
++/api/resume/ats-score therefore returns the same score with zero Groq calls."""
++import asyncio
++import json
++import os
++import unittest
++from unittest.mock import AsyncMock, patch
++
++os.environ.setdefault("SECRET_KEY", "test-secret-key-for-tests-0123456789")
++os.environ.setdefault("STRIPE_WEBHOOK_SECRET", "whsec_test")
++
++from routers import resume as resume_router
++
++RESUME = (
++    "Rohan Verma\nSKILLS\nPython, SQL, PyTorch, scikit-learn, XGBoost, Docker, FastAPI, MLflow, AWS\n"
++    "EXPERIENCE\nMachine Learning Intern\n- Built a churn model with XGBoost on 500K+ records.\n"
++    "- Containerized the prediction service with Docker and FastAPI.\n"
++)
++JD = "We need a machine learning engineer with Python, PyTorch, Docker, Kubernetes, Spark, SQL and MLflow experience."
++
++
++class AtsScoreWithoutLlm(unittest.TestCase):
++    def test_route_is_registered(self):
++        paths = {getattr(r, "path", "") for r in resume_router.router.routes}
++        self.assertIn("/api/resume/ats-score", paths | {"/api/resume" + p for p in paths})
++
++    def test_never_calls_groq(self):
++        with patch.object(resume_router, "call_groq", new=AsyncMock(side_effect=AssertionError("LLM called"))):
++            out = resume_router.run_deterministic_ats_check(RESUME, JD)
++        self.assertFalse(out["llm_used"])
++        self.assertIsInstance(out["ats_score"], int)
++
++    def test_score_equals_llm_path_when_llm_fails(self):
++        with patch.object(resume_router, "call_groq", new=AsyncMock(side_effect=ValueError("429"))):
++            llm_path = asyncio.run(resume_router.run_brutal_ats_check(RESUME, JD))
++        self.assertEqual(resume_router.run_deterministic_ats_check(RESUME, JD)["ats_score"], llm_path["ats_score"])
++
++    def test_score_ignores_whatever_the_llm_says(self):
++        hallucinated = json.dumps({"ats_score": 3, "matched_keywords": [], "missing_keywords": ["x"] * 30,
++                                   "honest_verdict": "Terrible.", "suggestions": ["a"], "verdict": "not qualified"})
++        with patch.object(resume_router, "call_groq", new=AsyncMock(return_value=hallucinated)):
++            llm_path = asyncio.run(resume_router.run_brutal_ats_check(RESUME, JD))
++        self.assertEqual(resume_router.run_deterministic_ats_check(RESUME, JD)["ats_score"], llm_path["ats_score"])
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/backend/tests/test_localhost_log_findings.py b/backend/tests/test_localhost_log_findings.py
+new file mode 100644
+index 0000000..a8e6871
+--- /dev/null
++++ b/backend/tests/test_localhost_log_findings.py
+@@ -0,0 +1,102 @@
++"""Regressions found in a real localhost log (2026-10-04).
++
++1. 'OAuth 2.0' was flagged as a fabricated metric (source_context_mismatch) and a valid rewrite reverted.
++2. call_groq burned all 3 attempts switching between two rate-limited models, then fell off the end
++   of the loop and returned None -> "Cannot extract JSON from empty model output".
++"""
++import asyncio
++import os
++import unittest
++from types import SimpleNamespace
++from unittest.mock import AsyncMock, patch
++
++os.environ.setdefault("SECRET_KEY", "test-secret-key-for-tests-0123456789")
++os.environ.setdefault("STRIPE_WEBHOOK_SECRET", "whsec_test")
++
++from routers.optimizer import _find_ungrounded_numbers
++from services import gemini_service
++
++SOURCE = (
++    "AI-powered Gmail automation project using Python and Google Gemini:\n"
++    "Implemented OAuth 2.0 for secure authentication and message handling.\n"
++)
++
++
++class VersionNumbersAreNotMetrics(unittest.TestCase):
++    def test_oauth_version_with_different_trailing_words_is_grounded(self):
++        self.assertEqual(
++            _find_ungrounded_numbers("Implemented secure OAuth 2.0 message handling for the Gmail bot.", SOURCE), [])
++
++    def test_fabricated_metric_with_same_digits_still_trips(self):
++        self.assertTrue(_find_ungrounded_numbers("Reduced latency by 2.0 seconds.", SOURCE))
++
++    def test_invented_version_still_trips(self):
++        self.assertTrue(_find_ungrounded_numbers("Implemented OAuth 3.0 for the Gmail bot.", SOURCE))
++
++    def test_invented_percentage_still_trips(self):
++        self.assertTrue(_find_ungrounded_numbers("Improved efficiency by 40% using OAuth 2.0.", SOURCE))
++
++
++class _Resp:
++    def __init__(self, status, retry_after=None, content="ok"):
++        self.status_code = status
++        self.headers = {"retry-after": str(retry_after)} if retry_after is not None else {}
++        self.text = '{"error":{"message":"rate limit"}}' if status == 429 else ""
++        self._content = content
++
++    def json(self):
++        if self.status_code == 429:
++            return {"error": {"message": "rate limit"}}
++        return {"choices": [{"message": {"content": self._content}, "finish_reason": "stop"}]}
++
++
++class _FakeClient:
++    script: list = []
++    calls: list = []
++
++    def __init__(self, *a, **k):
++        pass
++
++    async def __aenter__(self):
++        return self
++
++    async def __aexit__(self, *a):
++        return False
++
++    async def post(self, url, headers=None, json=None):
++        _FakeClient.calls.append(json["model"])
++        return _FakeClient.script.pop(0)
++
++
++class GroqRateLimitLoop(unittest.TestCase):
++    def _run(self, script):
++        _FakeClient.script = list(script)
++        _FakeClient.calls = []
++        gemini_service._GROQ_SEMAPHORE = None
++        fake_settings = SimpleNamespace(GROQ_API_KEY="k", GROQ_MODEL="openai/gpt-oss-20b")
++        with patch.object(gemini_service, "settings", fake_settings), \
++                patch.object(gemini_service.httpx, "AsyncClient", _FakeClient), \
++                patch.object(gemini_service.asyncio, "sleep", new=AsyncMock()) as sleep:
++            result = asyncio.run(gemini_service.call_groq([{"role": "user", "content": "hi"}], json_mode=True))
++        return result, sleep
++
++    def test_waits_out_the_delay_once_instead_of_ping_ponging(self):
++        # the sequence from the log: 20b -> 429, qwen -> 429, then the wait, then success
++        result, sleep = self._run([_Resp(429, 15), _Resp(429, 13), _Resp(200, content='{"a":1}')])
++        self.assertEqual(result, '{"a":1}')
++        self.assertIn(13.0, [c.args[0] for c in sleep.await_args_list])
++        # never bounces back to a model that already 429'd in this request without waiting
++        self.assertEqual(_FakeClient.calls[0], "openai/gpt-oss-20b")
++
++    def test_never_returns_none_when_every_attempt_is_rate_limited(self):
++        with self.assertRaises(ValueError):
++            self._run([_Resp(429, 15), _Resp(429, 13), _Resp(429, 20), _Resp(429, 20)])
++
++    def test_delay_above_cap_is_not_waited_out(self):
++        with self.assertRaises(ValueError):
++            self._run([_Resp(429, 60), _Resp(429, 60), _Resp(429, 60), _Resp(429, 60)])
++        self.assertTrue(all(c.args[0] <= 2.0 for c in []))  # no long sleeps are scheduled
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/backend/tests/test_student_resume_fixtures.py b/backend/tests/test_student_resume_fixtures.py
+new file mode 100644
+index 0000000..17ae455
+--- /dev/null
++++ b/backend/tests/test_student_resume_fixtures.py
+@@ -0,0 +1,83 @@
++"""Regression fixtures built from real student resumes (extracted with the app's own PDF reader).
++
++student_markerless_resume.txt: no bullet markers, wrapped lines, an ACHIEVEMENTS section, 3 education
++entries. This is what real fresher uploads look like, and it broke the parser (sections fused,
++achievements absorbed into projects, invented "Relevant Experience" block).
++ml_intern_resume.txt: clean marker-based resume, kept to prove the marker path is unchanged.
++"""
++import os
++import re
++import subprocess
++import tempfile
++import unittest
++from pathlib import Path
++
++os.environ.setdefault("SECRET_KEY", "test-secret-key-for-tests-0123456789")
++os.environ.setdefault("STRIPE_WEBHOOK_SECRET", "whsec_test")
++
++from services.professional_resume_pdf import build_professional_resume_pdf
++from services.resume_structure import parse_source_resume, reconstruct_resume_structure
++
++FIX = Path(__file__).parent / "fixtures"
++
++
++def _load(name):
++    return parse_source_resume((FIX / name).read_text())
++
++
++class MarkerlessStudentResume(unittest.TestCase):
++    def setUp(self):
++        self.doc = _load("student_markerless_resume.txt")
++
++    def test_no_experience_section_is_invented(self):
++        self.assertEqual(self.doc.experience, [])
++
++    def test_two_projects_with_bullets_not_one_fused_blob(self):
++        names = [p.organization for p in self.doc.projects]
++        self.assertEqual(names, ["AI-powered Gmail automation project using Python and Google Gemini",
++                                 "Parking Management System"])
++        self.assertEqual([len(p.bullets) for p in self.doc.projects], [4, 3])
++        for p in self.doc.projects:
++            for b in p.bullets:
++                self.assertLessEqual(len(b.original.split()), 40)
++
++    def test_achievements_preserved_verbatim_and_not_inside_projects(self):
++        self.assertEqual([(s["title"], len(s["items"])) for s in self.doc.other_sections], [("Achievements", 3)])
++        all_project_text = " ".join(b.original for p in self.doc.projects for b in p.bullets)
++        self.assertNotIn("ACHIEVEMENTS", all_project_text)
++        self.assertNotIn("Recognized for", all_project_text)
++
++    def test_all_education_entries_and_grades_kept(self):
++        joined = " ".join(self.doc.education)
++        for token in ("6.5", "87%", "98%", "Alphores", "SPR School"):
++            self.assertIn(token, joined)
++
++    def test_rendered_pdf_has_no_invented_sections_and_keeps_everything(self):
++        rec = reconstruct_resume_structure(doc=self.doc, bullet_rewrites={})
++        pdf = build_professional_resume_pdf(
++            name=self.doc.name, content={"reconstructed_resume": rec, "summary": self.doc.summary,
++                                         "improvedBullets": ["Recognized for problem-solving"]},
++            source_resume_text=self.doc.raw_text)
++        with tempfile.NamedTemporaryFile(suffix=".pdf") as f:
++            f.write(pdf.pdf_bytes if hasattr(pdf, "pdf_bytes") else pdf.content)
++            f.flush()
++            text = subprocess.run(["pdftotext", "-layout", f.name, "-"], capture_output=True, text=True).stdout
++        self.assertNotIn("Relevant Experience", text)
++        self.assertNotRegex(text, r"Entry \d+")
++        self.assertIsNone(re.search(r"^\s*EXPERIENCE\s*$", text, re.M | re.I))
++        for token in ("Achievements", "Parking Management System", "6.5", "87%", "98%"):
++            self.assertIn(token.lower(), text.lower())
++
++
++class MarkerBasedResumeUnchanged(unittest.TestCase):
++    def test_structure_and_skills_and_github(self):
++        doc = _load("ml_intern_resume.txt")
++        self.assertEqual([len(e.bullets) for e in doc.experience], [4])
++        self.assertEqual([len(e.bullets) for e in doc.projects], [2, 2, 1])
++        self.assertEqual(len(doc.skills), 17)  # a "Languages:" skills label must not split the section
++        self.assertEqual(doc.github, "github.com/rohanverma-demo")
++        self.assertEqual(doc.other_sections, [])
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/database/migrations/20261004_resume_analyses_columns.sql b/database/migrations/20261004_resume_analyses_columns.sql
+new file mode 100644
+index 0000000..50cd80d
+--- /dev/null
++++ b/database/migrations/20261004_resume_analyses_columns.sql
+@@ -0,0 +1,20 @@
++-- Fixes: "Analysis DB save failed ... Could not find the 'job_description' column of
++-- 'resume_analyses' in the schema cache" (PostgREST PGRST204) from POST /api/optimizer/analyse.
++-- backend/sql/resume_optimizer_analyses.sql defines these columns but lives outside
++-- database/migrations/, so it was never applied. Idempotent: safe to run more than once.
++
++ALTER TABLE public.resume_analyses
++    ADD COLUMN IF NOT EXISTS resume_file TEXT,
++    ADD COLUMN IF NOT EXISTS github_url TEXT NOT NULL DEFAULT '',
++    ADD COLUMN IF NOT EXISTS linkedin_url TEXT NOT NULL DEFAULT '',
++    ADD COLUMN IF NOT EXISTS job_role TEXT NOT NULL DEFAULT '',
++    ADD COLUMN IF NOT EXISTS job_title TEXT NOT NULL DEFAULT '',
++    ADD COLUMN IF NOT EXISTS job_description TEXT NOT NULL DEFAULT '',
++    ADD COLUMN IF NOT EXISTS score INTEGER CHECK (score >= 0 AND score <= 100),
++    ADD COLUMN IF NOT EXISTS results_json JSONB,
++    ADD COLUMN IF NOT EXISTS result_json JSONB NOT NULL DEFAULT '{}',
++    ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending',
++    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
++
++-- Make PostgREST see the new columns immediately (otherwise PGRST204 persists until it refreshes).
++NOTIFY pgrst, 'reload schema';
+diff --git a/frontend/src/pages/dashboard/ResumeOptimizer.jsx b/frontend/src/pages/dashboard/ResumeOptimizer.jsx
+index 6f29c6d..5954ebd 100644
+--- a/frontend/src/pages/dashboard/ResumeOptimizer.jsx
++++ b/frontend/src/pages/dashboard/ResumeOptimizer.jsx
+@@ -1157,14 +1157,22 @@ function buildOnePageResumeContent(result = {}, sourceText = '', currentJobTitle
+       .filter(Boolean)
+     : []
+ 
+-  const fallbackBullets = extractResumeHighlights(sourceText, 8)
++  // The backend owns structure: when it returned reconstructed_resume, never re-derive
++  // content from the raw text with client-side heuristics (they invent bullets from the
++  // header/contact lines and truncate sections).
++  const backendStructure = result?.reconstructed_resume || null
++  const fallbackBullets = backendStructure ? [] : extractResumeHighlights(sourceText, 8)
+   const improvedBullets = improvedBulletsRaw.length
+     ? improvedBulletsRaw
+     : fallbackBullets.slice(0, 6)
+   const newBullets = newBulletsRaw
+   const bullets = [...improvedBullets, ...newBullets].filter(Boolean)
+-  const educationLines = extractEducationLines(sourceText, 4)
+-  const certificationLines = extractCertificationLines(sourceText, 12)
++  const educationLines = Array.isArray(backendStructure?.education) && backendStructure.education.length
++    ? backendStructure.education
++    : extractEducationLines(sourceText, 12)
++  const certificationLines = Array.isArray(backendStructure?.certifications) && backendStructure.certifications.length
++    ? backendStructure.certifications
++    : extractCertificationLines(sourceText, 12)
+ 
+   // FIX C: Remove the header title line unless the person has actually held that title
+   const candidateHeldTitle = hasHeldTitle(currentJobTitle || result?.job_title, sourceText, result)
+@@ -2365,8 +2373,12 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
+           `${jobTitle || 'resume'}-after`,
+         )
+ 
+-        const beforeRes = await api.checkATS({ resume_pdf: beforePdf, job_description: jobDesc })
+-        const afterRes = await api.checkATS({ resume_pdf: afterPdf, job_description: jobDesc })
++        // Only the numeric score is needed here, so use the LLM-free endpoint: the two calls are
++        // cheap and safe to run in parallel, and they no longer spend Groq quota or the ats-check limit.
++        const [beforeRes, afterRes] = await Promise.all([
++          api.scoreATS({ resume_pdf: beforePdf, job_description: jobDesc }),
++          api.scoreATS({ resume_pdf: afterPdf, job_description: jobDesc }),
++        ])
+ 
+         const beforeScore = Number(beforeRes?.result?.ats_score)
+         const afterScore = Number(afterRes?.result?.ats_score)
+diff --git a/frontend/src/services/api.js b/frontend/src/services/api.js
+index b3eac0d..1a78dd8 100644
+--- a/frontend/src/services/api.js
++++ b/frontend/src/services/api.js
+@@ -130,6 +130,8 @@ export const api = {
+ 
+   // ATS
+   checkATS: (body) => request('POST', '/api/resume/ats-check', body),
++  // Same ATS score as checkATS, computed without an LLM call (no verdict/suggestions text).
++  scoreATS: (body) => request('POST', '/api/resume/ats-score', body),
+ 
+   // Interview
+   startInterview: (body) => request('POST', '/api/interview/start', body),

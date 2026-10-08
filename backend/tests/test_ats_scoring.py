@@ -1,4 +1,4 @@
-﻿import unittest
+import unittest
 from routers.resume import _apply_brutal_ats_scoring
 from services.gemini_service import _calibrate_resume_scores, _fallback_ats_match
 
@@ -73,6 +73,17 @@ class ATSScoringTests(unittest.TestCase):
         self.assertGreater(res["ats_score"], 0)
         self.assertLess(res["ats_score"], 100)
 
+    def test_ats_score_deterministic_scoring(self):
+        """ats-score logic runs without LLM and produces valid score."""
+        resume_text = "Software Engineer with Python, React, PostgreSQL."
+        jd = "Looking for Senior Python Developer with React, Docker, and Kubernetes."
+        baseline = _fallback_ats_match(resume_text, jd)
+        result = _apply_brutal_ats_scoring(baseline)
+        self.assertIn("ats_score", result)
+        self.assertIsInstance(result["ats_score"], int)
+        self.assertIn("python", result["matched_keywords"])
+
 
 if __name__ == "__main__":
     unittest.main()
+

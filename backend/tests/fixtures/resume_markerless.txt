@@ -1,0 +1,13 @@
+Michael Wilson
+michael.wilson@example.com | 555-0105
+
+Experience
+Acme Solutions
+Backend Developer
+Jan 2022 - Present
+Engineered distributed message queue consumers using Python.
+Reduced latency across microservices by 35 percent.
+Authored comprehensive unit tests covering critical payment flows.
+
+Education
+B.S. in Computer Science, 2022

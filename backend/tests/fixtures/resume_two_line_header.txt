@@ -1,0 +1,11 @@
+Jane Doe
+jane.doe@example.com | 555-0100 | San Francisco, CA
+
+Experience
+Acme Technologies  Jan 2024 - Mar 2024
+Software Intern
+- Built internal dashboards using React and TypeScript.
+- Improved query response times by 20%.
+
+Education
+B.S. in Computer Science, State University, 2024

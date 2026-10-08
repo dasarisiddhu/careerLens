@@ -1,0 +1,11 @@
+Marcus Lee
+marcus.lee@example.com | 555-0113
+
+Experience
+Apex Solutions
+Backend Developer  Jan 2023 - Present
+- Scaled internal tool to support ~500 users across 3 departments.
+- Optimized database queries, reducing approximately 40 slow queries per week.
+
+Education
+B.S. in Computer Engineering, 2022

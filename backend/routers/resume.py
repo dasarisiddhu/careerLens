@@ -702,3 +702,33 @@ async def ats_check(request: Request, body: ATSCheckRequest, user=Depends(get_au
 
     result = await run_brutal_ats_check(resume_text, body.job_description)
     return {"success": True, "result": result}
+
+
+@router.post("/ats-score")
+async def ats_score(request: Request, body: ATSCheckRequest, user=Depends(get_authenticated_user)):
+    """Same ATS score as checkATS, computed without an LLM call (no verdict/suggestions text)."""
+    if not body.resume_pdf or not body.job_description.strip():
+        raise HTTPException(status_code=400, detail="Resume PDF and job description are required.")
+
+    pdf_base64 = body.resume_pdf
+    if "," in pdf_base64:
+        pdf_base64 = pdf_base64.split(",", 1)[1]
+
+    try:
+        resume_text = extract_text_from_pdf_base64(pdf_base64)
+    except ValueError as e:
+        msg = str(e)
+        if "exceeds maximum limit" in msg:
+            raise HTTPException(status_code=413, detail=msg)
+        if "Invalid file format" in msg:
+            raise HTTPException(status_code=415, detail=msg)
+        raise HTTPException(status_code=422, detail=msg)
+    except Exception as e:
+        logger.warning(f"ATS score PDF extraction failed: {e}")
+        raise HTTPException(status_code=422, detail="Could not extract text from the provided PDF.")
+
+    baseline = _fallback_ats_match(resume_text, body.job_description)
+    result = _apply_brutal_ats_scoring(baseline)
+    result["schema_version"] = "ats_check_v2"
+    return {"success": True, "result": result}
+

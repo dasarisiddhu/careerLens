@@ -1,0 +1,51 @@
+Kasanagottu Karthik    
+kasanagottu.cse@gmail.com, 8919496927,  Hyderabad, India     
+PROFILE       
+   
+AI-focused Computer Science student with hands-on experience in building  
+automation systems using LLMs and APIs. Interested in developing AI-powered 
+applications and scalable backend systems.   
+ 
+EDUCATION        
+   
+Geethanjali College of Engineering and Technology,                         2023-2027     
+Bachelor of Technology in Computer Science and Engineering 
+ CGPA : 6.5     
+Alphores Junior College, Karimnagar                                                               2021-2023                            
+Percentage : 87%     
+SPR School Of Excellence, Yellapur                                                                                                        
+Percentage :98%     
+SKILLS      
+   
+Programming Skills  : Python , C and Java   
+AI / ML & Data Skills: Natural Language Processing (NLP),Generative AI (LLMs, prompt  
+based automation),API Integration (Gmail API)&Model interaction & inference (Google 
+Gemini)  
+Tools & Technologies: OAuth 2.0 Authentication ,Automation ,Workflow Design &Debugging  
+Other skills : Leadership skills & Problem solving, Analytical Thinking & Team Collaboration  
+PROJECTS       
+   
+ AI-powered Gmail automation project using Python and Google Gemini: 
+Designed   
+to   
+read,  analyze,   and   
+reply  to   
+emails  automatically.  
+Improved efficiency by integrating Gmail API with smart response generation. 
+Implemented  OAuth  2.0  for  secure authentication  and  message  handling.   
+Demonstrated skills in AI integration, natural language processing, and automation using real-world email 
+data.   
+Created a Parking Management System using C language. Automated parking slot allocation and vehicle 
+record management.   
+Improved parking operations with efficient and reliable logic-based programming   
+   
+ACHIEVEMENTS        
+   
+• 
+Recognized for problem-solving, teamwork, and adaptability in academic and project 
+work.   
+• 
+Presented project work in department-level technical symposium 
+• 
+Contributed to efficient code design and debugging practices in overall program 
+performance.

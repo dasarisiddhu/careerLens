@@ -1,0 +1,35 @@
+Rohan Verma
+Hyderabad, India | rohan.verma@example.com | +91 98765 00000 | linkedin.com/in/rohan-verma-demo |
+github.com/rohanverma-demo
+SUMMARY
+Computer Science graduate with hands-on machine learning experience from an internship and three end-to-end
+projects, building and deploying models with Python, PyTorch, scikit-learn and FastAPI.
+SKILLS
+Languages: Python, SQL, C++
+ML & Data: PyTorch, scikit-learn, XGBoost, Pandas, NumPy, Hugging Face Transformers, Feature Engineering
+MLOps & Tools: Docker, Git, MLflow, FastAPI, AWS (S3, EC2), Linux, CI/CD
+EXPERIENCE
+Machine Learning Intern | Nimbus Analytics Pvt Ltd, Hyderabad | Jan 2025 - Jun 2025
+• Built a customer churn model with XGBoost on 500K+ customer records, reaching an F1-score of 0.87 on a held-out
+test set.
+• Reduced model inference latency by 38% by exporting the model to ONNX and batching requests in a FastAPI
+service.
+• Containerized the prediction service with Docker and served 40K+ daily predictions to the analytics dashboard.
+• Tracked 60+ experiments with MLflow and documented feature pipelines so the team could reproduce results.
+PROJECTS
+Resume Skill Extractor (NLP) | Python, Hugging Face Transformers, FastAPI
+• Fine-tuned a BERT-based named entity model on 8,000 annotated resumes, improving skill extraction F1 from 0.71
+to 0.84.
+• Deployed the model as a REST API with FastAPI and Docker, returning predictions in under 200 ms.
+Plant Disease Detector (Computer Vision) | PyTorch, OpenCV, AWS
+• Trained a ResNet-50 classifier on 54,000 leaf images across 38 classes, achieving 96% validation accuracy.
+• Hosted the model on an AWS EC2 instance with a Flask front end used by 120+ students during a college demo.
+Credit Risk Scoring | Python, scikit-learn, SQL
+• Engineered 25 features from loan data and compared logistic regression, random forest and gradient boosting,
+selecting the best model by ROC-AUC of 0.91.
+EDUCATION
+B.Tech, Computer Science and Engineering | Example Institute of Technology, Hyderabad | 2021 - 2025 | CGPA
+8.4/10
+CERTIFICATIONS
+• Deep Learning Specialization (online course certificate)
+• AWS Certified Cloud Practitioner

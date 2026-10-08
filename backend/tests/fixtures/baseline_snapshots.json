@@ -1,0 +1,842 @@
+{
+  "resume_all_caps_name.txt": {
+    "parsed_doc": {
+      "name": "ALEXANDER MORGAN",
+      "email": "alexander.morgan@example.com",
+      "phone": "",
+      "location": "",
+      "linkedin": "",
+      "github": "",
+      "summary": "",
+      "skills": [],
+      "education": [
+        "B.S. in Computer Science, 2023"
+      ],
+      "certifications": [],
+      "other_sections": [],
+      "experience": [
+        {
+          "title": "Software Engineer",
+          "organization": "Software Engineer",
+          "dates": "Jan 2023 - Present",
+          "location": "",
+          "header_raw": "Software Engineer Jan 2023 - Present",
+          "bullets": [
+            "Built backend APIs using Python and Docker."
+          ]
+        }
+      ],
+      "projects": []
+    },
+    "validated": {
+      "optimized_summary": "B.S. in Computer Science with core technical skills in Python, Docker.",
+      "optimized_skills": [
+        "Docker",
+        "Python"
+      ],
+      "experience_count": 1,
+      "projects_count": 0
+    },
+    "pdf_generated": true,
+    "pdf_size": 1615457
+  },
+  "resume_back_to_back_jobs.txt": {
+    "parsed_doc": {
+      "name": "Laura Bennett",
+      "email": "laura.bennett@example.com",
+      "phone": "",
+      "location": "",
+      "linkedin": "",
+      "github": "",
+      "summary": "",
+      "skills": [],
+      "education": [
+        "B.S. in Data Science, 2022"
+      ],
+      "certifications": [],
+      "other_sections": [],
+      "experience": [
+        {
+          "title": "Data Engineer",
+          "organization": "Data Engineer",
+          "dates": "Jan 2023 - Present",
+          "location": "",
+          "header_raw": "Data Engineer Jan 2023 - Present",
+          "bullets": [
+            "Designed streaming ETL pipelines using Apache Spark.",
+            "Maintained cloud data warehouse infrastructure."
+          ]
+        }
+      ],
+      "projects": []
+    },
+    "validated": {
+      "optimized_summary": "B.S. in Data Science with core technical skills in software engineering.",
+      "optimized_skills": [
+        "Apache Spark"
+      ],
+      "experience_count": 1,
+      "projects_count": 0
+    },
+    "pdf_generated": true,
+    "pdf_size": 1615911
+  },
+  "resume_comma_org.txt": {
+    "parsed_doc": {
+      "name": "Alice Brown",
+      "email": "alice.brown@example.com",
+      "phone": "",
+      "location": "",
+      "linkedin": "",
+      "github": "",
+      "summary": "",
+      "skills": [],
+      "education": [
+        "B.Tech in Computer Science, Global Tech, 2021"
+      ],
+      "certifications": [],
+      "other_sections": [],
+      "experience": [
+        {
+          "title": "Software Engineer",
+          "organization": "Software Engineer",
+          "dates": "",
+          "location": "",
+          "header_raw": "Software Engineer",
+          "bullets": [
+            "Developed scalable API gateways. Acme, Inc. Product Developer Maintained user authentication services."
+          ]
+        }
+      ],
+      "projects": []
+    },
+    "validated": {
+      "optimized_summary": "B.Tech in Computer Science with core technical skills in software engineering.",
+      "optimized_skills": null,
+      "experience_count": 1,
+      "projects_count": 0
+    },
+    "pdf_generated": true,
+    "pdf_size": 1615511
+  },
+  "resume_dates.txt": {
+    "parsed_doc": {
+      "name": "Emily Davis",
+      "email": "emily.davis@example.com",
+      "phone": "",
+      "location": "",
+      "linkedin": "",
+      "github": "",
+      "summary": "",
+      "skills": [],
+      "education": [
+        "B.S. in Computer Science, 2024"
+      ],
+      "certifications": [],
+      "other_sections": [],
+      "experience": [
+        {
+          "title": "Software Intern",
+          "organization": "Software Intern",
+          "dates": "",
+          "location": "",
+          "header_raw": "Software Intern",
+          "bullets": [
+            "Built testing suites with pytest."
+          ]
+        }
+      ],
+      "projects": []
+    },
+    "validated": {
+      "optimized_summary": "B.S. in Computer Science graduate with internship experience in software engineering.",
+      "optimized_skills": null,
+      "experience_count": 1,
+      "projects_count": 0
+    },
+    "pdf_generated": true,
+    "pdf_size": 1615392
+  },
+  "resume_false_keywords.txt": {
+    "parsed_doc": {
+      "name": "Robert Taylor",
+      "email": "robert.taylor@example.com",
+      "phone": "",
+      "location": "",
+      "linkedin": "",
+      "github": "",
+      "summary": "",
+      "skills": [],
+      "education": [
+        "B.S. in Information Systems, 2022"
+      ],
+      "certifications": [],
+      "other_sections": [],
+      "experience": [
+        {
+          "title": "Lead Management",
+          "organization": "Java",
+          "dates": "",
+          "location": "",
+          "header_raw": "Lead Management | Java",
+          "bullets": [
+            "Coordinated cross-team feature deliveries. Supervised Internal Tools maintenance and release cycles.",
+            "Championed Leadership development within engineering teams.",
+            "Implemented Headless CMS architecture for high-traffic sites."
+          ]
+        }
+      ],
+      "projects": []
+    },
+    "validated": {
+      "optimized_summary": "B.S. in Information Systems graduate with internship experience in Java.",
+      "optimized_skills": null,
+      "experience_count": 1,
+      "projects_count": 0
+    },
+    "pdf_generated": true,
+    "pdf_size": 1616473
+  },
+  "resume_heading_lookalikes.txt": {
+    "parsed_doc": {
+      "name": "David Clark",
+      "email": "david.clark@example.com",
+      "phone": "",
+      "location": "",
+      "linkedin": "",
+      "github": "",
+      "summary": "- Created resume template generator using React and Node.js.",
+      "skills": [
+        " Implemented scoring algorithms using Python and pandas."
+      ],
+      "education": [
+        "- Developed full-stack portal using Django and PostgreSQL.",
+        "- Experience in building responsive UI interfaces for 500+ daily users.",
+        "B.S. in Computer Science, 2023"
+      ],
+      "certifications": [],
+      "other_sections": [],
+      "experience": [],
+      "projects": []
+    },
+    "validated": {
+      "optimized_summary": "- Created resume template generator using React and Node.js.",
+      "optimized_skills": {
+        "Skills": [
+          "Implemented scoring algorithms using Python and pandas.",
+          "Created resume template generator using React and Node.js.",
+          "Profile Builder"
+        ],
+        "": [
+          " Implemented scoring algorithms using Python and pandas."
+        ]
+      },
+      "experience_count": 0,
+      "projects_count": 0
+    },
+    "pdf_generated": true,
+    "pdf_size": 1616208
+  },
+  "resume_headings.txt": {
+    "parsed_doc": {
+      "name": "Sarah Jenkins",
+      "email": "sarah.jenkins@example.com",
+      "phone": "",
+      "location": "",
+      "linkedin": "",
+      "github": "",
+      "summary": "",
+      "skills": [],
+      "education": [
+        "B.S. in Computer Science, University, 2024"
+      ],
+      "certifications": [],
+      "other_sections": [],
+      "experience": [],
+      "projects": [
+        {
+          "title": "",
+          "organization": "Python",
+          "dates": "",
+          "location": "",
+          "header_raw": "Python",
+          "bullets": [
+            "Built an image classifier. Notable Projects FastAPI Created REST API for analytics. Side Projects React Developed personal finance tracker. Open Source Contributed bug fixes to open source libraries. Internships Acme Labs"
+          ]
+        },
+        {
+          "title": "Research Intern",
+          "organization": "Research Intern",
+          "dates": "Jun 2023 - Aug 2023",
+          "location": "",
+          "header_raw": "Research Intern Jun 2023 - Aug 2023",
+          "bullets": [
+            "Conducted algorithm benchmarking. Key Skills Python, Docker, Kubernetes Soft Skills Communication, Teamwork, Leadership Core Competencies System Design, Microservices, Cloud Architecture Keywords Distributed Systems, High Availability, Scalability ATS Keywords CI/CD, Agile, DevOps, Microservices Achievements & Awards"
+          ]
+        }
+      ]
+    },
+    "validated": {
+      "optimized_summary": "B.S. in Computer Science graduate with internship experience in Python, React, Docker.",
+      "optimized_skills": [
+        "FastAPI",
+        "CI/CD",
+        "Docker",
+        "Python",
+        "Kubernetes"
+      ],
+      "experience_count": 0,
+      "projects_count": 2
+    },
+    "pdf_generated": true,
+    "pdf_size": 1617333
+  },
+  "resume_hedged_numbers.txt": {
+    "parsed_doc": {
+      "name": "Marcus Lee",
+      "email": "marcus.lee@example.com",
+      "phone": "",
+      "location": "",
+      "linkedin": "",
+      "github": "",
+      "summary": "",
+      "skills": [],
+      "education": [
+        "B.S. in Computer Engineering, 2022"
+      ],
+      "certifications": [],
+      "other_sections": [],
+      "experience": [
+        {
+          "title": "Backend Developer",
+          "organization": "Backend Developer",
+          "dates": "Jan 2023 - Present",
+          "location": "",
+          "header_raw": "Backend Developer Jan 2023 - Present",
+          "bullets": [
+            "Scaled internal tool to support 500 users across 3 departments.",
+            "Optimized database queries, reducing approximately 40 slow queries per week."
+          ]
+        }
+      ],
+      "projects": []
+    },
+    "validated": {
+      "optimized_summary": "B.S. in Computer Engineering graduate with internship experience in software engineering.",
+      "optimized_skills": null,
+      "experience_count": 1,
+      "projects_count": 0
+    },
+    "pdf_generated": true,
+    "pdf_size": 1615975
+  },
+  "resume_keyword_dump.txt": {
+    "parsed_doc": {
+      "name": "Kevin Patel",
+      "email": "kevin.patel@example.com",
+      "phone": "",
+      "location": "",
+      "linkedin": "",
+      "github": "",
+      "summary": "",
+      "skills": [],
+      "education": [
+        "B.S. in Software Engineering, 2023"
+      ],
+      "certifications": [],
+      "other_sections": [],
+      "experience": [
+        {
+          "title": "Software Engineer",
+          "organization": "Software Engineer",
+          "dates": "Jan 2023 - Present",
+          "location": "",
+          "header_raw": "Software Engineer Jan 2023 - Present",
+          "bullets": [
+            "Developed REST microservices using Python and Docker.",
+            "Spearheaded database optimization across systems. Python, Docker, Kubernetes, AWS, Redis, PostgreSQL, Microservices, CI/CD, Kafka, Linux"
+          ]
+        }
+      ],
+      "projects": [
+        {
+          "title": "",
+          "organization": "",
+          "dates": "",
+          "location": "",
+          "header_raw": "",
+          "bullets": [
+            "Cloud Portal Engineered monitoring dashboards with metrics reporting.",
+            "Python, React, TypeScript, GraphQL, Docker, Terraform, Prometheus, Grafana"
+          ]
+        }
+      ]
+    },
+    "validated": {
+      "optimized_summary": "B.S. in Software Engineering with core technical skills in Python, TypeScript, React, Docker.",
+      "optimized_skills": [
+        "Docker",
+        "Python",
+        "CI/CD",
+        "AWS",
+        "Linux",
+        "Kubernetes",
+        "Apache Kafka"
+      ],
+      "experience_count": 1,
+      "projects_count": 1
+    },
+    "pdf_generated": true,
+    "pdf_size": 1617617
+  },
+  "resume_markerless.txt": {
+    "parsed_doc": {
+      "name": "Michael Wilson",
+      "email": "michael.wilson@example.com",
+      "phone": "",
+      "location": "",
+      "linkedin": "",
+      "github": "",
+      "summary": "",
+      "skills": [],
+      "education": [
+        "B.S. in Computer Science, 2022"
+      ],
+      "certifications": [],
+      "other_sections": [],
+      "experience": [
+        {
+          "title": "",
+          "organization": "",
+          "dates": "",
+          "location": "",
+          "header_raw": "",
+          "bullets": [
+            "Acme Solutions Backend Developer Jan 2022 - Present Engineered distributed message queue consumers using Python.",
+            "Reduced latency across microservices by 35 percent.",
+            "Authored comprehensive unit tests covering critical payment flows."
+          ]
+        }
+      ],
+      "projects": []
+    },
+    "validated": {
+      "optimized_summary": "B.S. in Computer Science with core technical skills in Python.",
+      "optimized_skills": [
+        "Python"
+      ],
+      "experience_count": 1,
+      "projects_count": 0
+    },
+    "pdf_generated": true,
+    "pdf_size": 1616247
+  },
+  "resume_second_year_student.txt": {
+    "parsed_doc": {
+      "name": "Pooja Reddy",
+      "email": "pooja.reddy@example.com",
+      "phone": "",
+      "location": "",
+      "linkedin": "",
+      "github": "",
+      "summary": "",
+      "skills": [
+        "Python",
+        "HTML",
+        "CSS",
+        "JavaScript"
+      ],
+      "education": [
+        "ABC University, Second Year Student",
+        "Expected Graduation: May 2026"
+      ],
+      "certifications": [],
+      "other_sections": [],
+      "experience": [],
+      "projects": [
+        {
+          "title": "International Student Portal",
+          "organization": "International Student Portal",
+          "dates": "",
+          "location": "",
+          "header_raw": "International Student Portal",
+          "bullets": [
+            "Built Internet facing web application for student exchange programs.",
+            "Streamlined Internal workflow approvals using Python."
+          ]
+        }
+      ]
+    },
+    "validated": {
+      "optimized_summary": "Computer Science graduate with internship experience in Python, HTML, CSS, JavaScript.",
+      "optimized_skills": {
+        "Skills": [
+          "Python",
+          "HTML",
+          "CSS",
+          "JavaScript"
+        ]
+      },
+      "experience_count": 0,
+      "projects_count": 1
+    },
+    "pdf_generated": true,
+    "pdf_size": 1617003
+  },
+  "resume_short_company_names.txt": {
+    "parsed_doc": {
+      "name": "Dev Sharma",
+      "email": "dev.sharma@example.com",
+      "phone": "",
+      "location": "",
+      "linkedin": "",
+      "github": "",
+      "summary": "",
+      "skills": [],
+      "education": [
+        "B.Tech in Computer Science, 2020"
+      ],
+      "certifications": [],
+      "other_sections": [],
+      "experience": [
+        {
+          "title": "Software Engineer",
+          "organization": "Software Engineer",
+          "dates": "Jan 2023 - Present",
+          "location": "",
+          "header_raw": "Software Engineer Jan 2023 - Present",
+          "bullets": [
+            "Built distributed storage services. Infosys"
+          ]
+        }
+      ],
+      "projects": [
+        {
+          "title": "",
+          "organization": "Chat",
+          "dates": "",
+          "location": "",
+          "header_raw": "Chat",
+          "bullets": [
+            "Built a realtime websocket chat application. Search Implemented inverted index in Python."
+          ]
+        }
+      ]
+    },
+    "validated": {
+      "optimized_summary": "B.Tech in Computer Science with core technical skills in Python.",
+      "optimized_skills": [
+        "Python"
+      ],
+      "experience_count": 1,
+      "projects_count": 1
+    },
+    "pdf_generated": true,
+    "pdf_size": 1616538
+  },
+  "resume_skills.txt": {
+    "parsed_doc": {
+      "name": "Alex Morgan",
+      "email": "alex.morgan@example.com",
+      "phone": "",
+      "location": "",
+      "linkedin": "",
+      "github": "",
+      "summary": "",
+      "skills": [
+        "Python",
+        "Java",
+        "JavaScript",
+        "TypeScript",
+        "Go",
+        "Rust",
+        "C++",
+        "Ruby",
+        "PHP",
+        "Swift",
+        "Kotlin",
+        "SQL",
+        "HTML",
+        "CSS",
+        "Bash",
+        "Scala",
+        "Scikit-learn",
+        "Hugging-face",
+        "React",
+        "Angular",
+        "Vue",
+        "Node.js",
+        "Express",
+        "Django",
+        "Flask",
+        "FastAPI",
+        "Spring Boot",
+        "PyTorch",
+        "TensorFlow",
+        "Keras",
+        "Pandas",
+        "NumPy",
+        "Next.js",
+        "Redux",
+        "PostgreSQL",
+        "MySQL",
+        "SQLite",
+        "MongoDB",
+        "Redis",
+        "Cassandra",
+        "DynamoDB",
+        "Elasticsearch",
+        "Neo4j",
+        "Oracle",
+        "MariaDB",
+        "Git",
+        "Docker",
+        "Kubernetes",
+        "Jenkins",
+        "CI/CD",
+        "Terraform",
+        "Ansible",
+        "Linux",
+        "AWS",
+        "Azure",
+        "GCP",
+        "Nginx",
+        "Apache",
+        "Kafka",
+        "RabbitMQ",
+        "Problem-solving",
+        "System Design",
+        "REST APIs",
+        "GraphQL",
+        "Microservices",
+        "Data Structures",
+        "Algorithms",
+        "Unit Testing",
+        "Agile",
+        "OOP",
+        "Debugging",
+        "WebSockets",
+        "OAuth"
+      ],
+      "education": [
+        "B.S. in Computer Science, 2023"
+      ],
+      "certifications": [],
+      "other_sections": [],
+      "experience": [],
+      "projects": []
+    },
+    "validated": {
+      "optimized_summary": "B.S. in Computer Science with core technical skills in C, R, Python, Java.",
+      "optimized_skills": {
+        "Languages": [
+          "Python",
+          "Java",
+          "JavaScript",
+          "TypeScript",
+          "Go",
+          "Rust",
+          "C++",
+          "Ruby",
+          "PHP",
+          "Swift",
+          "Kotlin",
+          "SQL",
+          "HTML",
+          "CSS",
+          "Bash",
+          "Scala"
+        ],
+        "Frameworks": [
+          "Scikit-learn",
+          "Hugging-face",
+          "React",
+          "Angular",
+          "Vue",
+          "Node.js",
+          "Express",
+          "Django",
+          "Flask",
+          "FastAPI",
+          "Spring Boot",
+          "PyTorch",
+          "TensorFlow",
+          "Keras",
+          "Pandas",
+          "NumPy",
+          "Next.js",
+          "Redux"
+        ],
+        "Databases": [
+          "PostgreSQL",
+          "MySQL",
+          "SQLite",
+          "MongoDB",
+          "Redis",
+          "Cassandra",
+          "DynamoDB",
+          "Elasticsearch",
+          "Neo4j",
+          "Oracle",
+          "MariaDB"
+        ],
+        "Tools": [
+          "Git",
+          "Docker",
+          "Kubernetes",
+          "Jenkins",
+          "CI/CD",
+          "Terraform",
+          "Ansible",
+          "Linux",
+          "AWS",
+          "Azure",
+          "GCP",
+          "Nginx",
+          "Apache",
+          "Kafka",
+          "RabbitMQ"
+        ],
+        "Competencies": [
+          "Problem-solving",
+          "System Design",
+          "REST APIs",
+          "GraphQL",
+          "Microservices",
+          "Data Structures",
+          "Algorithms",
+          "Unit Testing",
+          "Agile",
+          "OOP",
+          "Debugging",
+          "WebSockets",
+          "OAuth"
+        ]
+      },
+      "experience_count": 0,
+      "projects_count": 0
+    },
+    "pdf_generated": true,
+    "pdf_size": 1618022
+  },
+  "resume_three_line_header.txt": {
+    "parsed_doc": {
+      "name": "John Smith",
+      "email": "john.smith@example.com",
+      "phone": "",
+      "location": "New York, NY",
+      "linkedin": "",
+      "github": "",
+      "summary": "",
+      "skills": [],
+      "education": [
+        "B.S. in Software Engineering, Tech Institute, 2023"
+      ],
+      "certifications": [],
+      "other_sections": [],
+      "experience": [
+        {
+          "title": "Software Engineer",
+          "organization": "Software Engineer",
+          "dates": "",
+          "location": "",
+          "header_raw": "Software Engineer",
+          "bullets": [
+            "Maintained backend microservices in Go.",
+            "Automated deployment pipelines using Docker."
+          ]
+        }
+      ],
+      "projects": []
+    },
+    "validated": {
+      "optimized_summary": "B.S. in Software Engineering with core technical skills in Go, Docker.",
+      "optimized_skills": [
+        "Docker"
+      ],
+      "experience_count": 1,
+      "projects_count": 0
+    },
+    "pdf_generated": true,
+    "pdf_size": 1615923
+  },
+  "resume_two_line_header.txt": {
+    "parsed_doc": {
+      "name": "Jane Doe",
+      "email": "jane.doe@example.com",
+      "phone": "",
+      "location": "San Francisco, CA",
+      "linkedin": "",
+      "github": "",
+      "summary": "",
+      "skills": [],
+      "education": [
+        "B.S. in Computer Science, State University, 2024"
+      ],
+      "certifications": [],
+      "other_sections": [],
+      "experience": [
+        {
+          "title": "Software Intern",
+          "organization": "Software Intern",
+          "dates": "",
+          "location": "",
+          "header_raw": "Software Intern",
+          "bullets": [
+            "Built internal dashboards using React and TypeScript.",
+            "Improved query response times by 20%."
+          ]
+        }
+      ],
+      "projects": []
+    },
+    "validated": {
+      "optimized_summary": "B.S. in Computer Science graduate with internship experience in TypeScript, React.",
+      "optimized_skills": null,
+      "experience_count": 1,
+      "projects_count": 0
+    },
+    "pdf_generated": true,
+    "pdf_size": 1615931
+  },
+  "resume_unicode.txt": {
+    "parsed_doc": {
+      "name": "José González",
+      "email": "jose.gonzalez@example.com",
+      "phone": "",
+      "location": "Bengaluru, Karnataka",
+      "linkedin": "",
+      "github": "",
+      "summary": "",
+      "skills": [],
+      "education": [
+        "B.S. in Computer Science, 2022"
+      ],
+      "certifications": [],
+      "other_sections": [],
+      "experience": [
+        {
+          "title": "Software Engineer",
+          "organization": "Software Engineer",
+          "dates": "Jan 2023 - Present",
+          "location": "",
+          "header_raw": "Software Engineer Jan 2023 - Present",
+          "bullets": [
+            "Implemented C++ data processing pipeline using vector<int> and List<String>.",
+            "Maintained legacy C modules including <stdio.h> headers.",
+            "Processed transactions exceeding ₹1,00,000 per day."
+          ]
+        }
+      ],
+      "projects": []
+    },
+    "validated": {
+      "optimized_summary": "B.S. in Computer Science with core technical skills in C.",
+      "optimized_skills": null,
+      "experience_count": 1,
+      "projects_count": 0
+    },
+    "pdf_generated": true,
+    "pdf_size": 1616462
+  }
+}

@@ -1,0 +1,14 @@
+Robert Taylor
+robert.taylor@example.com | 555-0103
+
+Experience
+Alpha Corp
+Lead Management | Java
+Jan 2023 - Present
+- Coordinated cross-team feature deliveries.
+- Supervised Internal Tools maintenance and release cycles.
+- Championed Leadership development within engineering teams.
+- Implemented Headless CMS architecture for high-traffic sites.
+
+Education
+B.S. in Information Systems, 2022

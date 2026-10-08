@@ -1,0 +1,12 @@
+John Smith
+john.smith@example.com | 555-0101 | New York, NY
+
+Experience
+Acme Corp
+Software Engineer
+Jan 2023 - Present
+- Maintained backend microservices in Go.
+- Automated deployment pipelines using Docker.
+
+Education
+B.S. in Software Engineering, Tech Institute, 2023

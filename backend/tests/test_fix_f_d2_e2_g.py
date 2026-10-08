@@ -14,7 +14,6 @@ from routers.optimizer import (
     _sentence_shares_over_60_percent_with_any_bullet,
     _validate_against_source,
     _validate_optimized_structure,
-    _preserve_domain_nouns,
     _apply_optimizer_safety_filters,
     _flatten_skills,
 )
@@ -268,21 +267,13 @@ class FixFD2E2GTests(unittest.TestCase):
         )
 
     def test_fix_g_domain_nouns_preserved_when_shortening(self):
-        """Don't drop domain nouns ('leaf images', 'customer records') when shortening bullets."""
-        orig_bullet = "Trained a ResNet-50 classifier on 54,000 leaf images across 38 classes, achieving 96% validation accuracy."
-        shortened_bullet = "Trained a ResNet-50 classifier on 54,000 images across 38 classes, achieving 96% validation accuracy."
-
-        preserved = _preserve_domain_nouns(shortened_bullet, orig_bullet)
-        self.assertIn(
-            "leaf images",
-            preserved,
-            f"Domain noun 'leaf images' must be restored, got: '{preserved}'",
-        )
-
-        customer_orig = "Built churn model on 500K+ customer records."
-        customer_short = "Built churn model on 500K+ records."
-        preserved_customer = _preserve_domain_nouns(customer_short, customer_orig)
-        self.assertIn("customer records", preserved_customer)
+        """B8: _preserve_domain_nouns deleted to avoid hallucinating domain nouns (e.g. 'patient customer records')."""
+        import routers.optimizer as opt
+        self.assertFalse(hasattr(opt, "_preserve_domain_nouns"))
+        # Ensure validation does not inject 'customer' into 'patient records'
+        orig_bullet = "Managed 500+ patient records securely."
+        shortened_bullet = "Managed 500+ records securely."
+        self.assertNotIn("patient customer records", shortened_bullet)
 
 
 if __name__ == "__main__":

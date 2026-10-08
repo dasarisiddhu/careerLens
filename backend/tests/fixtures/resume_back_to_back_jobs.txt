@@ -1,0 +1,14 @@
+Laura Bennett
+laura.bennett@example.com | 555-0114
+
+Experience
+First Horizon Corp
+Junior Analyst  Jun 2022 - Dec 2022
+
+NextGen Systems
+Data Engineer  Jan 2023 - Present
+- Designed streaming ETL pipelines using Apache Spark.
+- Maintained cloud data warehouse infrastructure.
+
+Education
+B.S. in Data Science, 2022

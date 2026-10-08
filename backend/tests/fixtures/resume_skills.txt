@@ -1,0 +1,17 @@
+Alex Morgan
+alex.morgan@example.com | 555-0108
+
+Skills
+Languages: C, R, Python, Java, JavaScript, TypeScript, Go, Rust, C++, Ruby, PHP, Swift, Kotlin, SQL, HTML, CSS, Bash, Scala
+Frameworks: Scikit-learn, Hugging-face, React, Angular, Vue, Node.js, Express, Django, Flask, FastAPI, Spring Boot, PyTorch, TensorFlow, Keras, Pandas, NumPy, Next.js, Redux
+Databases: PostgreSQL, MySQL, SQLite, MongoDB, Redis, Cassandra, DynamoDB, Elasticsearch, Neo4j, Oracle, MariaDB
+Tools: Git, Docker, Kubernetes, Jenkins, CI/CD, Terraform, Ansible, Linux, AWS, Azure, GCP, Nginx, Apache, Kafka, RabbitMQ
+Competencies: Problem-solving, System Design, REST APIs, GraphQL, Microservices, Data Structures, Algorithms, Unit Testing, Agile, OOP, Debugging, WebSockets, OAuth
+
+Experience
+Tech Corp
+Software Engineer  Jan 2023 - Present
+- Built backend services.
+
+Education
+B.S. in Computer Science, 2023

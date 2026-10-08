@@ -1,0 +1,47 @@
+Sarah Jenkins
+sarah.jenkins@example.com | 555-0106
+
+Selected Projects
+Project Alpha | Python
+- Built an image classifier.
+
+Notable Projects
+Project Beta | FastAPI
+- Created REST API for analytics.
+
+Side Projects
+Project Gamma | React
+- Developed personal finance tracker.
+
+Open Source
+Project Delta
+- Contributed bug fixes to open source libraries.
+
+Internships
+Acme Labs
+Research Intern  Jun 2023 - Aug 2023
+- Conducted algorithm benchmarking.
+
+Key Skills
+Python, Docker, Kubernetes
+
+Soft Skills
+Communication, Teamwork, Leadership
+
+Core Competencies
+System Design, Microservices, Cloud Architecture
+
+Keywords
+Distributed Systems, High Availability, Scalability
+
+ATS Keywords
+CI/CD, Agile, DevOps, Microservices
+
+Achievements & Awards
+First place in National Hackathon 2023
+
+Honors & Awards
+Dean's Honor List 2022
+
+Education
+B.S. in Computer Science, University, 2024

@@ -1157,14 +1157,22 @@ function buildOnePageResumeContent(result = {}, sourceText = '', currentJobTitle
       .filter(Boolean)
     : []
 
-  const fallbackBullets = extractResumeHighlights(sourceText, 8)
+  // The backend owns structure: when it returned reconstructed_resume, never re-derive
+  // content from the raw text with client-side heuristics (they invent bullets from the
+  // header/contact lines and truncate sections).
+  const backendStructure = result?.reconstructed_resume || null
+  const fallbackBullets = backendStructure ? [] : extractResumeHighlights(sourceText, 8)
   const improvedBullets = improvedBulletsRaw.length
     ? improvedBulletsRaw
     : fallbackBullets.slice(0, 6)
   const newBullets = newBulletsRaw
   const bullets = [...improvedBullets, ...newBullets].filter(Boolean)
-  const educationLines = extractEducationLines(sourceText, 4)
-  const certificationLines = extractCertificationLines(sourceText, 12)
+  const educationLines = Array.isArray(backendStructure?.education) && backendStructure.education.length
+    ? backendStructure.education
+    : extractEducationLines(sourceText, 12)
+  const certificationLines = Array.isArray(backendStructure?.certifications) && backendStructure.certifications.length
+    ? backendStructure.certifications
+    : extractCertificationLines(sourceText, 12)
 
   // FIX C: Remove the header title line unless the person has actually held that title
   const candidateHeldTitle = hasHeldTitle(currentJobTitle || result?.job_title, sourceText, result)
@@ -2365,8 +2373,12 @@ export default function ResumeOptimizer({ prefillResume = '', prefillJD = '', pr
           `${jobTitle || 'resume'}-after`,
         )
 
-        const beforeRes = await api.checkATS({ resume_pdf: beforePdf, job_description: jobDesc })
-        const afterRes = await api.checkATS({ resume_pdf: afterPdf, job_description: jobDesc })
+        // Only the numeric score is needed here, so use the LLM-free endpoint: the two calls are
+        // cheap and safe to run in parallel, and they no longer spend Groq quota or the ats-check limit.
+        const [beforeRes, afterRes] = await Promise.all([
+          api.scoreATS({ resume_pdf: beforePdf, job_description: jobDesc }),
+          api.scoreATS({ resume_pdf: afterPdf, job_description: jobDesc }),
+        ])
 
         const beforeScore = Number(beforeRes?.result?.ats_score)
         const afterScore = Number(afterRes?.result?.ats_score)

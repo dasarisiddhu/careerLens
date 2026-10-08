@@ -1,0 +1,16 @@
+David Clark
+david.clark@example.com | 555-0107
+
+Projects
+Education Management System
+- Developed full-stack portal using Django and PostgreSQL.
+- Experience in building responsive UI interfaces for 500+ daily users.
+
+Skills Gap Analyzer
+- Implemented scoring algorithms using Python and pandas.
+
+Profile Builder
+- Created resume template generator using React and Node.js.
+
+Education
+B.S. in Computer Science, 2023

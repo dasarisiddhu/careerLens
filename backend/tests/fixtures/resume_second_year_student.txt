@@ -1,0 +1,14 @@
+Pooja Reddy
+pooja.reddy@example.com | 555-0112
+
+Projects
+International Student Portal
+- Built Internet facing web application for student exchange programs.
+- Streamlined Internal workflow approvals using Python.
+
+Education
+ABC University, Second Year Student
+Expected Graduation: May 2026
+
+Skills
+Python, HTML, CSS, JavaScript

@@ -1,0 +1,21 @@
+Dev Sharma
+dev.sharma@example.com | 555-0115
+
+Experience
+Google
+Software Engineer  Jan 2023 - Present
+- Built distributed storage services.
+
+Infosys
+Systems Associate  Jan 2021 - Dec 2022
+- Supported banking client applications.
+
+Projects
+Chat
+- Built a realtime websocket chat application.
+
+Search
+- Implemented inverted index in Python.
+
+Education
+B.Tech in Computer Science, 2020

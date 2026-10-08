@@ -6,7 +6,7 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from services.pdf_service import extract_text_from_pdf_base64
 
@@ -74,9 +74,15 @@ class GeneratedResumePdf:
     emitted_headings: set[str] = field(default_factory=set)
 
 
+HTML_ALLOWLIST_TAG_RE = re.compile(
+    r"</?(?:b|i|u|br|p|span|div|a|strong|em)(?:\s+[^>]*)?/?>",
+    re.IGNORECASE,
+)
+
+
 def _clean_pdf_text(value: Any) -> str:
     text = html.unescape(str(value or ""))
-    text = re.sub(r"<[^>]+>", " ", text)
+    text = HTML_ALLOWLIST_TAG_RE.sub(" ", text)
     text = text.replace("**", "")
     replacements = {
         "\u00a0": " ",
@@ -96,13 +102,12 @@ def _clean_pdf_text(value: Any) -> str:
     }
     for source, target in replacements.items():
         text = text.replace(source, target)
-    text = unicodedata.normalize("NFKD", text).encode("latin-1", "replace").decode("latin-1")
     text = re.sub(r"[^\S\r\n]+", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 
 
-def _clean_list(values: Any, limit: int = 50) -> list[str]:
+def _clean_list(values: Any, limit: Optional[int] = None) -> list[str]:
     if not isinstance(values, list):
         return []
     cleaned: list[str] = []
@@ -110,7 +115,9 @@ def _clean_list(values: Any, limit: int = 50) -> list[str]:
         text = _clean_pdf_text(value)
         if text:
             cleaned.append(text)
-        if len(cleaned) >= limit:
+        if limit is not None and len(cleaned) >= limit:
+            if len(values) > limit:
+                logger.warning(f"PDF list truncated: count={len(values)} limit={limit}")
             break
     return cleaned
 
@@ -212,6 +219,26 @@ def _wrap_text(text: str, max_width: float, font: str, size: float) -> list[str]
     return lines
 
 
+def _is_exact_held_title(target_title: str, candidate_title: str) -> bool:
+    norm_t = re.sub(r"[^a-z0-9]+", " ", target_title.lower()).strip()
+    norm_c = re.sub(r"[^a-z0-9]+", " ", candidate_title.lower()).strip()
+    if not norm_t or not norm_c:
+        return False
+    if norm_t == norm_c:
+        return True
+    pattern = rf"(?<![a-z0-9]){re.escape(norm_t)}(?![a-z0-9])"
+    if not re.search(pattern, norm_c):
+        return False
+    # Exact-title boundary match: "Software Engineer" is NOT held by "Software Engineer Intern"
+    t_words = set(norm_t.split())
+    c_words = set(norm_c.split())
+    sub_roles = {"intern", "internship", "trainee", "apprentice", "assistant", "student", "co-op", "coop"}
+    if not sub_roles.intersection(t_words):
+        if sub_roles.intersection(c_words):
+            return False
+    return True
+
+
 def _has_held_title(title: str, experience_entries: list, source_resume_text: str = "") -> bool:
     if not title:
         return False
@@ -221,42 +248,36 @@ def _has_held_title(title: str, experience_entries: list, source_resume_text: st
 
     for entry in (experience_entries or []):
         if isinstance(entry, dict):
-            entry_title = re.sub(r"[^a-z0-9]+", " ", str(entry.get("title") or "").lower()).strip()
-            entry_hdr = re.sub(r"[^a-z0-9]+", " ", str(entry.get("header_raw") or "").lower()).strip()
-            if norm_target in entry_title or norm_target in entry_hdr:
-                return True
-            target_words = set(norm_target.split())
-            if target_words and target_words.issubset(set(entry_title.split())):
+            entry_title = str(entry.get("title") or "")
+            if _is_exact_held_title(norm_target, entry_title):
                 return True
         elif hasattr(entry, "title"):
-            entry_title = re.sub(r"[^a-z0-9]+", " ", str(getattr(entry, "title", "") or "").lower()).strip()
-            entry_hdr = re.sub(r"[^a-z0-9]+", " ", str(getattr(entry, "header_raw", "") or "").lower()).strip()
-            if norm_target in entry_title or norm_target in entry_hdr:
-                return True
-            target_words = set(norm_target.split())
-            if target_words and target_words.issubset(set(entry_title.split())):
+            entry_title = str(getattr(entry, "title", "") or "")
+            if _is_exact_held_title(norm_target, entry_title):
                 return True
 
     if source_resume_text:
-        # Check source experience section directly
-        exp_m = re.search(
-            r"(?:experience|work\s+history|employment)\b[\s\S]*?(?=(?:education|projects?|skills|certifications?|$))",
-            source_resume_text,
-            re.IGNORECASE,
-        )
-        if exp_m and norm_target in re.sub(r"[^a-z0-9]+", " ", exp_m.group(0).lower()):
-            return True
+        # D4: Start at Experience HEADING at start of line, stop at next recognized heading
+        heading_pat = r"^[ \t]*(?:experience|work\s+experience|professional\s+experience|employment\s+history|work\s+history)\s*:?[ \t]*$"
+        exp_start = None
+        for m in re.finditer(heading_pat, source_resume_text, re.IGNORECASE | re.MULTILINE):
+            exp_start = m.end()
+            break
+        if exp_start is not None:
+            rest_text = source_resume_text[exp_start:]
+            next_heading_pat = r"^[ \t]*(?:education|projects?|key\s+projects?|skills|technical\s+skills|certifications?|awards?|achievements?|publications?)\s*:?[ \t]*$"
+            m_end = re.search(next_heading_pat, rest_text, re.IGNORECASE | re.MULTILINE)
+            exp_body = rest_text[:m_end.start()] if m_end else rest_text
+            for exp_line in exp_body.splitlines():
+                clean_l = exp_line.strip()
+                if clean_l and _is_exact_held_title(norm_target, clean_l):
+                    return True
 
         try:
             from services.resume_structure import parse_source_resume
             doc = parse_source_resume(source_resume_text)
             for entry in doc.experience:
-                entry_title = re.sub(r"[^a-z0-9]+", " ", str(entry.title or "").lower()).strip()
-                entry_hdr = re.sub(r"[^a-z0-9]+", " ", str(entry.header_raw or "").lower()).strip()
-                if norm_target in entry_title or norm_target in entry_hdr:
-                    return True
-                target_words = set(norm_target.split())
-                if target_words and target_words.issubset(set(entry_title.split())):
+                if entry.title and _is_exact_held_title(norm_target, entry.title):
                     return True
         except Exception:
             pass
@@ -442,7 +463,7 @@ def _content_dict(content: Any) -> dict:
 def _skill_groups(content: dict) -> list[dict[str, Any]]:
     raw_groups = content.get("skillGroups")
     groups: list[dict[str, Any]] = []
-    if isinstance(raw_groups, list):
+    if isinstance(raw_groups, list) and raw_groups:
         for group in raw_groups:
             if not isinstance(group, dict):
                 continue
@@ -452,7 +473,7 @@ def _skill_groups(content: dict) -> list[dict[str, Any]]:
                     "category": _clean_pdf_text(group.get("category")),
                     "skills": skills,
                 })
-    elif isinstance(content.get("skills"), dict):
+    elif isinstance(content.get("skills"), dict) and content.get("skills"):
         for cat, items in content["skills"].items():
             skills = _clean_list(items if isinstance(items, list) else [items])
             if skills:
@@ -460,7 +481,7 @@ def _skill_groups(content: dict) -> list[dict[str, Any]]:
                     "category": _clean_pdf_text(cat),
                     "skills": skills,
                 })
-    elif isinstance((content.get("reconstructed_resume") or {}).get("skills"), dict):
+    elif isinstance((content.get("reconstructed_resume") or {}).get("skills"), dict) and (content.get("reconstructed_resume") or {}).get("skills"):
         for cat, items in content["reconstructed_resume"]["skills"].items():
             skills = _clean_list(items if isinstance(items, list) else [items])
             if skills:
@@ -468,6 +489,20 @@ def _skill_groups(content: dict) -> list[dict[str, Any]]:
                     "category": _clean_pdf_text(cat),
                     "skills": skills,
                 })
+    elif isinstance(content.get("skills"), list) and content.get("skills"):
+        skills = _clean_list(content["skills"])
+        if skills:
+            groups.append({
+                "category": "Skills",
+                "skills": skills,
+            })
+    elif isinstance((content.get("reconstructed_resume") or {}).get("skills"), list) and (content.get("reconstructed_resume") or {}).get("skills"):
+        skills = _clean_list(content["reconstructed_resume"]["skills"])
+        if skills:
+            groups.append({
+                "category": "Skills",
+                "skills": skills,
+            })
     return groups
 
 
@@ -555,7 +590,17 @@ def _extract_source_contact_and_certs(source_text: str) -> dict[str, Any]:
         r"^(summary|professional\s+summary|experience|work\s+experience|education|projects|skills|certifications|achievements)\b",
         re.IGNORECASE,
     )
+    first_line = True
+    parsed_name = ""
     for l in lines:
+        if first_line:
+            first_line = False
+            words = l.split()
+            # D6: If the first line looks like a name (2-4 alphabetic words), it is not a section heading even when l == l.upper()
+            if 2 <= len(words) <= 4 and all(re.match(r"^[A-Za-z.'-]+$", w) for w in words):
+                parsed_name = l
+                header_lines.append(l)
+                continue
         if heading_re.match(l) or (len(l) <= 40 and l == l.upper() and any(c.isalpha() for c in l)):
             break
         header_lines.append(l)
@@ -585,19 +630,22 @@ def _extract_source_contact_and_certs(source_text: str) -> dict[str, Any]:
             if len(parts) > 1 and parts[1].strip():
                 for c in re.split(r"[,|;/•]", parts[1]):
                     c_clean = c.strip().strip("-*•")
-                    if c_clean and len(c_clean) > 2:
+                    if c_clean and len(c_clean) > 2 and c_clean not in certifications:
                         certifications.append(c_clean)
             continue
         elif in_certs:
-            if re.match(r"^(?:experience|education|projects|summary|skills|languages|awards|work)\b", lower):
+            from services.resume_structure import _is_section_header
+            # D5: Stop at ANY recognized heading (shared list)
+            if _is_section_header(trimmed):
                 in_certs = False
             else:
                 for sub in re.split(r"(?<=\S)\s*[•|;]\s*", trimmed):
                     c_clean = sub.lstrip("-*•").strip()
-                    if c_clean and len(c_clean) > 2:
+                    if c_clean and len(c_clean) > 2 and c_clean not in certifications:
                         certifications.append(c_clean)
 
     return {
+        "name": parsed_name,
         "email": email,
         "phone": phone,
         "linkedin": linkedin,
@@ -695,6 +743,29 @@ def assert_pdf_text_extractable(
             "Generated PDF failed text extraction regression check: "
             f"extracted {len(extracted_normalized)} chars from reference {reference_len}."
         )
+
+    # Completeness check (D7):
+    # Every bullet, org, title, and skill token (normalised) must appear in extracted text,
+    # tolerating at most 2% missing for hyphenation/ligatures. Log counts and IDs of missing items, not text.
+    if visible_text:
+        vis_tokens = [w for w in re.findall(r"\b[A-Za-z0-9+#.-]{2,}\b", visible_text.lower())]
+        if vis_tokens:
+            extracted_lower = extracted.lower()
+            extracted_token_set = set(re.findall(r"\b[A-Za-z0-9+#.-]{2,}\b", extracted_lower))
+            missing_tokens = [tok for tok in vis_tokens if tok not in extracted_token_set]
+            missing_count = len(missing_tokens)
+            missing_ratio = missing_count / len(vis_tokens)
+            if missing_ratio > 0.02:
+                logger.warning(
+                    "PDF completeness check failed: missing_count=%d total_tokens=%d missing_ratio=%.3f",
+                    missing_count,
+                    len(vis_tokens),
+                    missing_ratio,
+                )
+                raise ValueError(
+                    f"Generated PDF failed completeness check: {missing_count}/{len(vis_tokens)} tokens missing ({missing_ratio:.1%})."
+                )
+
     return extracted, ratio
 
 
@@ -713,7 +784,13 @@ def build_professional_resume_pdf(
     parsed = _extract_source_contact_and_certs(source_resume_text)
 
     contact_dict = content_data.get("contact") if isinstance(content_data.get("contact"), dict) else {}
-    cleaned_name = _clean_pdf_text(name or content_data.get("name") or parsed.get("name")) or "Your Name"
+    cand_name = ""
+    for candidate in [name, content_data.get("name"), parsed.get("name")]:
+        cand_str = _clean_pdf_text(candidate)
+        if cand_str and cand_str.lower() != "your name":
+            cand_name = cand_str
+            break
+    cleaned_name = cand_name
     cleaned_email = _clean_pdf_text(email or contact_dict.get("email") or parsed.get("email"))
     cleaned_phone = _clean_pdf_text(phone or contact_dict.get("phone") or parsed.get("phone"))
     cleaned_linkedin = _clean_pdf_text(linkedin or contact_dict.get("linkedin") or parsed.get("linkedin"))
@@ -732,8 +809,10 @@ def build_professional_resume_pdf(
             if gm:
                 cleaned_github = gm.group(0)
 
+    # D5: Use reconstructed_resume.certifications when present
     raw_certs = (
         content_data.get("certificationLines")
+        or (content_data.get("reconstructed_resume") or {}).get("certifications")
         or content_data.get("certifications")
         or parsed.get("certifications")
         or []
@@ -744,21 +823,36 @@ def build_professional_resume_pdf(
         if isinstance(item, str):
             for sub in re.split(r"(?<=\S)\s*[•|;]\s*", item):
                 c_clean = sub.lstrip("-*•").strip()
-                if c_clean and len(c_clean) > 2:
+                if c_clean and len(c_clean) > 2 and c_clean not in split_certs:
                     split_certs.append(c_clean)
         elif item:
-            split_certs.append(str(item))
+            str_item = str(item).strip()
+            if str_item not in split_certs:
+                split_certs.append(str_item)
     certifications = _clean_list(split_certs)
 
     headline = _clean_pdf_text(content_data.get("headline"))
-    summary = _clean_pdf_text(content_data.get("summary")) or "No summary generated."
+    # D2: Summary fallback to reconstructed_resume.summary, then optimized_summary; if still empty, omit section
+    summary_candidate = (
+        content_data.get("summary")
+        or (content_data.get("reconstructed_resume") or {}).get("summary")
+        or content_data.get("optimized_summary")
+        or ""
+    )
+    summary = _clean_pdf_text(summary_candidate)
+    if summary.lower() in {"no summary generated.", "no summary generated", "add_evidence_required"}:
+        summary = ""
+
     skill_groups = _skill_groups(content_data)
-    fallback_skills = _clean_list(content_data.get("skills"))
+    fallback_skills = _clean_list(
+        content_data.get("skills")
+        or (content_data.get("reconstructed_resume") or {}).get("skills")
+    )
     education_lines = _clean_list(
-        content_data.get("educationLines")
-        or (content_data.get("reconstructed_resume") or {}).get("education")
+        (content_data.get("reconstructed_resume") or {}).get("education")
+        or content_data.get("educationLines")
         or content_data.get("education"),
-        limit=6,
+        limit=12,
     )
     improved_bullets = _clean_list(content_data.get("improvedBullets"), limit=10)
     new_bullets = _clean_list(content_data.get("newBullets"), limit=8)
@@ -789,7 +883,8 @@ def build_professional_resume_pdf(
 
     builder = ResumePdfBuilder()
     try:
-        builder.line(cleaned_name, font="hebo", size=21, color=(0.07, 0.07, 0.07), after=2)
+        if cleaned_name:
+            builder.line(cleaned_name, font="hebo", size=21, color=(0.07, 0.07, 0.07), after=2)
         contact_items = [
             val for val in [cleaned_email, cleaned_phone, cleaned_location, cleaned_linkedin, cleaned_github]
             if val and not is_education_text(val)
@@ -816,8 +911,9 @@ def build_professional_resume_pdf(
         else:
             builder.gap(4)
 
-        builder.heading("Summary")
-        builder.wrapped(summary, size=9.8, line_gap=1.5, after=2)
+        if summary:
+            builder.heading("Summary")
+            builder.wrapped(summary, size=9.8, line_gap=1.5, after=2)
 
         if skill_groups or fallback_skills:
             builder.heading("Skills")
@@ -839,14 +935,6 @@ def build_professional_resume_pdf(
                 dates = _clean_pdf_text(entry.get("dates") or "")
                 loc = _clean_pdf_text(entry.get("location") or "")
 
-                # FIX G: Keep source entry order (Role | Company)
-                p0_role = any(kw in title.lower() for kw in ROLE_KEYWORDS)
-                p1_org = any(kw in org.lower() for kw in ORG_KEYWORDS)
-                p0_org = any(kw in title.lower() for kw in ORG_KEYWORDS)
-                p1_role = any(kw in org.lower() for kw in ROLE_KEYWORDS)
-                if (p1_role or p0_org) and not (p0_role and not p1_org):
-                    title, org = org, title
-
                 header_parts: list[str] = []
                 seen_parts: set[str] = set()
                 for p in [title, org, dates, loc]:
@@ -862,11 +950,13 @@ def build_professional_resume_pdf(
                         seen_parts.add(p_lower)
                         header_parts.append(p_clean)
                 if header_parts:
-                    builder.line(" | ".join(header_parts), font="hebo", size=9.8, color=NAVY_COLOR, after=2)
+                    builder.wrapped(" | ".join(header_parts), font="hebo", size=9.8, color=NAVY_COLOR, after=2)
                 for bullet in _clean_list(entry.get("bullets"), limit=8):
                     builder.bullet(bullet)
                 builder.gap(2)
-        elif improved_bullets or fallback_bullets:
+        elif (improved_bullets or fallback_bullets) and not content_data.get("reconstructed_resume"):
+            # Legacy fallback only. When the backend parsed the source (reconstructed_resume) and
+            # found no experience section, none is printed: never invent one.
             builder.heading("Experience")
             builder.line("Relevant Experience", font="hebo", size=10, color=NAVY_COLOR, after=3)
             for bullet in (improved_bullets or fallback_bullets):
@@ -877,12 +967,12 @@ def build_professional_resume_pdf(
             for entry in project_entries:
                 if not isinstance(entry, dict):
                     continue
-                name = _clean_pdf_text(entry.get("name") or entry.get("title") or entry.get("organization") or "")
+                name_entry = _clean_pdf_text(entry.get("name") or entry.get("title") or entry.get("organization") or "")
                 tech = _clean_pdf_text(entry.get("technologies") or "")
                 dates = _clean_pdf_text(entry.get("dates") or "")
                 header_parts: list[str] = []
                 seen_parts: set[str] = set()
-                for p in [name, tech, dates]:
+                for p in [name_entry, tech, dates]:
                     if not p:
                         continue
                     p_clean = _clean_pdf_text(p)
@@ -895,7 +985,7 @@ def build_professional_resume_pdf(
                         seen_parts.add(p_lower)
                         header_parts.append(p_clean)
                 if header_parts:
-                    builder.line(" | ".join(header_parts), font="hebo", size=9.8, color=NAVY_COLOR, after=2)
+                    builder.wrapped(" | ".join(header_parts), font="hebo", size=9.8, color=NAVY_COLOR, after=2)
                 for bullet in _clean_list(entry.get("bullets"), limit=6):
                     builder.bullet(bullet)
                 builder.gap(2)
@@ -916,6 +1006,16 @@ def build_professional_resume_pdf(
             builder.heading("Certifications")
             for cert in certifications:
                 builder.bullet(cert)
+
+        for other in (content_data.get("reconstructed_resume") or {}).get("other_sections") or []:
+            if not isinstance(other, dict):
+                continue
+            other_items = _clean_list(other.get("items"), limit=12)
+            other_title = _clean_pdf_text(other.get("title") or "")
+            if other_title and other_items:
+                builder.heading(other_title)
+                for item in other_items:
+                    builder.bullet(item)
 
         pdf_bytes = builder.finish()
         visible_text = "\n".join(builder.visible_lines) or _visible_text_for_content(

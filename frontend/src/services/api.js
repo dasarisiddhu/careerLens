@@ -130,6 +130,8 @@ export const api = {
 
   // ATS
   checkATS: (body) => request('POST', '/api/resume/ats-check', body),
+  // Same ATS score as checkATS, computed without an LLM call (no verdict/suggestions text).
+  scoreATS: (body) => request('POST', '/api/resume/ats-score', body),
 
   // Interview
   startInterview: (body) => request('POST', '/api/interview/start', body),

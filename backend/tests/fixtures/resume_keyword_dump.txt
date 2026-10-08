@@ -1,0 +1,17 @@
+Kevin Patel
+kevin.patel@example.com | 555-0109
+
+Experience
+Tech Corp
+Software Engineer  Jan 2023 - Present
+- Developed REST microservices using Python and Docker.
+- Spearheaded database optimization across systems.
+Python, Docker, Kubernetes, AWS, Redis, PostgreSQL, Microservices, CI/CD, Kafka, Linux
+
+Projects
+Cloud Portal
+Engineered monitoring dashboards with metrics reporting.
+Python, React, TypeScript, GraphQL, Docker, Terraform, Prometheus, Grafana
+
+Education
+B.S. in Software Engineering, 2023

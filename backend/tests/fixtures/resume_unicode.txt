@@ -1,0 +1,12 @@
+José González
+jose.gonzalez@example.com | ₹50,000 | Bengaluru, Karnataka | ನಮಸ್ಕಾರ
+
+Experience
+Tech Global
+Software Engineer  Jan 2023 - Present
+- Implemented C++ data processing pipeline using vector<int> and List<String>.
+- Maintained legacy C modules including <stdio.h> headers.
+- Processed transactions exceeding ₹1,00,000 per day.
+
+Education
+B.S. in Computer Science, 2022

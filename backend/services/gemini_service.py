@@ -319,6 +319,9 @@ def _get_groq_semaphore() -> asyncio.Semaphore:
     return _GROQ_SEMAPHORE
 
 
+GROQ_MAX_RATE_LIMIT_WAIT_S = 15.0  # longest server-requested delay we will wait out once per call
+
+
 async def call_groq(
     messages: list,
     temperature: float = 0.0,
@@ -355,6 +358,8 @@ async def call_groq(
     sem = _get_groq_semaphore()
     async with sem:
         async with httpx.AsyncClient(timeout=60) as client:
+            tried_models: set[str] = set()
+            waited_for_rate_limit = False
             for attempt in range(max_retries):
                 response = await client.post(
                     GROQ_API_URL,
@@ -384,6 +389,7 @@ async def call_groq(
                             retry_delay = 1.0 * (attempt + 1)
 
                     current_model = current_payload.get("model", "")
+                    tried_models.add(current_model)
 
                     # If delay is substantial (>2s) or rate limit is token-per-minute exhaustion,
                     # switch immediately to a fallback model instead of freezing the request.
@@ -399,7 +405,7 @@ async def call_groq(
                         else:
                             fallback_model = "openai/gpt-oss-20b"
 
-                        if fallback_model and fallback_model != current_model:
+                        if fallback_model and fallback_model != current_model and fallback_model not in tried_models:
                             logger.warning(
                                 "Groq rate limit hit for %s (delay=%.2fs). Switching immediately to fallback model %s...",
                                 current_model,
@@ -411,6 +417,24 @@ async def call_groq(
                             if "gpt-oss" not in fallback_model:
                                 current_payload.pop("reasoning_effort", None)
                             await asyncio.sleep(0.2)
+                            continue
+
+                        # Every candidate model is already rate-limited for this request. Switching again
+                        # only burns attempts (and used to end the loop with no response at all), so
+                        # honour the server's delay once, bounded, and retry.
+                        if (
+                            not waited_for_rate_limit
+                            and attempt < max_retries - 1
+                            and retry_delay <= GROQ_MAX_RATE_LIMIT_WAIT_S
+                        ):
+                            waited_for_rate_limit = True
+                            logger.warning(
+                                "All Groq fallback models rate-limited; waiting %.1fs before retrying %s.",
+                                retry_delay,
+                                current_model,
+                            )
+                            await asyncio.sleep(retry_delay)
+                            tried_models.clear()
                             continue
 
                     if attempt < max_retries - 1:
@@ -481,6 +505,11 @@ async def call_groq(
                     )
 
                 return content
+
+            # Every attempt ended in a rate-limit switch: fail loudly instead of returning None.
+            raise ValueError(
+                "Groq rate limit: all configured models are rate-limited right now. Retry shortly."
+            )
 
 
 def _extract_json(text: str) -> dict:
